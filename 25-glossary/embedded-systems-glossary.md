@@ -1,0 +1,24 @@
+# Embedded Systems Technical Glossary
+
+- **AAPCS (Procedure Call Standard for ARM Architecture):** Specifies the register usage conventions for functions (R0-R3 for parameters, R4-R11 callee-saved, R13 as SP, R14 as LR).
+- **Atomic Operation:** An operation that completes in a single CPU cycle or uninterrupted sequence without the possibility of being preempted or observed in a partially complete state.
+- **Bare-Metal:** Software that executes directly on the bare microcontroller hardware without an underlying operating system, kernel, or heavy driver framework.
+- **BSRR (Bit Set/Reset Register):** A dedicated peripheral register allowing individual I/O pins to be set or cleared with a single atomic write instruction.
+- **CCM-SRAM (Core-Coupled Memory SRAM):** High-speed static RAM connected directly to the Cortex-M4 D-Code and I-Code buses, allowing zero-wait-state code execution and data access at 170 MHz.
+- **CMSIS (Common Microcontroller Software Interface Standard):** Vendor-independent hardware abstraction layer developed by ARM for Cortex-M processor cores and peripheral access.
+- **Critical Section:** A block of code accessing shared resources that must be protected from concurrent access by disabling interrupts or acquiring a mutual exclusion lock.
+- **DMAMUX (DMA Request Multiplexer):** A hardware crossbar router routing hardware trigger requests from any on-chip peripheral to any DMA channel.
+- **EXTI (Extended Interrupts and Events Controller):** Hardware logic managing external pin and internal peripheral event lines, edge detection, and interrupt requests.
+- **Flash Wait State (Latency):** Cycles of delay inserted into the CPU memory bus to accommodate slower Flash read access times at high clock frequencies.
+- **HardFault:** A generic exception raised by the ARM core when an unrecoverable fault occurs (such as accessing an invalid memory address or executing an undefined instruction).
+- **LMA (Load Memory Address):** The address where a program section is stored in non-volatile Flash memory at flash time.
+- **VMA (Virtual/Execution Memory Address):** The address where a program section resides during execution in RAM or Flash.
+- **Memory-Mapped I/O (MMIO):** An architecture where peripheral control and data registers are assigned addresses within the same 32-bit linear address space as RAM and Flash memory.
+- **NVIC (Nested Vectored Interrupt Controller):** Low-latency, tightly coupled hardware interrupt engine handling exception preemption and subpriorities on ARM Cortex-M processors.
+- **Priority Inversion:** A concurrency hazard where a high-priority task is indirectly blocked by a low-priority task holding a shared resource that is preempted by a medium-priority task.
+- **Push-Pull Output:** A digital output stage featuring complementary transistors actively driving the pin HIGH to VDD and LOW to GND.
+- **Open-Drain Output:** A digital output stage with only the low-side transistor present; it actively pulls LOW to GND but floats when HIGH, requiring an external pull-up resistor.
+- **SAR ADC (Successive Approximation Register ADC):** A high-speed analog-to-digital converter architecture using binary search comparison to digitize analog voltages.
+- **SVD (System View Description):** An XML-based standard file format detailing all peripheral base addresses, registers, and bitfields for debugger visualization.
+- **Thumb-2:** A mixed 16-bit and 32-bit instruction set architecture developed by ARM providing high code density with the performance of 32-bit instructions.
+- **Volatile:** A C language type qualifier that prevents the compiler from optimizing away reads or writes to memory locations that can be modified by hardware or ISRs.
