@@ -1,0 +1,38 @@
+```mermaid
+graph TD
+    subgraph Core ["ARM Cortex-M4 Core (ARMv7-M)"]
+        ALU["Arithmetic Logic Unit (ALU) & Hardware Divider"]
+        FPU["Single-Precision Floating Point Unit (FPU FPv4-SP)"]
+        DSP["DSP Extensions & SIMD Instructions"]
+        
+        subgraph Registers ["Core Register Bank"]
+            R_Low["R0 - R7 (Low Registers)"]
+            R_High["R8 - R12 (High Registers)"]
+            SP["R13: Stack Pointer (MSP / PSP)"]
+            LR["R14: Link Register (LR / EXC_RETURN)"]
+            PC["R15: Program Counter (PC)"]
+            PSR["Program Status Register (APSR, IPSR, EPSR)"]
+        end
+        
+        NVIC["Nested Vectored Interrupt Controller (NVIC)<br/>- 16 Internal Exceptions<br/>- Up to 102 External Interrupts<br/>- 16 Programmable Priority Levels"]
+        SysTick["24-Bit System Tick Timer (SysTick)"]
+        MPU["Memory Protection Unit (MPU 8 Regions)"]
+    end
+
+    subgraph Buses ["Cortex-M4 Internal Bus Interfaces"]
+        ICode["I-Code Bus (Instruction Fetch from Flash)"]
+        DCode["D-Code Bus (Data & Literal Read from Flash)"]
+        SystemBus["System Bus (S-Bus to SRAM & Peripherals)"]
+        PPB["Private Peripheral Bus (PPB to NVIC, SysTick, SCB @ 0xE0000000)"]
+    end
+
+    ALU --> Registers
+    FPU --> Registers
+    DSP --> ALU
+    
+    Registers --> ICode
+    Registers --> DCode
+    Registers --> SystemBus
+    NVIC --> PPB
+    SysTick --> PPB
+```

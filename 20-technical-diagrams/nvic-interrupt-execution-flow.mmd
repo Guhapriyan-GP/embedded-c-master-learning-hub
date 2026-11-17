@@ -1,0 +1,27 @@
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as Background Thread (main)
+    participant Core as ARM Cortex-M4 Core
+    participant Stack as Active Stack (MSP/PSP)
+    participant NVIC as NVIC Controller
+    participant ISR as Interrupt Handler (ISR)
+
+    App->>Core: Executing normal background code
+    Note over NVIC: Hardware peripheral asserts IRQ request line
+    NVIC->>Core: Signals pending interrupt with priority evaluation
+    Note over Core: Core finishes current instruction cycle
+    
+    Core->>Stack: Automatic Hardware Stacking (Push 8 registers):<br/>[xPSR, PC, LR, R12, R3, R2, R1, R0]
+    Core->>Core: Loads EXC_RETURN magic code into LR (e.g. 0xFFFFFFF9)
+    Core->>Core: Fetches ISR vector address from Vector Table (Flash/VTOR)
+    Core->>Core: Switches from Thread Mode to Handler Mode (Privileged)
+    
+    Core->>ISR: Begins executing Interrupt Handler
+    Note over ISR: User code handles event and clears peripheral pending flag
+    ISR->>Core: Executes return instruction (`BX LR`) with EXC_RETURN
+    
+    Core->>Stack: Automatic Hardware Unstacking (Pop 8 registers):<br/>Restores [R0-R3, R12, LR, PC, xPSR]
+    Core->>Core: Switches back to Thread Mode
+    Core->>App: Resumes background thread execution seamlessly
+```

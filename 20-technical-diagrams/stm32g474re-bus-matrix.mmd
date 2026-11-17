@@ -1,0 +1,40 @@
+```mermaid
+graph TD
+    subgraph Masters ["Bus Masters"]
+        CPU_I["Cortex-M4 I-Code"]
+        CPU_D["Cortex-M4 D-Code"]
+        CPU_S["Cortex-M4 S-Bus"]
+        DMA1["DMA1 Master"]
+        DMA2["DMA2 Master"]
+    end
+
+    subgraph Crossbar ["Multi-Layer AHB Interconnect Matrix"]
+        Matrix["AHB Bus Matrix Arbitrator"]
+    end
+
+    subgraph Slaves ["Bus Slaves"]
+        Flash["Embedded Flash Memory (512 KB)<br/>0x08000000 - 0x0807FFFF"]
+        SRAM1["SRAM1 (80 KB)<br/>0x20000000 - 0x20013FFF"]
+        SRAM2["SRAM2 (16 KB)<br/>0x20014000 - 0x20017FFF"]
+        CCMSRAM["CCM-SRAM (32 KB Instruction/Data)<br/>0x10000000 - 0x10007FFF"]
+        AHB1["AHB1 Peripherals (DMA, DMAMUX, RCC, Flash Regs)<br/>0x40020000"]
+        AHB2["AHB2 Peripherals (GPIOA-G, ADC1-5, DAC)<br/>0x48000000"]
+        APB1_Bridge["AHB-to-APB1 Bridge<br/>0x40000000 (TIM2-7, USART2, I2C, PWR, IWDG)"]
+        APB2_Bridge["AHB-to-APB2 Bridge<br/>0x40010000 (SYSCFG, EXTI, TIM1, SPI1, USART1)"]
+    end
+
+    CPU_I --> Matrix
+    CPU_D --> Matrix
+    CPU_S --> Matrix
+    DMA1 --> Matrix
+    DMA2 --> Matrix
+
+    Matrix --> Flash
+    Matrix --> SRAM1
+    Matrix --> SRAM2
+    Matrix --> CCMSRAM
+    Matrix --> AHB1
+    Matrix --> AHB2
+    Matrix --> APB1_Bridge
+    Matrix --> APB2_Bridge
+```

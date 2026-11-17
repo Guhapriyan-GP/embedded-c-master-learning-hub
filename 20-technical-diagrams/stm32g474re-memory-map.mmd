@@ -1,0 +1,27 @@
+```mermaid
+graph TD
+    subgraph MemoryMap ["STM32G474RE 4GB Address Space (0x00000000 - 0xFFFFFFFF)"]
+        Boot["0x00000000 - 0x07FFFFFF: Boot Memory (Aliased to Flash or System ROM)"]
+        Flash["0x08000000 - 0x0807FFFF: Main Flash Memory (512 KB Dual-Bank)"]
+        CCMSRAM["0x10000000 - 0x10007FFF: CCM-SRAM (32 KB Core-Coupled Memory)"]
+        SRAM1["0x20000000 - 0x20013FFF: SRAM1 (80 KB Main Data RAM)"]
+        SRAM2["0x20014000 - 0x20017FFF: SRAM2 (16 KB Parity Check RAM)"]
+        Periph_APB1["0x40000000 - 0x4000FFFF: APB1 Peripherals (TIM2-7, USART2, I2C1-3, PWR)"]
+        Periph_APB2["0x40010000 - 0x4001FFFF: APB2 Peripherals (SYSCFG, EXTI, TIM1, SPI1, USART1)"]
+        Periph_AHB1["0x40020000 - 0x40023FFF: AHB1 Peripherals (DMA1, DMA2, DMAMUX, RCC, Flash)"]
+        Periph_AHB2["0x48000000 - 0x48001BFF: AHB2 Peripherals (GPIOA to GPIOG)"]
+        Periph_Analog["0x50000000 - 0x500017FF: AHB2 Analog Engine (ADC1-5, DAC1-4)"]
+        PPB["0xE0000000 - 0xE00FFFFF: Cortex-M4 Private Peripherals (NVIC, SysTick, SCB, MPU)"]
+    end
+
+    Boot --- Flash
+    Flash --- CCMSRAM
+    CCMSRAM --- SRAM1
+    SRAM1 --- SRAM2
+    SRAM2 --- Periph_APB1
+    Periph_APB1 --- Periph_APB2
+    Periph_APB2 --- Periph_AHB1
+    Periph_AHB1 --- Periph_AHB2
+    Periph_AHB2 --- Periph_Analog
+    Periph_Analog --- PPB
+```

@@ -1,0 +1,53 @@
+```mermaid
+graph LR
+    subgraph Sources ["Clock Sources"]
+        HSI16["Internal 16 MHz RC (HSI16)"]
+        HSE["External 24 MHz Crystal (HSE)"]
+        LSI["Internal 32 kHz RC (LSI)"]
+        LSE["External 32.768 kHz Crystal (LSE)"]
+    end
+
+    subgraph PLL_Engine ["Phase-Locked Loop (PLL)"]
+        PLL_M["Div M (1..16)"]
+        VCO["VCO Multiplier N (8..127)<br/>f_VCO = 64 to 344 MHz"]
+        PLL_R["Div R (2,4,6,8) -> PLL_R"]
+        PLL_Q["Div Q (2,4,6,8) -> PLL_Q"]
+        PLL_P["Div P (2..31) -> PLL_P"]
+    end
+
+    subgraph System_Distribution ["System Clock Distribution"]
+        SW_MUX{"SYSCLK Switch MUX<br/>(RCC_CFGR.SW)"}
+        SYSCLK["SYSCLK (Up to 170 MHz)"]
+        HPRE["AHB Prescaler /1..512"]
+        HCLK["HCLK (Core, Memory, DMA)"]
+        PPRE1["APB1 Prescaler /1..16"]
+        PCLK1["PCLK1 (APB1 Periphs)"]
+        PPRE2["APB2 Prescaler /1..16"]
+        PCLK2["PCLK2 (APB2 Periphs)"]
+        TIM_Mult1["Timer Clock Multiplier x1 / x2"]
+        TIM_Mult2["Timer Clock Multiplier x1 / x2"]
+    end
+
+    HSI16 --> PLL_M
+    HSE --> PLL_M
+    PLL_M --> VCO
+    VCO --> PLL_R
+    VCO --> PLL_Q
+    VCO --> PLL_P
+
+    HSI16 --> SW_MUX
+    HSE --> SW_MUX
+    PLL_R --> SW_MUX
+
+    SW_MUX --> SYSCLK
+    SYSCLK --> HPRE
+    HPRE --> HCLK
+    HCLK --> PPRE1
+    HCLK --> PPRE2
+    PPRE1 --> PCLK1
+    PPRE2 --> PCLK2
+    PCLK1 --> TIM_Mult1
+    PCLK2 --> TIM_Mult2
+
+    LSI --> IWDG["IWDG Watchdog Timer"]
+```
