@@ -1,0 +1,108 @@
+```mermaid
+graph TD
+    %% Base Foundations
+    subgraph S1 ["Stage 01: Computer Science & C Foundations"]
+        C_Types["Data Types & Representation<br/>(2's Complement, Fixed-width stdint.h)"]
+        C_Bitwise["Bitwise Operations<br/>(AND, OR, XOR, NOT, Shifts, Masking)"]
+        C_Pointers["Pointers & Memory Addressing<br/>(Dereferencing, Pointer Arithmetic)"]
+        C_Structs["Structures & Alignment<br/>(Padding, Byte Packing, Unions)"]
+        C_Qualifiers["Qualifiers & Storage<br/>(const, volatile, static, extern)"]
+    end
+
+    %% Embedded C Layer
+    subgraph S2 ["Stage 02: Embedded C Foundations"]
+        EMB_MMIO["Memory-Mapped I/O<br/>(Base Addresses, Peripheral Struct Overlays)"]
+        EMB_Volatile["Volatile Access Semantics<br/>(Preventing Optimizer Elimination)"]
+        EMB_Atomic["Atomic Register Operations<br/>(Read-Modify-Write vs Bit Set/Reset)"]
+        EMB_CMSIS["Hardware Abstraction Principles<br/>(CMSIS-Core vs HAL vs LL)"]
+    end
+
+    %% Hardware & CPU Architecture
+    subgraph S3 ["Stage 03: ARM Cortex-M4 Architecture"]
+        ARM_Regs["Core Registers & Modes<br/>(R0-R15, PSR, MSP/PSP, Privileged Mode)"]
+        ARM_Bus["Bus Architecture & Memory Map<br/>(AHB/APB Matrix, SCS, Bit-Banding)"]
+        ARM_NVIC["Nested Vectored Interrupt Controller<br/>(Vector Table, Preemption, Subpriorities)"]
+        ARM_Faults["Exception & Fault Handling<br/>(HardFault, MemManage, BusFault, UsageFault)"]
+    end
+
+    %% Build Engine
+    subgraph S4 ["Stage 04: Toolchain & Build System"]
+        TOOL_GCC["GNU Compiler Collection<br/>(arm-none-eabi-gcc, Compilation Pipeline)"]
+        TOOL_LD["Linker Scripts<br/>(Memory Regions, .text, .data, .bss, VMA/LMA)"]
+        TOOL_Startup["Startup Code & Booting<br/>(Reset_Handler, Vector Table, SystemInit)"]
+        TOOL_Debug["Debugging Infrastructure<br/>(OpenOCD, ST-LINK SWD, GDB, SVD Files)"]
+    end
+
+    %% STM32 Specific Hardware
+    subgraph S5 ["Stage 05 & 06: STM32 Clocks & Core Power"]
+        STM_RCC["Reset & Clock Control (RCC)<br/>(HSI16, HSE Crystal, PLL Multipliers)"]
+        STM_Pwr["Power & Voltage Scaling<br/>(Range 1 Boost Mode @ 170MHz)"]
+        STM_Flash["Flash Memory Access<br/>(Latency Wait States, Prefetch Buffer)"]
+    end
+
+    %% Peripherals & Interactions
+    subgraph S6 ["Stage 07 to 12: Peripheral Engines"]
+        PER_GPIO["General-Purpose I/O<br/>(MODER, ODR, IDR, BSRR, Alternate Functions)"]
+        PER_EXTI["External Interrupts (EXTI)<br/>(SYSCFG Routing, Trigger Selection)"]
+        PER_TIM["Hardware Timers (TIMx)<br/>(Prescaler, Auto-Reload, PWM, Dead-Time)"]
+        PER_UART["Serial Communication (USART)<br/>(Baud Rate Divisors, Buffering)"]
+        PER_SPI["Synchronous Bus (SPI)<br/>(CPOL, CPHA, Shift Registers)"]
+        PER_I2C["Inter-Integrated Circuit (I2C)<br/>(TIMINGR, Start/Stop, 7-Bit Address)"]
+        PER_ADC["Analog Signal Acquisition (ADC)<br/>(SAR Conversion, Calibration, Scan Mode)"]
+        PER_DMA["Direct Memory Access (DMA)<br/>(Channels, Circular Buffers, DMAMUX)"]
+    end
+
+    %% Advanced Systems
+    subgraph S7 ["Stage 13 to 16: Concurrency & Systems Architecture"]
+        SYS_RTOS["Real-Time Operating System<br/>(FreeRTOS, Preemptive Scheduling, TCB)"]
+        SYS_Sync["Synchronization Primitives<br/>(Queues, Semaphores, Mutexes, Priority Inversion)"]
+        SYS_FSM["Architectural Patterns<br/>(Hierarchical State Machines, Ring Buffers)"]
+        SYS_Safe["System Reliability & Safety<br/>(Watchdogs IWDG/WWDG, MISRA C:2012)"]
+    end
+
+    %% Dependencies
+    C_Types --> C_Bitwise
+    C_Bitwise --> C_Pointers
+    C_Pointers --> C_Structs
+    C_Structs --> C_Qualifiers
+
+    C_Pointers --> EMB_MMIO
+    C_Qualifiers --> EMB_Volatile
+    C_Bitwise --> EMB_Atomic
+    EMB_MMIO --> EMB_CMSIS
+
+    EMB_MMIO --> ARM_Regs
+    ARM_Regs --> ARM_Bus
+    ARM_Bus --> ARM_NVIC
+    ARM_NVIC --> ARM_Faults
+
+    ARM_Bus --> TOOL_LD
+    ARM_NVIC --> TOOL_Startup
+    TOOL_GCC --> TOOL_LD
+    TOOL_LD --> TOOL_Startup
+    TOOL_Startup --> TOOL_Debug
+
+    TOOL_Startup --> STM_RCC
+    STM_RCC --> STM_Pwr
+    STM_Pwr --> STM_Flash
+
+    STM_RCC --> PER_GPIO
+    PER_GPIO --> PER_EXTI
+    ARM_NVIC --> PER_EXTI
+    STM_RCC --> PER_TIM
+    PER_TIM --> PER_UART
+    PER_GPIO --> PER_UART
+    PER_GPIO --> PER_SPI
+    PER_GPIO --> PER_I2C
+    PER_GPIO --> PER_ADC
+    STM_RCC --> PER_ADC
+    PER_ADC --> PER_DMA
+    PER_UART --> PER_DMA
+
+    ARM_NVIC --> SYS_RTOS
+    PER_TIM --> SYS_RTOS
+    SYS_RTOS --> SYS_Sync
+    EMB_Atomic --> SYS_Sync
+    SYS_Sync --> SYS_FSM
+    ARM_Faults --> SYS_Safe
+```
