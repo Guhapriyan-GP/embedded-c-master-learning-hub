@@ -1,0 +1,45 @@
+# Binaries and Object Files
+*.o
+*.obj
+*.elf
+*.bin
+*.hex
+*.axf
+*.map
+*.d
+
+# Build directories
+build/
+output/
+dist/
+bin/
+
+# Toolchain temporary files
+*.su
+*.gdb
+*.log
+*.tmp
+
+# VS Code / IDE settings (preserve standard workspace templates, ignore local session caches)
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/c_cpp_properties.json
+!.vscode/*.svd
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python virtual environment and caches
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+.venv/
+
+# Temporary generator scratch scripts
+scratch/
+
