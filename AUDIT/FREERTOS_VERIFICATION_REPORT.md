@@ -96,7 +96,7 @@ Verified directly via `arm-none-eabi-nm` and `arm-none-eabi-objdump` on `build/n
 ## 5. Physical NUCLEO-G474RE Onboard Hardware Verification (Agent 4)
 
 **Status:** **`ONBOARD HARDWARE TESTED — 6/6 ALL_PASSED`**  
-**Board:** ST NUCLEO-G474RE (`MB1367 Rev C`, ST-LINK SN `003700413335510133383531`, FW `V3J17M11`, `VDD = 3.28 V`, Device ID `0x469`, Rev X, 512 KB Flash)  
+**Board:** ST NUCLEO-G474RE (`MB1367 Rev C`, ST-LINK SN `<redacted-stlink-sn>`, FW `V3J17M11`, `VDD = 3.28 V`, Device ID `0x469`, Rev X, 512 KB Flash)  
 **Flash Command:** `STM32_Programmer_CLI -c port=SWD mode=NORMAL -w build/nucleo_g474re_freertos.elf -v -rst` (`21.16 KB`, verified in `0.060 s`).
 
 ### Verbatim Captured `COM8` Output (`115200 8N1`, 8.0-Second Live Run)

@@ -1,5 +1,8 @@
 # Audit Round 2 — Complete Remediation Report
 
+> [!NOTE]
+> **Historical Audit Snapshot Notice:** This document records an earlier audit milestone (Round 2 / commit `848d4ed`, 2026-11-18). Its findings and metric counts reflect that historical state and are preserved verbatim for traceability. For the authoritative, canonical release metrics and active status of the current repository (`v4.0.0`), see [`AUDIT/release_metrics.json`](release_metrics.json) and [`AUDIT/RELEASE_INTEGRITY_REPORT.md`](RELEASE_INTEGRITY_REPORT.md).
+
 > **Date:** 2026-11-18  
 > **Branch:** `feature/complete-remediation`  
 > **Target Silicon / Board:** **STM32G474RET6** (LQFP64, ARM Cortex-M4F r0p1 `__CM4_REV = 0x0001U`, `__NVIC_PRIO_BITS = 4U`) on **NUCLEO-G474RE (MB1367 Rev C)**  
@@ -75,7 +78,7 @@ All three standalone programs in [`18-practical-laboratory/lab-05-exti-pushbutto
 ## 5. Honest Local STM32CubeG4 HAL/LL & Mermaid Tooling Disclosure
 
 To maintain strict verification honesty with zero inflation:
-1. **STM32CubeG4 HAL/LL Headers Unavailable on Host:** Exhaustive host search across `C:\ST`, `%USERPROFILE%\STM32Cube`, `D:\ST`, `D:\STM32Cube`, and `D:\General_ant` confirmed **zero** installations of `stm32g4xx_hal.h`, `stm32g4xx_ll_exti.h`, or `stm32g4xx_ll_gpio.h`. Consequently, all STM32CubeG4 LL and HAL code blocks in `Lab 01`, `Lab 05`, and `Lab 08` are **NOT** claimed as locally compiled; every block carries an explicit label: **`STM32CubeG4 HAL/LL package not installed on host — Statically Reviewed against official STMicroelectronics/stm32g4xx-hal-driver API`**. All CMSIS direct-register code blocks (`18/18` bare-metal labs, `12/12` drivers, starter template, FreeRTOS V11.1.0, and `3/3` Capstones) are locally **Compile-Verified** against the vendored CMSIS `stm32g474xx.h` + `core_cm4.h` using `arm-none-eabi-gcc 14.3.1`.
+1. **STM32CubeG4 HAL/LL Headers Unavailable on Host:** Exhaustive host search across `C:\ST`, `%USERPROFILE%\STM32Cube`, `D:\ST`, `D:\STM32Cube`, and `<workspace-root>/` confirmed **zero** installations of `stm32g4xx_hal.h`, `stm32g4xx_ll_exti.h`, or `stm32g4xx_ll_gpio.h`. Consequently, all STM32CubeG4 LL and HAL code blocks in `Lab 01`, `Lab 05`, and `Lab 08` are **NOT** claimed as locally compiled; every block carries an explicit label: **`STM32CubeG4 HAL/LL package not installed on host — Statically Reviewed against official STMicroelectronics/stm32g4xx-hal-driver API`**. All CMSIS direct-register code blocks (`18/18` bare-metal labs, `12/12` drivers, starter template, FreeRTOS V11.1.0, and `3/3` Capstones) are locally **Compile-Verified** against the vendored CMSIS `stm32g474xx.h` + `core_cm4.h` using `arm-none-eabi-gcc 14.3.1`.
 2. **Mermaid CLI (`mmdc`) Unavailable on Host:** `shutil.which("mmdc")` returns `None`. `scripts/validate_repo.py` v4.2.0 therefore separates `mermaid_syntax` (`12/12 INFO/PASS`) from `mermaid_render` (`UNVERIFIED — 'mmdc' (@mermaid-js/mermaid-cli) tooling unavailable on host`).
 3. **No Round 2 Physical Hardware Re-Flashing:** Physical NUCLEO-G474RE onboard test logs from Phase 5 / Agent 4 remain valid baseline silicon evidence, while all Round 2 code and comment updates are honestly labeled **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, Not Tested on Physical Hardware in Round 2)** or **Host-Tested (`gcc 15.2.0`, `594/594` assertions)**.
 

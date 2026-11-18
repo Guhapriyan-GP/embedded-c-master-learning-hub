@@ -5,7 +5,7 @@
 > **Prerequisites:** [`03-embedded-c/` (`EMB-ATOM-*`)](../03-embedded-c/README.md), [`04-arm-cortex-m/` (`ARM-CORE-*`)](../04-arm-cortex-m/README.md), [`10-interrupts/` (`RT-IRQ-*`)](../10-interrupts/README.md), [`15-power-management/`](../15-power-management/README.md)
 
 > **Directory:** `16-rtos/` | **Target Platform:** STM32G474RET6 (ARM Cortex-M4F `ARM_CM4F` Port, `__NVIC_PRIO_BITS = 4`, 128 KB SRAM)  
-> **Code Verification Notice:** The companion standalone FreeRTOS `V11.1.0` firmware project in [`23-code-library/freertos/`](../23-code-library/freertos/README.md) is **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, 0 errors / 0 warnings on user code)** and **Ready for Physical NUCLEO-G474RE Onboard Hardware Test** (see [`AUDIT/FREERTOS_VERIFICATION_REPORT.md`](../AUDIT/FREERTOS_VERIFICATION_REPORT.md)). Inline illustrative snippets in this theory guide are **Statically Reviewed against `stm32g474xx.h`, `core_cm4.h`, and FreeRTOS `V11.1.0` `ARM_CM4F` Port Specifications**.
+> **Code Verification Notice:** The companion standalone FreeRTOS `V11.1.0` firmware project in [`23-code-library/freertos/`](../23-code-library/freertos/README.md) is **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, 0 errors / 0 warnings on user code)** and **Target Execution Verified on physical NUCLEO-G474RE (`6/6 ALL_PASSED`, 8.0 s live UART capture; note that an 8 s functional demo does NOT prove formal WCET determinism — see [`AUDIT/FREERTOS_REVIEW.md`](../AUDIT/FREERTOS_REVIEW.md) & [`AUDIT/FREERTOS_VERIFICATION_REPORT.md`](../AUDIT/FREERTOS_VERIFICATION_REPORT.md))**. Inline illustrative snippets in this theory guide are **Statically Reviewed against `stm32g474xx.h`, `core_cm4.h`, and FreeRTOS `V11.1.0` `ARM_CM4F` Port Specifications**.
 
 ---
 
@@ -131,18 +131,66 @@ Verified against `stm32g474xx.h` (`__NVIC_PRIO_BITS = 4U`) and FreeRTOS `ARM_CM4
 
 ### 6.1 Rate Monotonic Scheduling (RMS — Liu & Layland, 1973) & EDF Bounds
 For $n$ independent periodic tasks with execution time $C_i$ and period $T_i$ (prioritized strictly by shorter period = higher priority):
-$$U = \sum_{i=1}^{n} \frac{C_i}{T_i} \le n\left(2^{1/n} - 1\right) \xrightarrow{n \to \infty} \ln 2 \approx \mathbf{0.693}$$
-- For $n = 3$: $U_{\text{RMS,suff}} = 3(2^{1/3} - 1) = \mathbf{0.7798}$ (77.98%).
+
+$$
+U = \sum_{i=1}^{n} \frac{C_i}{T_i} \le n\left(2^{1/n} - 1\right) \xrightarrow{n \to \infty} \ln 2 \approx 0.693
+$$
+
+- For $n = 3$: $U_{\text{RMS}} = 3(2^{1/3} - 1) = \mathbf{0.7798}$ (77.98%).
+- For $n = 4$: $U_{\text{RMS}} = 4(2^{1/4} - 1) = \mathbf{0.7568}$ (75.68%).
 - For **Earliest Deadline First (EDF)** dynamic priority: $U \le \mathbf{1.000}$ (100% schedulable if deadlines equal periods!).
 
-### 6.2 Exact Response-Time Analysis (RTA — Necessary & Sufficient for Fixed Priority!)
-Even if $U > 0.693$, fixed-priority task $i$ meets deadline $D_i$ if the recurrence converges to $R_i \le D_i$:
-$$R_i^{(k+1)} = C_i + B_i + \sum_{j \in \text{hp}(i)} \left\lceil \frac{R_i^{(k)}}{T_j} \right\rceil C_j, \qquad R_i^{(0)} = C_i$$
-where $B_i$ is worst-case priority-inheritance mutex blocking time and $\text{hp}(i)$ is the set of higher-priority tasks.
+### 6.2 Exact Response-Time Analysis (RTA — Joseph & Pandya, 1986)
+Even when $U > 0.693$ **or when priorities are not strictly Rate-Monotonic** (for example, placing a slower safety supervisor above a faster control loop), a fixed-priority task $i$ meets its relative deadline $D_i$ if and only if the iterative fixed-point recurrence converges to $R_i \le D_i$:
 
-**Worked Example:** Task 1 ($C_1 = 1\text{ ms}, T_1 = 5\text{ ms}$), Task 2 ($C_2 = 3\text{ ms}, T_2 = 10\text{ ms}$), Task 3 ($C_3 = 4\text{ ms}, T_3 = 20\text{ ms}, B_3 = 0$).
-$U = 0.2 + 0.3 + 0.2 = 0.70 \le 0.7798$ $\checkmark$. Exact $R_3$:
-$R_3^{(0)} = 4 \to R_3^{(1)} = 4 + \lceil 4/5 \rceil(1) + \lceil 4/10 \rceil(3) = 8 \to R_3^{(2)} = 4 + \lceil 8/5 \rceil(1) + \lceil 8/10 \rceil(3) = 9 \to R_3^{(3)} = 9 \le 20\text{ ms}$ $\checkmark$.
+$$
+R_i^{(k+1)} = C_i + B_i + \sum_{j \in \text{hp}(i)} \left\lceil \frac{R_i^{(k)}}{T_j} \right\rceil C_j, \qquad R_i^{(0)} = C_i + B_i
+$$
+
+where $C_i$ is the task's worst-case execution time (WCET), $B_i$ is the worst-case lower-priority mutex blocking time under Priority Inheritance / Priority Ceiling, and $\text{hp}(i)$ is the set of all tasks with strictly higher priority than task $i$.
+
+### 6.3 Worked Fixed-Priority RTA Exercise: STM32G474RE 4-Task Power Controller (Project 03 / Lab 15 Pattern)
+
+Consider the 4-task FreeRTOS architecture implemented in [`19-projects/03-advanced-freertos-digital-power-controller/Src/main.c`](../19-projects/03-advanced-freertos-digital-power-controller/Src/main.c) (`170 MHz` Boost, `configTICK_RATE_HZ = 1000`, blocking `USART2` at `115200 8N1` guarded by Priority-Inheritance mutex `g_uart_mutex`). Notice that priorities are assigned by **safety criticality** rather than pure Rate Monotonic order (`SafetySupervisor` has $T_1 = 100\text{ ms}$ at Priority 4 above `ControlLoop` $T_2 = 1.0\text{ ms}$ at Priority 3), so Liu-Layland's RMS theorem does **not** directly guarantee schedulability — **exact RTA is mandatory**:
+
+| Task | FreeRTOS Priority | Period $T_i$ (ms) | Deadline $D_i$ (ms) | Illustrative WCET Budget $C_i$ (ms) | Blocking $B_i$ (ms) | Role & Shared Mutex Scope |
+|---|---:|---:|---:|---:|---:|---|
+| $\tau_1$: `SafetySupervisor` | `4` *(Highest)* | `100.0` | `100.0` | `0.05` | `0.00` *(steady state)* | Event-group heartbeat check, `IWDG` kick, `LD2` toggle |
+| $\tau_2$: `ControlLoop` | `3` | `1.0` | `1.0` | `0.10` | `0.00` | `1 kHz` Q15 PI regulator + `TIM1->CCR1` update (never takes `g_uart_mutex`) |
+| $\tau_3$: `Telemetry` | `2` | `500.0` | `500.0` | `15.00` | `5.00` | `snprintf` + ~160 B blocking `115200` JSON TX (`~13.9 ms`); blocked by `UiTask` holding `g_uart_mutex` |
+| $\tau_4$: `UiTask` | `1` *(Lowest App)* | `100.0` | `100.0` | `5.00` | `0.00` | `10 Hz` `B1` poll + optional OLED / ~55 B log string (`~4.8 ms`) |
+
+**Step 1 — Total Processor Utilization:**
+
+$$
+U = \frac{0.05}{100.0} + \frac{0.10}{1.0} + \frac{15.00}{500.0} + \frac{5.00}{100.0} = 0.0005 + 0.1000 + 0.0300 + 0.0500 = 0.1805 \quad (18.05\%)
+$$
+
+**Step 2 — Iterative Response-Time Recurrence (Steady-State Operation):**
+
+1. **$\tau_1$ (`SafetySupervisor`, Prio 4, $\text{hp}(1) = \emptyset$):**
+   - $R_1^{(0)} = C_1 + B_1 = 0.05\text{ ms} \implies \mathbf{R_1 = 0.05\text{ ms} \le 100.0\text{ ms}}$ (`PASS`, margin `99.95 ms`).
+2. **$\tau_2$ (`ControlLoop`, Prio 3, $\text{hp}(2) = \{\tau_1\}$):**
+   - $R_2^{(0)} = 0.10\text{ ms}$
+   - $R_2^{(1)} = 0.10 + \lceil 0.10 / 100.0 \rceil (0.05) = 0.10 + 0.05 = 0.15\text{ ms}$
+   - $R_2^{(2)} = 0.10 + \lceil 0.15 / 100.0 \rceil (0.05) = 0.15\text{ ms}$ (converged) $\implies \mathbf{R_2 = 0.15\text{ ms} \le 1.0\text{ ms}}$ (`PASS`, margin `0.85 ms`).
+3. **$\tau_3$ (`Telemetry`, Prio 2, $\text{hp}(3) = \{\tau_1, \tau_2\}$):**
+   - $R_3^{(0)} = C_3 + B_3 = 15.00 + 5.00 = 20.00\text{ ms}$
+   - $R_3^{(1)} = 20.00 + \lceil 20.00 / 100.0 \rceil (0.05) + \lceil 20.00 / 1.0 \rceil (0.10) = 20.00 + 0.05 + 2.00 = 22.05\text{ ms}$
+   - $R_3^{(2)} = 20.00 + \lceil 22.05 / 100.0 \rceil (0.05) + \lceil 22.05 / 1.0 \rceil (0.10) = 20.00 + 0.05 + 2.30 = 22.35\text{ ms}$
+   - $R_3^{(3)} = 20.00 + \lceil 22.35 / 100.0 \rceil (0.05) + \lceil 22.35 / 1.0 \rceil (0.10) = 22.35\text{ ms}$ (converged) $\implies \mathbf{R_3 = 22.35\text{ ms} \le 500.0\text{ ms}}$ (`PASS`).
+4. **$\tau_4$ (`UiTask`, Prio 1, $\text{hp}(4) = \{\tau_1, \tau_2, \tau_3\}$):**
+   - $R_4^{(0)} = 5.00\text{ ms}$
+   - $R_4^{(1)} = 5.00 + \lceil 5.00 / 100.0 \rceil (0.05) + \lceil 5.00 / 1.0 \rceil (0.10) + \lceil 5.00 / 500.0 \rceil (15.00) = 20.55\text{ ms}$
+   - $R_4^{(2)} = 5.00 + \lceil 20.55 / 100.0 \rceil (0.05) + \lceil 20.55 / 1.0 \rceil (0.10) + \lceil 20.55 / 500.0 \rceil (15.00) = 22.15\text{ ms}$
+   - $R_4^{(3)} = 5.00 + \lceil 22.15 / 100.0 \rceil (0.05) + \lceil 22.15 / 1.0 \rceil (0.10) + \lceil 22.15 / 500.0 \rceil (15.00) = 22.35\text{ ms}$
+   - $R_4^{(4)} = 22.35\text{ ms}$ (converged) $\implies \mathbf{R_4 = 22.35\text{ ms} \le 100.0\text{ ms}}$ (`PASS`).
+
+**Step 3 — Transitive Priority-Inheritance Hazard Uncovered by RTA (Production Lesson!):**
+If `SafetySupervisor` (Prio 4) ever calls `pwr_uart_log()` (`xSemaphoreTake(g_uart_mutex)`) during a fault/reset event while `Telemetry` (Prio 2) is mid-transmission holding `g_uart_mutex` for `15.0 ms`, FreeRTOS Priority Inheritance promotes `Telemetry` to **Priority 4** — preempting `ControlLoop` (Prio 3, $D_2 = 1.0\text{ ms}$) for up to `15.0 ms` ($R_2 > 15.1\text{ ms} \gg D_2 = 1.0\text{ ms}$ $\implies$ **15 consecutive 1 ms control-loop deadline misses**!). In Project 03, hardware overcurrent protection stays safe in `< 50 ns` because `COMP1 -> TIM1_BKIN` operates purely in silicon, **but** in safety-certified production systems you MUST decouple Prio 4 logging into a non-blocking queue/DMA TX ring buffer so the highest-priority task **never** contends on a mutex held across slow blocking UART I/O.
+
+> [!WARNING]
+> **Explicit Real-Time Determinism & WCET Caveat:** Passing an 8-second onboard FreeRTOS demonstration (`23-code-library/freertos/` `6/6 ALL_PASSED` or Project 03 `5.2 s` live telemetry on NUCLEO-G474RE) proves **functional correctness under nominal lab load**, and does **NOT** constitute a formal Worst-Case Execution Time (WCET) or hard-real-time determinism proof! True hard-real-time certification additionally requires: (1) static WCET bounding or exhaustive `DWT->CYCCNT` / ETM trace worst-case profiling of every task, kernel critical section (`vTaskSwitchContext`, `SysTick`, `PendSV`), and unmanaged/managed ISR burst; (2) explicit accounting for Flash wait-state / ART cache misses and DMA bus contention; and (3) verification of blocking terms $B_i$ across all mutexes and interrupt bursts (see [`AUDIT/FREERTOS_REVIEW.md`](../AUDIT/FREERTOS_REVIEW.md)).
 
 ---
 

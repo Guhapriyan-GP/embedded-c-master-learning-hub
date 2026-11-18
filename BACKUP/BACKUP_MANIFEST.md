@@ -10,8 +10,8 @@
 
 | Field | Verified Value |
 |---|---|
-| **Working Repository** | `D:\General_ant\embedded-c-master-learning-hub` |
-| **Independent Local Backup Path** | `D:\General_ant\embedded-c-master-learning-hub-backup` |
+| **Working Repository** | `<repo-root>/` |
+| **Independent Local Backup Path** | `<backup-root>/` |
 | **Source Git Branch** | `main` (clean working tree) |
 | **Source Git Commit SHA** | `585dc4fa081cf7f27e5e437254e814f13f4b46cd` |
 | **Git Metadata Preserved** | Yes (complete `.git/` history, refs, objects, hooks, and config copied) |
@@ -58,6 +58,6 @@ Prior to any onboard hardware validation on the connected **NUCLEO-G474RE** (STL
 
 At the end of remediation, verify that the baseline backup has never been altered:
 ```powershell
-python -c "import hashlib, pathlib; b = pathlib.Path(r'D:\General_ant\embedded-c-master-learning-hub-backup'); files = sorted([p for p in b.rglob('*') if p.is_file()]); print('Files:', len(files), 'Bytes:', sum(p.stat().st_size for p in files))"
+python -c "import hashlib, pathlib; b = pathlib.Path(r'<backup-root>/'); files = sorted([p for p in b.rglob('*') if p.is_file()]); print('Files:', len(files), 'Bytes:', sum(p.stat().st_size for p in files))"
 ```
 Expected: `Files: 565 Bytes: 5734859`.

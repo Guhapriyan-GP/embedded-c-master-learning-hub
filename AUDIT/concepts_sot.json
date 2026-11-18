@@ -7288,7 +7288,7 @@
       ],
       "explanation": "ST-LINK Debug Probes (STLINK-V3E on NUCLEO-G474RE vs V2-1) & SWD Hardware Interface (`SWDIO`, `SWCLK`, `SWO`, `NRST`). Core scope: Map CN4/CN6/JP4/SB solder bridges on NUCLEO-G474RE using UM2505; intentionally configure `PA13` as GPIO output (locking out SWD) and successfully recover and re-flash the MCU using `connect_assert_srst` (OpenOCD) or `-c port=SWD mode=UR` (`STM32_Programmer_CLI`).",
       "hardware_relevance": "STM32G474RE-specific",
-      "practical_implementation": "Physical onboard STLINK-V3E (SN 003700413335510133383531, FW V3J17M11, SWD 8000 kHz, VDD 3.28-3.29 V, COM8 115200 8N1 VCP) verified across all 6 firmware runs",
+      "practical_implementation": "Physical onboard STLINK-V3E (SN <redacted-stlink-sn>, FW V3J17M11, SWD 8000 kHz, VDD 3.28-3.29 V, COM8 115200 8N1 VCP) verified across all 6 firmware runs",
       "reference": "UM2505 (NUCLEO-G474RE Schematic & STLINK-V3E); RM0440 Ch. 47 (DBG); ARM IHI 0031 (ADIv5 SWD)",
       "learning_resource": "22-video-library/video-index.md (#14, #51 Linker, #52 Startup, #53 HardFault, #69 SWO/ITM, #70 G4 System Debug); LEARNERS/WORKED_EXAMPLES.md",
       "completion_criteria": "Map CN4/CN6/JP4/SB solder bridges on NUCLEO-G474RE using UM2505; intentionally configure `PA13` as GPIO output (locking out SWD) and successfully recover and re-flash the MCU using `connect_assert_srst` (OpenOCD) or `-c port=SWD mode=UR` (`STM32_Programmer_CLI`).",

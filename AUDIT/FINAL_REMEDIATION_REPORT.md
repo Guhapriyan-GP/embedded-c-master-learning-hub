@@ -50,7 +50,7 @@ Every single finding raised in [`AUDIT/INDEPENDENT_RED_TEAM_REPORT.md`](INDEPEND
 | **`[P8-MED-05]`** | **MEDIUM** | `19-projects/03-advanced-freertos-digital-power-controller/Inc/power_ctrl.h` | Implementation-defined signed right-shift (`>> Q15_SHIFT`) on potentially negative `int32_t` values (ISO C11 §6.5.7/5, MISRA Rule 10.1) | Replaced signed right-shifts with well-defined signed division (`/ Q15_ONE`) in `power_ctrl.h` | **RESOLVED** |
 | **`[P8-LOW-01]`** | **LOW** | `.gitignore` | Omitted `*.gcda`, `*.gcno`, `*.gcov`, `*.info` coverage artifact patterns | Added `*.gcda`, `*.gcno`, `*.gcov`, `*.info` to root `.gitignore` | **RESOLVED** |
 | **`[P8-LOW-02]`** | **LOW** | `23-code-library/templates/Src/startup_stm32g474re.c` | Unguarded `bkpt #0` if `main()` ever returned standalone (without debugger attached) | Routed post-`main()` return through debugger-guarded `Default_Handler()` / `CoreDebug->DHCSR.C_DEBUGEN` check | **RESOLVED** |
-| **`[P8-LOW-03]`** | **LOW** | `LEARNERS/BEGINNER_SETUP_WINDOWS11.md` | Local workspace drive path (`D:\General_ant\...`) in learner-facing setup guide (zero PII/usernames) | Replaced local path in `LEARNERS/BEGINNER_SETUP_WINDOWS11.md` with generic placeholder path | **RESOLVED** |
+| **`[P8-LOW-03]`** | **LOW** | `LEARNERS/BEGINNER_SETUP_WINDOWS11.md` | Local workspace drive path (`<workspace-root>/...`) in learner-facing setup guide (zero PII/usernames) | Replaced local path in `LEARNERS/BEGINNER_SETUP_WINDOWS11.md` with generic placeholder path | **RESOLVED** |
 
 ---
 

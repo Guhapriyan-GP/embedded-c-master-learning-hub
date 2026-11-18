@@ -31,7 +31,7 @@
   - **Stage 06 (`07-rcc-and-clocks/`):** `STM32-RCC-001`, `STM32-RCC-002` (170 MHz `SYSCLK` and APB timer $\times 2$ multiplier rule).
   - **Stage 07 (`08-gpio/`):** `PERIPH-GPIO-001`, `PERIPH-GPIO-002` (GPIO Alternate Function `AFR[0..1]` and `OSPEEDR`).
 - **For Level 2/3 Timer Interrupts (`Lab 06`), Input Capture ISRs, & Break ISRs:**
-  - **Stage 08 (`10-interrupts/`):** `RT-IRQ-001`, `RT-IRQ-002` (NVIC `PRIGROUP`, `NVIC_EnableIRQ()`, and peripheral dummy readback + `__DSB()` barrier per ARM AN321 §4.9 & ES0430 §2.1.3).
+  - **Stage 08 (`10-interrupts/`):** `RT-IRQ-001`, `RT-IRQ-002` (NVIC `PRIGROUP`, `NVIC_EnableIRQ()`, real-world STM32G474RE latency contributors in [`10-interrupts/README.md` §3.3.1](../10-interrupts/README.md#331-real-world-stm32g474re-physical-interrupt-latency-contributors-160--170-mhz-stm32g474re-exact), and the nuanced 3-case readback vs `__DSB()` Engineering Decision Table in [`10-interrupts/README.md` §3.6](../10-interrupts/README.md#36-peripheral-flag-clear-synchronization-dummy-readback--__dsb-arm-an321-49-vs-arm-erratum-838869--st-es0430-213-arm-cortex-m4f)).
 
 ---
 
@@ -56,12 +56,15 @@
   TIM2->SR  = 0U;         /* Clear the spurious UIF caused by UG before enabling UIE! */
   ```
   Omitting `EGR.UG` leaves `PSC = 0` for the very first period — causing an immediate phantom glitch interrupt!
-- **`rc_w0` Status Register Rule (`TIMx->SR`):** Unlike `EXTI->PR1` (`rc_w1`), `TIMx->SR` flags are **write-0-to-clear (`rc_w0`)**! Never use read-modify-write `TIM2->SR &= ~TIM_SR_UIF;` (if `CC1IF` sets between the read and write, `&=` accidentally writes `0` to `CC1IF` and drops it!). Clear early via direct write, then perform a dummy readback (`ARM AN321 §4.9` — stalls until the write commits across the AHB-to-APB1 bridge) followed by `__DSB();` (`ST ES0430 §2.1.3` / `ARM Erratum 838869`):
+- **`rc_w0` Status Register Rule (`TIMx->SR`) & Nuanced Readback/`__DSB()` Decision Rule:** Unlike `EXTI->PR1` (`rc_w1`), `TIMx->SR` flags are **write-0-to-clear (`rc_w0`)**! Never use read-modify-write `TIM2->SR &= ~TIM_SR_UIF;` (if `CC1IF` sets between the read and write, `&=` accidentally writes `0` to `CC1IF` and drops it!). Apply the **3-Case Engineering Decision Table** in [`10-interrupts/README.md` §3.6](../10-interrupts/README.md#36-peripheral-flag-clear-synchronization-dummy-readback--__dsb-arm-an321-49-vs-arm-erratum-838869--st-es0430-213-arm-cortex-m4f):
+  - **Case 1 (Early clear in a non-leaf timer ISR with substantial work before exit):** Direct write `TIM2->SR = ~TIM_SR_UIF;` + dummy readback `(void)TIM2->SR;` commits across the AHB-to-APB1/APB2 bridge (**ARM AN321 §4.9**); a trailing `__DSB();` is defensive rather than strictly required by Erratum 838869.
+  - **Case 2 (Short/leaf timer ISR ending with a trailing buffered store immediately before `BX LR` at 160/170 MHz, such as `TIM2_IRQHandler` in §8.1):** Pair `(void)TIM2->SR;` (**ARM AN321 §4.9**) **and** trailing `__DSB();` (**ARM Cortex-M4 r0p1 Erratum 838869 / ST ES0430 §2.1.3**):
   ```c
   TIM2->SR = ~TIM_SR_UIF; /* Writes 0 ONLY to UIF; writes 1 to all other bits (no effect!) */
   (void)TIM2->SR;         /* Dummy readback forces APB1 clear completion (ARM AN321 §4.9) */
-  __DSB();                /* Drains write buffer & guards ARM Erratum 838869 (ES0430 §2.1.3) */
+  __DSB();                /* Recommended in Case 2 short/leaf ISRs before BX LR (ES0430 §2.1.3) */
   ```
+- **Timer ISR Response Latency Reality (160 / 170 MHz):** Cortex-M4's textbook **12-cycle stacking** (`70.6 ns @ 170 MHz`, `75.0 ns @ 160 MHz`) and **6-cycle tail-chaining** are **ideal ARMv7E-M architectural minimums** — **NOT guaranteed physical NUCLEO-G474RE board latency**! Physical timer ISRs incur Flash `4 WS` ART I-Cache misses, SRAM/DMA AHB BusMatrix contention, multi-cycle/bus-stalled instructions, optional FPU lazy-stacking spills (+18 words / 72 B), and `PRIMASK`/`BASEPRI`/higher-IRQ delays ([`10-interrupts/README.md` §3.3.1](../10-interrupts/README.md#331-real-world-stm32g474re-physical-interrupt-latency-contributors-160--170-mhz-stm32g474re-exact)). This is why cycle-exact actuation and sub-microsecond fault shutdown MUST use hardware paths (**`TIMx_TRGO`**, **Timer DMA Burst**, and asynchronous **`COMPx -> TIMx_BKIN`**) rather than software ISRs!
 
 ### 3.3 Edge-Aligned vs Center-Aligned PWM, Input Capture, OPM & Quadrature Encoder
 - **Edge-Aligned PWM Mode 1 (`OCxM = 0110b`, `CMS = 00b`):** Output is active while `CNT < CCRx`; frequency $f_{\text{PWM}} = \frac{f_{\text{CNT}}}{\text{ARR}+1}$.
@@ -210,6 +213,7 @@ void TIM2_IRQHandler(void)
         TIM2->SR = ~TIM_SR_UIF;   /* rc_w0 direct write: NEVER use '&= ~UIF'! */
         /* Sibling-pin-safe single-writer PA5 toggle via BSRR (concurrent same-pin writers need a critical section) */
         GPIOA->BSRR = ((GPIOA->ODR & GPIO_ODR_OD5) != 0U) ? GPIO_BSRR_BR5 : GPIO_BSRR_BS5;
+        /* Case 2 (short/leaf ISR with trailing BSRR store before BX LR — see 10-interrupts §3.6): */
         (void)TIM2->SR;           /* APB1 bridge sync readback (ARM AN321 §4.9) */
         __DSB();                  /* Core write-buffer drain & ARM Erratum 838869 (ES0430 §2.1.3) */
     }
@@ -356,7 +360,7 @@ void TIM1_DMA_Burst_CCR1_to_CCR3_Init(void)
 
 1. **Forgetting `BDTR.MOE = 1` on `TIM1/8/15/16/17/20`:** Counter runs normally in GDB, `CCER.CC1E = 1`, GPIO AF is correct — yet physical output stays dead flat! Always set `TIMx->BDTR |= TIM_BDTR_MOE;`.
 2. **Omitting `EGR = UG` Before `CEN`:** First period runs at reset `PSC = 0` (`ARR = 0xFFFF`), creating an unexpected glitch pulse or premature ISR.
-3. **Using `TIMx->SR &= ~TIM_SR_UIF` on an `rc_w0` Register (or Omitting Readback + `__DSB()`):** RMW `&=` silently clears concurrently asserted `CCxIF`/`BIF` flags! Always clear early via `TIMx->SR = ~TIM_SR_UIF;`, then perform `(void)TIMx->SR; __DSB();` before ISR exit (`ARM AN321 §4.9` & `ES0430 §2.1.3 / ARM 838869`).
+3. **Using `TIMx->SR &= ~TIM_SR_UIF` on an `rc_w0` Register (or Misapplying Readback vs. `__DSB()`):** RMW `&=` silently clears concurrently asserted `CCxIF`/`BIF` flags! Clear early via direct write `TIMx->SR = ~TIM_SR_UIF;` + `(void)TIMx->SR;` (`ARM AN321 §4.9` APB bridge sync), and add tail `__DSB();` for **Case 2 short/leaf ISRs** ending with a trailing buffered store before `BX LR` (`ES0430 §2.1.3 / ARM 838869` — see the 3-case table in `10-interrupts/README.md` §3.6).
 4. **Unsigned Integer Underflow in PWM Ramping:** `for (uint32_t d = 6799; d > 0; d -= 50)` wraps `49 - 50 -> 0xFFFFFFFF` and hangs for hours! Use signed `int32_t` or clamp before subtracting.
 5. **Forgetting `HRTIM1` DLL Calibration (`DLLRDY`) or `PA9` `UCPD_DBDIS`:** Starting HRTIM before `DLLRDY == 1` produces undefined timing; `PA9` (`HRTIM1_CHA2`) carries a 5.1 kΩ pull-down until `PWR->CR3 |= PWR_CR3_UCPD_DBDIS`.
 6. **Using Software Polling/RTOS Task for Power-Stage Overcurrent Trip:** Software latency (`10–100 µs`) destroys MOSFETs. Always wire `COMPx_OUT` directly to `TIMx_BKIN` / `HRTIM1` Fault for `< 50 ns` asynchronous hardware shutdown!

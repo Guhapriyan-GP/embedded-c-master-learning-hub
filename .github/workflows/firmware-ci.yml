@@ -1,15 +1,33 @@
-name: Firmware, Unit Tests, Coverage & Static Analysis CI
+name: Firmware, Sanitizers, Coverage, Static Analysis & Supply-Chain CI
 
-# ----------------------------------------------------------------------------
-# Cloud CI Scope Notice:
-#   This workflow executes ONLY host-side unit tests, gcov/lcov coverage,
-#   static analysis (GCC -fanalyzer, cppcheck, clang-tidy, clang-format),
-#   Doxygen documentation validation, repository integrity checks, and
-#   arm-none-eabi-gcc cross-compilation.
+# ==============================================================================
+# 4-Layer Cloud CI Architecture & Explicit Hardware-Test Boundary (Section 10)
+# ==============================================================================
+#   Cloud CI Layers Executed Automatically on GitHub-Hosted ubuntu-24.04:
+#     Layer 1 (host-unit-tests-and-sanitizers):
+#       Host ISO C11 unit tests (594 assertions), ASan + UBSan runtime checks,
+#       gcov/lcov branch & line coverage with >= 90% aggregate line gate.
+#     Layer 2 (firmware-cross-compile-matrix):
+#       arm-none-eabi-gcc cross-compilation across Starter Template + 12 Drivers
+#       (with ELF .isr_vector 472 B / 512 B alignment assertion), FreeRTOS
+#       V11.1.0, all 3 Capstones (incl. Project 03 POWER_SIM_MODE=1 & =0), and
+#       HARDWARE_VALIDATION/onboard_selftest, with reproducible build summaries.
+#     Layer 3 (static-analysis-and-sbom):
+#       Host & ARM GCC -fanalyzer, cppcheck, clang-tidy, Doxygen WARN_AS_ERROR,
+#       deterministic SPDX 2.3 SBOM verification (scripts/generate_sbom.py --check),
+#       and advisory clang-format diff reporting.
+#     Layer 4 (mermaid-and-repo-validation):
+#       Pinned @mermaid-js/mermaid-cli@11.4.2 (mmdc) SVG rendering + full
+#       ground-truth repository validation (scripts/validate_repo.py --skip-builds).
 #
-#   Physical NUCLEO-G474RE (STM32G474RET6) hardware-in-the-loop (HIL)
-#   flashing and bench validation are strictly separate from cloud CI.
-# ----------------------------------------------------------------------------
+#   Intentionally Decoupled Hardware Layers (NOT executed in Cloud CI):
+#     Layer 5 (Target Hardware — NUCLEO-G474RE MB1367 Rev C silicon flashing)
+#     Layer 6 (External Peripherals & Bench Instrumentation — oscilloscope,
+#              logic analyzer, current meter across JP6, external I2C/SPI/power)
+#     Reason: No self-hosted NUCLEO-G474RE HIL runner is attached to cloud CI.
+#             All silicon validation is tracked separately in HARDWARE_VALIDATION/
+#             and AUDIT/HARDWARE_VALIDATION_SUMMARY.md.
+# ==============================================================================
 
 on:
   push:
@@ -18,13 +36,28 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  host-unit-tests-and-coverage:
-    name: Host Unit Tests, gcov/lcov Coverage & GCC -fanalyzer
-    runs-on: ubuntu-latest
+  # ============================================================================
+  # Layer 1: Host Unit Tests, ASan + UBSan & gcov/lcov Coverage Threshold Gate
+  # ============================================================================
+  host-unit-tests-and-sanitizers:
+    name: "Layer 1: Host Unit Tests, ASan/UBSan & gcov Coverage (>= 90%)"
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
 
       - name: Install host GCC, Make, and lcov
         run: |
@@ -35,57 +68,120 @@ jobs:
         run: |
           gcc --version
           gcov --version
+          lcov --version
 
-      - name: Compile and execute all 4 host unit test suites
+      - name: Compile and execute all 5 host unit test suites
         working-directory: tests
         run: make clean test
 
-      - name: Run GCC -fanalyzer static analysis on host-testable drivers and tests
+      - name: Run AddressSanitizer (ASan) + UndefinedBehaviorSanitizer (UBSan) on all 5 suites
         working-directory: tests
-        run: make analyze
+        env:
+          ASAN_OPTIONS: "detect_leaks=1:abort_on_error=1:halt_on_error=1"
+          UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
+        run: |
+          mkdir -p build/san
+          SAN_FLAGS="-std=c11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion -Wdouble-promotion -Wundef -I../23-code-library/Drivers"
+          MATH_SRCS="../23-code-library/Drivers/exti_g4.c ../23-code-library/Drivers/tim_g4.c ../23-code-library/Drivers/usart_g4.c ../23-code-library/Drivers/spi_g4.c ../23-code-library/Drivers/i2c_g4.c ../23-code-library/Drivers/adc_g4.c ../23-code-library/Drivers/dma_g4.c ../23-code-library/Drivers/iwdg_g4.c"
+          FULL_SRCS="$MATH_SRCS ../23-code-library/Drivers/gpio_g4.c ../23-code-library/Drivers/ring_buffer.c"
 
-      - name: Measure real gcov line and branch coverage across 10 drivers
+          echo "=== [ASan+UBSan 1/5] test_c_foundations ==="
+          gcc $SAN_FLAGS test_c_foundations.c -o build/san/test_c_foundations
+          ./build/san/test_c_foundations
+
+          echo "=== [ASan+UBSan 2/5] test_ring_buffer ==="
+          gcc $SAN_FLAGS unit/test_ring_buffer.c ../23-code-library/Drivers/ring_buffer.c -o build/san/test_ring_buffer
+          ./build/san/test_ring_buffer
+
+          echo "=== [ASan+UBSan 3/5] test_drivers_math ==="
+          gcc $SAN_FLAGS -DDRIVER_HOST_TEST unit/test_drivers_math.c $MATH_SRCS -o build/san/test_drivers_math
+          ./build/san/test_drivers_math
+
+          echo "=== [ASan+UBSan 4/5] test_gpio_mock ==="
+          gcc $SAN_FLAGS -Imocks unit/test_gpio_mock.c ../23-code-library/Drivers/gpio_g4.c -o build/san/test_gpio_mock
+          ./build/san/test_gpio_mock
+
+          echo "=== [ASan+UBSan 5/5] test_peripherals_mock ==="
+          gcc $SAN_FLAGS -Imocks unit/test_peripherals_mock.c $FULL_SRCS -o build/san/test_peripherals_mock
+          ./build/san/test_peripherals_mock
+
+          echo "[ALL 5 HOST TEST SUITES PASSED UNDER ASAN + UBSAN]"
+
+      - name: Measure gcov/lcov line and branch coverage & enforce >= 90% threshold
         working-directory: tests
         run: |
           make clean coverage
           lcov --capture --directory build/cov --output-file build/cov/coverage.info --rc branch_coverage=1 --ignore-errors inconsistent,gcov
           lcov --list build/cov/coverage.info --rc branch_coverage=1 --ignore-errors inconsistent,gcov
+          python3 -c '
+          import pathlib, sys
+          info = pathlib.Path("build/cov/coverage.info").read_text(encoding="utf-8")
+          total_lf, total_lh = 0, 0
+          in_driver = False
+          for line in info.splitlines():
+              if line.startswith("SF:"):
+                  in_driver = "23-code-library/Drivers/" in line.replace("\\", "/")
+              elif in_driver and line.startswith("LF:"):
+                  total_lf += int(line.split(":", 1)[1])
+              elif in_driver and line.startswith("LH:"):
+                  total_lh += int(line.split(":", 1)[1])
+              elif line == "end_of_record":
+                  in_driver = False
+          assert total_lf > 0, "No driver coverage records found in coverage.info"
+          pct = (total_lh / total_lf) * 100.0
+          print(f"[COVERAGE GATE] Driver line coverage: {total_lh}/{total_lf} ({pct:.2f}%) — threshold >= 90.00%")
+          if pct < 90.0:
+              sys.exit(f"Coverage {pct:.2f}% is below mandatory 90.00% threshold!")
+          '
 
       - name: Upload gcov/lcov coverage artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: host-coverage-report
+          retention-days: 14
           path: |
             tests/build/cov/*.gcov
             tests/build/cov/coverage.info
+            tests/build/cov_full/*.gcov
 
-  firmware-cross-compile:
-    name: Cross-Compile STM32G474RE Firmware (Template, 12 Drivers, FreeRTOS, Capstones)
-    runs-on: ubuntu-latest
+  # ============================================================================
+  # Layer 2: STM32G474RE Firmware Cross-Compilation & ELF Structural Assertions
+  # ============================================================================
+  firmware-cross-compile-matrix:
+    name: "Layer 2: STM32G474RE Firmware Cross-Compile Matrix"
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
 
       - name: Install ARM GNU Toolchain & Make
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make
 
-      - name: Verify ARM toolchain version
-        run: arm-none-eabi-gcc --version
+      - name: Record ARM toolchain version
+        run: |
+          mkdir -p build-summary
+          arm-none-eabi-gcc --version | tee build-summary/firmware-build-summary.txt
 
-      - name: Build Starter Template + All 12 Bare-Metal Drivers (Debug & Release)
+      - name: Build Starter Template + 12 Bare-Metal Drivers (Debug & Release)
         working-directory: 23-code-library/templates
         run: |
           make clean
           make BUILD_TYPE=debug
           arm-none-eabi-readelf -S build/firmware.elf
-          arm-none-eabi-size -A build/firmware.elf
+          arm-none-eabi-size -A build/firmware.elf | tee -a ../../build-summary/firmware-build-summary.txt
           make clean
           make BUILD_TYPE=release
-          arm-none-eabi-size -A build/firmware.elf
+          arm-none-eabi-size -A build/firmware.elf | tee -a ../../build-summary/firmware-build-summary.txt
+          sha256sum build/firmware.bin build/firmware.elf >> ../../build-summary/firmware-sha256.txt
 
-      - name: Verify .isr_vector is exactly 472 bytes and 512-byte aligned at 0x08000000
+      - name: Assert .isr_vector is 472 bytes and >= 512-byte aligned at 0x08000000
         working-directory: 23-code-library/templates
         run: |
           python3 -c '
@@ -94,13 +190,94 @@ jobs:
           m = re.search(r"\.isr_vector\s+PROGBITS\s+([0-9a-f]+)\s+[0-9a-f]+\s+([0-9a-f]+)\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)", out)
           assert m, f".isr_vector section not found:\n{out}"
           addr, size, align = int(m.group(1), 16), int(m.group(2), 16), int(m.group(3))
-          print(f".isr_vector addr=0x{addr:08x} size={size} align={align}")
+          msg = f"[ELF ASSERT PASS] .isr_vector addr=0x{addr:08x} size={size} align={align}"
+          print(msg)
           assert addr == 0x08000000, f"Expected 0x08000000, got 0x{addr:08x}"
-          assert size == 472, f"Expected 472 bytes, got {size}"
+          assert size == 472, f"Expected 472 bytes (118 entries), got {size}"
           assert align >= 512 and (addr % 512) == 0, f"Expected >=512 alignment, got align={align}, addr=0x{addr:x}"
-          '
+          ' | tee -a ../../build-summary/firmware-build-summary.txt
 
-      - name: Run arm-none-eabi-gcc -fanalyzer across all 12 drivers and starter template
+      - name: Build FreeRTOS V11.1.0 STM32G474RE Firmware (Debug & Release)
+        working-directory: 23-code-library/freertos
+        run: |
+          make clean
+          make BUILD_TYPE=debug
+          make nm-check
+          make clean
+          make BUILD_TYPE=release
+          arm-none-eabi-size -A build/nucleo_g474re_freertos.elf | tee -a ../../build-summary/firmware-build-summary.txt
+          sha256sum build/nucleo_g474re_freertos.bin build/nucleo_g474re_freertos.elf >> ../../build-summary/firmware-sha256.txt
+
+      - name: Build All 3 Capstone Projects (Debug & Release + Project 03 SIM=1 & SIM=0)
+        run: |
+          for proj in \
+            19-projects/01-beginner-smart-instrument-panel \
+            19-projects/02-intermediate-dma-data-logger; do
+            echo "=== Building Capstone: $proj (debug & release) ===" | tee -a build-summary/firmware-build-summary.txt
+            make -C "$proj" clean all BUILD_TYPE=debug
+            make -C "$proj" clean all BUILD_TYPE=release
+            arm-none-eabi-size "$proj"/build/*.elf | tee -a build-summary/firmware-build-summary.txt
+            sha256sum "$proj"/build/*.bin "$proj"/build/*.elf >> build-summary/firmware-sha256.txt
+          done
+
+          P3="19-projects/03-advanced-freertos-digital-power-controller"
+          echo "=== Building Capstone 03: POWER_SIM_MODE=1 (debug & release) ===" | tee -a build-summary/firmware-build-summary.txt
+          make -C "$P3" clean all BUILD_TYPE=debug POWER_SIM_MODE=1
+          make -C "$P3" clean all BUILD_TYPE=release POWER_SIM_MODE=1
+          arm-none-eabi-size "$P3"/build/*.elf | tee -a build-summary/firmware-build-summary.txt
+          sha256sum "$P3"/build/*.bin "$P3"/build/*.elf >> build-summary/firmware-sha256.txt
+
+          echo "=== Building Capstone 03: POWER_SIM_MODE=0 External Hardware Mode (debug & release) ===" | tee -a build-summary/firmware-build-summary.txt
+          make -C "$P3" clean all BUILD_TYPE=debug POWER_SIM_MODE=0
+          make -C "$P3" clean all BUILD_TYPE=release POWER_SIM_MODE=0
+          arm-none-eabi-size "$P3"/build/*.elf | tee -a build-summary/firmware-build-summary.txt
+          sha256sum "$P3"/build/*.bin "$P3"/build/*.elf >> build-summary/firmware-sha256.txt
+
+      - name: Build Onboard Hardware Self-Test Suite (Debug & Release)
+        working-directory: HARDWARE_VALIDATION/onboard_selftest
+        run: |
+          echo "=== Building HARDWARE_VALIDATION/onboard_selftest ===" | tee -a ../../build-summary/firmware-build-summary.txt
+          make clean
+          make BUILD_TYPE=debug
+          make clean
+          make BUILD_TYPE=release
+          arm-none-eabi-size build/onboard_selftest.elf | tee -a ../../build-summary/firmware-build-summary.txt
+          sha256sum build/onboard_selftest.bin build/onboard_selftest.elf >> ../../build-summary/firmware-sha256.txt
+
+      - name: Upload reproducible firmware build summary artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: firmware-build-summary
+          retention-days: 14
+          path: |
+            build-summary/firmware-build-summary.txt
+            build-summary/firmware-sha256.txt
+
+  # ============================================================================
+  # Layer 3: Static Analysis (-fanalyzer, cppcheck, clang-tidy), Doxygen & SBOM
+  # ============================================================================
+  static-analysis-and-sbom:
+    name: "Layer 3: Static Analysis, Doxygen, Formatting & SPDX 2.3 SBOM"
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install GCC, ARM GCC, cppcheck, clang-tidy, clang-format, and Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc gcc-arm-none-eabi make cppcheck clang-tidy clang-format doxygen
+
+      - name: Run host GCC -fanalyzer on host-testable drivers and tests
+        working-directory: tests
+        run: make analyze
+
+      - name: Run ARM arm-none-eabi-gcc -fanalyzer across all 12 drivers & starter template
         run: |
           arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard \
             -O1 -fanalyzer -Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion -Wdouble-promotion -Wundef \
@@ -114,43 +291,7 @@ jobs:
             23-code-library/templates/Src/main.c \
             23-code-library/templates/Src/startup_stm32g474re.c
 
-      - name: Build FreeRTOS V11.1.0 STM32G474RE Firmware (Debug & Release)
-        working-directory: 23-code-library/freertos
-        run: |
-          make clean
-          make BUILD_TYPE=debug
-          make nm-check
-          make clean
-          make BUILD_TYPE=release
-          arm-none-eabi-size -A build/nucleo_g474re_freertos.elf
-
-      - name: Build All Capstone Firmware Projects under 19-projects/
-        run: |
-          found=0
-          for mf in $(find 19-projects -maxdepth 3 -name Makefile | sort); do
-            dir=$(dirname "$mf")
-            echo "=== Building Capstone: $dir ==="
-            make -C "$dir" clean all BUILD_TYPE=debug
-            make -C "$dir" clean all BUILD_TYPE=release
-            found=$((found + 1))
-          done
-          echo "=== Building Project 03 External Hardware Mode (POWER_SIM_MODE=0) ==="
-          make -C 19-projects/03-advanced-freertos-digital-power-controller clean all BUILD_TYPE=release POWER_SIM_MODE=0
-          echo "Built $found capstone firmware project(s) + Project 03 POWER_SIM_MODE=0."
-
-  static-analysis-and-format:
-    name: Static Analysis (cppcheck, clang-tidy) & Code Formatting (clang-format)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install cppcheck, clang-tidy, and clang-format
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cppcheck clang-tidy clang-format
-
-      - name: Run cppcheck on Drivers and Host Tests
+      - name: Run cppcheck (warning, performance, portability — error exit gate)
         run: |
           cppcheck --enable=warning,performance,portability \
             --std=c11 --language=c --inline-suppr \
@@ -172,7 +313,7 @@ jobs:
             tests/unit/test_ring_buffer.c \
             tests/unit/test_drivers_math.c
 
-      - name: Run clang-tidy (using root .clang-tidy) on host-testable drivers & tests
+      - name: Run clang-tidy (using root .clang-tidy)
         run: |
           clang-tidy \
             23-code-library/Drivers/ring_buffer.c \
@@ -189,9 +330,18 @@ jobs:
             tests/unit/test_drivers_math.c \
             -- -std=c11 -DDRIVER_HOST_TEST -I23-code-library/Drivers
 
-      - name: Check formatting with clang-format --dry-run (advisory diff report)
+      - name: Generate Doxygen API documentation (WARN_AS_ERROR = YES)
+        run: doxygen Doxyfile
+
+      - name: Verify deterministic SPDX 2.3 SBOM matches vendored components
+        run: python3 scripts/generate_sbom.py --check
+
+      - name: Advisory clang-format diff check (non-blocking until approved reformat PR)
+        # Transparently configured as advisory diff artifact rather than hard-fail
+        # until a dedicated repository-wide formatting commit is explicitly approved.
         continue-on-error: true
         run: |
+          mkdir -p build
           clang-format --dry-run \
             23-code-library/Drivers/*.c \
             23-code-library/Drivers/*.h \
@@ -199,35 +349,57 @@ jobs:
             23-code-library/templates/Src/startup_stm32g474re.c \
             tests/test_c_foundations.c \
             tests/unit/*.c \
-            tests/mocks/*.h
+            tests/mocks/*.h 2>&1 | tee build/clang-format-report.txt
 
-  doxygen-docs:
-    name: Doxygen API Documentation Build & Warning Gate
-    runs-on: ubuntu-latest
+      - name: Upload Doxygen HTML docs & clang-format advisory report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: static-analysis-and-docs
+          retention-days: 14
+          path: |
+            build/docs/html
+            build/clang-format-report.txt
+            SBOM/spdx-sbom.json
+
+  # ============================================================================
+  # Layer 4: Pinned Mermaid CLI SVG Rendering & Ground-Truth Repository Validation
+  # ============================================================================
+  mermaid-and-repo-validation:
+    name: "Layer 4: Mermaid CLI Render (@11.4.2) & Repo Integrity Validator"
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Install Doxygen
+      - name: Setup Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Install Chromium shared libs & pinned @mermaid-js/mermaid-cli@11.4.2
         run: |
           sudo apt-get update
-          sudo apt-get install -y doxygen
+          sudo apt-get install -y \
+            libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
+            libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+            libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          npm install -g @mermaid-js/mermaid-cli@11.4.2
+          mmdc --version
 
-      - name: Generate Doxygen HTML documentation (WARN_AS_ERROR = YES)
-        run: doxygen Doxyfile
+      - name: Run full ground-truth repository validator (with live mmdc SVG rendering)
+        run: |
+          mkdir -p build
+          python3 scripts/validate_repo.py --skip-builds --json-report build/validation-report.json
 
-      - name: Upload Doxygen HTML documentation artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload repository validation report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: doxygen-api-docs
-          path: build/docs/html
-
-  repo-validation:
-    name: Repository Integrity & Ground-Truth Validation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run repository validator (structure, links, Mermaid, SOT, registers, curriculum)
-        run: python3 scripts/validate_repo.py --skip-builds
+          name: repo-validation-report
+          retention-days: 14
+          path: build/validation-report.json

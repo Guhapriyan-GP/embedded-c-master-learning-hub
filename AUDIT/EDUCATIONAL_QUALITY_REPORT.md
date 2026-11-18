@@ -1,7 +1,7 @@
 # Educational Quality, GitHub MathJax Rendering, Navigation & External Resources Audit Report
 
 **Audit Scope:** Specialist 3 (Agents 10 & 11 — Educational Quality, GitHub MathJax Rendering, Sequential Navigation, External Resources & MkDocs Assessment)  
-**Repository:** `D:\General_ant\embedded-c-master-learning-hub` (Branch: `feature/complete-remediation`)  
+**Repository:** `<repo-root>/` (Branch: `feature/complete-remediation`)  
 **Target Platform:** STM32G474RET6 (LQFP64, ARM Cortex-M4F @ 170 / 160 MHz) on NUCLEO-G474RE (MB1367, `UM2505`)  
 **Audit & Remediation Date:** 2026-11-18  
 **Verification Honesty:** All Markdown rendering audits, relative-link validations, and external HTTP/oEmbed checks were executed programmatically via Python. No code was executed on physical NUCLEO-G474RE hardware during this documentation audit.

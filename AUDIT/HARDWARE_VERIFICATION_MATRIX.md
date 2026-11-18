@@ -2,7 +2,7 @@
 
 > **Date:** 2026-11-18 | **Branch:** `feature/complete-remediation`  
 > **Board & Silicon:** ST **NUCLEO-G474RE** (`MB1367 Rev C`), `STM32G474RET6` (`Device ID = 0x469`, `Rev X` / `0x2003`, `512 KB` Flash, `96 KB` SRAM1+2, `32 KB` CCM-SRAM)  
-> **Probe / Interface:** Onboard **STLINK-V3E** (`SN: 003700413335510133383531`, FW `V3J17M11`, SWD `8000 KHz`, VCP **`COM8`** `115200 8N1`, `VDD = 3.28–3.29 V`)  
+> **Probe / Interface:** Onboard **STLINK-V3E** (`SN: <redacted-stlink-sn>`, FW `V3J17M11`, SWD `8000 KHz`, VCP **`COM8`** `115200 8N1`, `VDD = 3.28–3.29 V`)  
 > **Companion Reports:** [`AUDIT/HARDWARE_VALIDATION_SUMMARY.md`](HARDWARE_VALIDATION_SUMMARY.md), [`AUDIT/LAB_VERIFICATION_MATRIX.md`](LAB_VERIFICATION_MATRIX.md), [`HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md`](../HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md)
 
 ---

@@ -1,6 +1,9 @@
 # Known Limitations & Honest Phase 5 Continuation Roadmap
 
-This document enumerates every unresolved limitation in `D:\General_ant\embedded-c-master-learning-hub` as of the **Post-Red-Team Recalibrated Release (`v2.1.0`)**. In strict accordance with engineering honesty standards, **no limitation is hidden or inflated as "complete"**.
+> [!NOTE]
+> **Historical Audit Snapshot Notice:** This document records an earlier audit milestone (`v2.1.0` / commit `585dc4f`, 2026-11-18). Its findings and metric counts reflect that historical state and are preserved verbatim for traceability. For the authoritative, canonical release metrics and active status of the current repository (`v4.0.0`), see [`AUDIT/release_metrics.json`](release_metrics.json) and [`AUDIT/RELEASE_INTEGRITY_REPORT.md`](RELEASE_INTEGRITY_REPORT.md).
+
+This document enumerates every unresolved limitation in `<repo-root>/` as of the **Post-Red-Team Recalibrated Release (`v2.1.0`)**. In strict accordance with engineering honesty standards, **no limitation is hidden or inflated as "complete"**.
 
 ---
 

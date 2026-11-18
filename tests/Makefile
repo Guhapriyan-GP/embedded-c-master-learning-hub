@@ -2,7 +2,7 @@
 # Host Unit Test, Coverage (gcov), & Static Analyzer (gcc -fanalyzer) Makefile
 # Portable across Windows (MSYS2 GCC / cmd.exe) and Linux (Ubuntu CI)
 # Usage:
-#   make test       - Build & execute all 4 host unit test suites
+#   make test       - Build & execute all 5 host unit test suites
 #   make coverage   - Build with --coverage, run all suites, report gcov -b
 #   make analyze    - Run GCC -fanalyzer across all host-testable drivers & tests
 #   make clean      - Remove all build, coverage, and .gcov artifacts
@@ -12,6 +12,7 @@ HOST_CC     ?= gcc
 GCOV        ?= gcov
 BUILD_DIR   := build
 COV_DIR     := $(BUILD_DIR)/cov
+COV_FULL    := $(BUILD_DIR)/cov_full
 DRV_DIR     := ../23-code-library/Drivers
 
 WARN_FLAGS  := -Wall -Wextra -Werror -Wpedantic \
@@ -50,6 +51,10 @@ DRIVER_MATH_SRCS := $(DRV_DIR)/exti_g4.c \
                     $(DRV_DIR)/dma_g4.c \
                     $(DRV_DIR)/iwdg_g4.c
 
+DRIVER_FULL_SRCS := $(DRIVER_MATH_SRCS) \
+                    $(DRV_DIR)/gpio_g4.c \
+                    $(DRV_DIR)/ring_buffer.c
+
 DRIVER_MATH_NAMES := exti_g4 tim_g4 usart_g4 spi_g4 i2c_g4 adc_g4 dma_g4 iwdg_g4
 
 # Standard test binaries
@@ -57,20 +62,23 @@ TEST_FOUNDATIONS := $(BUILD_DIR)/test_c_foundations$(EXE)
 TEST_RINGBUF     := $(BUILD_DIR)/test_ring_buffer$(EXE)
 TEST_DRIVERS     := $(BUILD_DIR)/test_drivers_math$(EXE)
 TEST_GPIO_MOCK   := $(BUILD_DIR)/test_gpio_mock$(EXE)
+TEST_PERIPH_MOCK := $(BUILD_DIR)/test_peripherals_mock$(EXE)
 
 # Coverage-instrumented binaries & object files
 COV_RINGBUF_OBJ  := $(COV_DIR)/ring_buffer.o
 COV_GPIO_OBJ     := $(COV_DIR)/gpio_g4.o
 COV_MATH_OBJS    := $(patsubst %,$(COV_DIR)/%.o,$(DRIVER_MATH_NAMES))
+COV_FULL_OBJS    := $(patsubst %,$(COV_FULL)/%.o,$(DRIVER_MATH_NAMES))
 
 COV_FOUNDATIONS  := $(COV_DIR)/test_c_foundations$(EXE)
 COV_RINGBUF      := $(COV_DIR)/test_ring_buffer$(EXE)
 COV_DRIVERS      := $(COV_DIR)/test_drivers_math$(EXE)
 COV_GPIO_MOCK    := $(COV_DIR)/test_gpio_mock$(EXE)
+COV_PERIPH_MOCK  := $(COV_FULL)/test_peripherals_mock$(EXE)
 
 .PHONY: all test coverage analyze clean
 
-all: $(TEST_FOUNDATIONS) $(TEST_RINGBUF) $(TEST_DRIVERS) $(TEST_GPIO_MOCK)
+all: $(TEST_FOUNDATIONS) $(TEST_RINGBUF) $(TEST_DRIVERS) $(TEST_GPIO_MOCK) $(TEST_PERIPH_MOCK)
 
 $(TEST_FOUNDATIONS): test_c_foundations.c
 	@$(call MKDIR_P,$(BUILD_DIR))
@@ -92,19 +100,26 @@ $(TEST_GPIO_MOCK): unit/test_gpio_mock.c $(DRV_DIR)/gpio_g4.c mocks/stm32g474xx.
 	@echo [HOST-CC] $@
 	$(HOST_CC) $(CFLAGS) -Imocks unit/test_gpio_mock.c $(DRV_DIR)/gpio_g4.c -o $@
 
+$(TEST_PERIPH_MOCK): unit/test_peripherals_mock.c $(DRIVER_FULL_SRCS) mocks/stm32g474xx.h
+	@$(call MKDIR_P,$(BUILD_DIR))
+	@echo [HOST-CC] $@
+	$(HOST_CC) $(CFLAGS) -Imocks unit/test_peripherals_mock.c $(DRIVER_FULL_SRCS) -o $@
+
 test: all
-	@echo "--- [1/4] Executing Stage 01-03 Embedded C Foundations Tests ---"
+	@echo "--- [1/5] Executing Stage 01-03 Embedded C Foundations Tests ---"
 	$(call RUN_BIN,$(TEST_FOUNDATIONS))
-	@echo "--- [2/4] Executing Ring Buffer Driver Unit Tests ---"
+	@echo "--- [2/5] Executing Ring Buffer Driver Unit Tests ---"
 	$(call RUN_BIN,$(TEST_RINGBUF))
-	@echo "--- [3/4] Executing 8-Driver Pure Helper Math Tests (-DDRIVER_HOST_TEST) ---"
+	@echo "--- [3/5] Executing 8-Driver Pure Helper Math Tests (-DDRIVER_HOST_TEST) ---"
 	$(call RUN_BIN,$(TEST_DRIVERS))
-	@echo "--- [4/4] Executing GPIO Register Mock & Fault Bounds Tests ---"
+	@echo "--- [4/5] Executing GPIO Register Mock & Fault Bounds Tests ---"
 	$(call RUN_BIN,$(TEST_GPIO_MOCK))
-	@echo "[ALL 4 HOST UNIT TEST SUITES PASSED]"
+	@echo "--- [5/5] Executing 8-Peripheral Full Register-Mock Functional Tests ---"
+	$(call RUN_BIN,$(TEST_PERIPH_MOCK))
+	@echo "[ALL 5 HOST UNIT TEST SUITES PASSED]"
 
 # ----------------------------------------------------------------------------
-# Coverage Target (gcov -b on all 10 host-testable drivers)
+# Coverage Target (gcov -b on all 10 host-testable drivers: math + full mock)
 # ----------------------------------------------------------------------------
 $(COV_RINGBUF_OBJ): $(DRV_DIR)/ring_buffer.c
 	@$(call MKDIR_P,$(COV_DIR))
@@ -118,21 +133,31 @@ $(COV_DIR)/%.o: $(DRV_DIR)/%.c
 	@$(call MKDIR_P,$(COV_DIR))
 	$(HOST_CC) $(COV_CFLAGS) -DDRIVER_HOST_TEST -c $< -o $@
 
-coverage: $(COV_RINGBUF_OBJ) $(COV_GPIO_OBJ) $(COV_MATH_OBJS)
+$(COV_FULL)/%.o: $(DRV_DIR)/%.c mocks/stm32g474xx.h
+	@$(call MKDIR_P,$(COV_FULL))
+	$(HOST_CC) $(COV_CFLAGS) -Imocks -c $< -o $@
+
+coverage: $(COV_RINGBUF_OBJ) $(COV_GPIO_OBJ) $(COV_MATH_OBJS) $(COV_FULL_OBJS)
 	@$(call MKDIR_P,$(COV_DIR))
+	@$(call MKDIR_P,$(COV_FULL))
 	@echo [GCOV-CC] Building coverage-instrumented test suites...
 	$(HOST_CC) $(COV_CFLAGS) test_c_foundations.c -o $(COV_FOUNDATIONS)
 	$(HOST_CC) $(COV_CFLAGS) unit/test_ring_buffer.c $(COV_RINGBUF_OBJ) -o $(COV_RINGBUF)
 	$(HOST_CC) $(COV_CFLAGS) -DDRIVER_HOST_TEST unit/test_drivers_math.c $(COV_MATH_OBJS) -o $(COV_DRIVERS)
 	$(HOST_CC) $(COV_CFLAGS) -Imocks unit/test_gpio_mock.c $(COV_GPIO_OBJ) -o $(COV_GPIO_MOCK)
+	$(HOST_CC) $(COV_CFLAGS) -Imocks unit/test_peripherals_mock.c $(COV_FULL_OBJS) $(COV_GPIO_OBJ) $(COV_RINGBUF_OBJ) -o $(COV_PERIPH_MOCK)
 	@echo "--- Running Instrumented Unit Test Suites ---"
 	$(call RUN_BIN,$(COV_FOUNDATIONS))
 	$(call RUN_BIN,$(COV_RINGBUF))
 	$(call RUN_BIN,$(COV_DRIVERS))
 	$(call RUN_BIN,$(COV_GPIO_MOCK))
-	@echo "--- Generating Real gcov Line & Branch Coverage Report ---"
+	$(call RUN_BIN,$(COV_PERIPH_MOCK))
+	@echo "--- Generating gcov Line & Branch Coverage (Core + Pure Helpers) ---"
 	$(GCOV) -b -o $(COV_DIR) $(DRV_DIR)/ring_buffer.c $(DRV_DIR)/gpio_g4.c $(DRIVER_MATH_SRCS)
 	@$(call MV_GCOV,$(COV_DIR))
+	@echo "--- Generating gcov Line & Branch Coverage (Full Register-Mock 8 Drivers) ---"
+	$(GCOV) -b -o $(COV_FULL) $(DRIVER_MATH_SRCS)
+	@$(call MV_GCOV,$(COV_FULL))
 
 # ----------------------------------------------------------------------------
 # Static Analysis Target (GCC -fanalyzer across all host-testable drivers & tests)
@@ -143,6 +168,7 @@ analyze:
 	$(HOST_CC) $(ANALYZE_FLG) unit/test_ring_buffer.c $(DRV_DIR)/ring_buffer.c
 	$(HOST_CC) $(ANALYZE_FLG) -DDRIVER_HOST_TEST unit/test_drivers_math.c $(DRIVER_MATH_SRCS)
 	$(HOST_CC) $(ANALYZE_FLG) -Imocks unit/test_gpio_mock.c $(DRV_DIR)/gpio_g4.c
+	$(HOST_CC) $(ANALYZE_FLG) -Imocks unit/test_peripherals_mock.c $(DRIVER_FULL_SRCS)
 	@echo "[GCC -FANALYZER STATIC ANALYSIS PASSED: 0 WARNINGS]"
 
 clean:

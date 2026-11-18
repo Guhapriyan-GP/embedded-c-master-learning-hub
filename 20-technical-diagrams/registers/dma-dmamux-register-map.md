@@ -61,7 +61,7 @@
 
 ### 3. CMSIS Code Example: Circular Ping-Pong `DMA1_Channel1` for `ADC1` (ES0430-Safe)
 
-> **Status:** Statically Reviewed (Not Tested on Physical Hardware).
+> **Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror`; Not Tested on Physical Hardware).
 
 ```c
 #include "stm32g474xx.h"
@@ -112,7 +112,8 @@ void DMA1_Channel1_IRQHandler(void) {
     if (isr & DMA_ISR_TEIF1) {
         DMA1->IFCR = DMA_IFCR_CTEIF1; /* Handle transfer error */
     }
-    /* Dummy readback confirms flag clear on AHB1 (ARM AN321 §4.9); __DSB() guards ES0430 §2.1.3 / ARM 838869 */
+    /* Case 2 (short/leaf ISR before BX LR — see 10-interrupts §3.6):
+     * Dummy readback confirms flag clear on AHB1 (ARM AN321 §4.9); tail __DSB() guards ES0430 §2.1.3 / ARM 838869 */
     (void)DMA1->ISR;
     __DSB();
 }

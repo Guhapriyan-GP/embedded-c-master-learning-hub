@@ -43,7 +43,7 @@
 | `EXTI_RTSR1` | `0x008` | `0x00000000` | RW | Rising trigger selection register 1 (Lines 0–31) |
 | `EXTI_FTSR1` | `0x00C` | `0x00000000` | RW | Falling trigger selection register 1 (Lines 0–31) |
 | `EXTI_SWIER1` | `0x010` | `0x00000000` | RW | Software interrupt event register 1 (`1` = trigger pending latch in software) |
-| `EXTI_PR1` | `0x014` | `0x00000000` | **rc_w1** | Pending register 1 (**Direct write `EXTI->PR1 = mask;` — NEVER `|=`!** Follow with `(void)EXTI->PR1; __DSB();` in ISRs per ARM AN321 §4.9 & ES0430 §2.1.3) |
+| `EXTI_PR1` | `0x014` | `0x00000000` | **rc_w1** | Pending register 1 (**Direct write `EXTI->PR1 = mask;` — NEVER `|=`!** Perform `(void)EXTI->PR1;` per ARM AN321 §4.9; add tail `__DSB();` in Case 2 short/leaf ISRs before `BX LR` per ES0430 §2.1.3 / `10-interrupts` §3.6) |
 | `EXTI_IMR2` | `0x020` | `0x00000187` | RW | Interrupt mask register 2 (Lines 32–43) |
 | `EXTI_EMR2` | `0x024` | `0x00000000` | RW | Event mask register 2 (Lines 32–43) |
 | `EXTI_RTSR2` | `0x028` | `0x00000000` | RW | Rising trigger selection register 2 (Lines 32–43) |
@@ -102,8 +102,9 @@ void EXTI15_10_IRQHandler(void) {
         } else {
             GPIOA->BSRR = GPIO_BSRR_BS5;
         }
-        /* 1. Dummy readback guarantees APB2 clear reaches EXTI slave (ARM AN321 §4.9).
-         * 2. __DSB() drains core write buffer & mitigates ARM Erratum 838869 (ES0430 §2.1.3). */
+        /* Case 2 (short/leaf ISR with trailing BSRR store before BX LR — see 10-interrupts §3.6):
+         * 1. Dummy readback guarantees APB2 clear reaches EXTI slave (ARM AN321 §4.9).
+         * 2. Tail __DSB() drains core write buffer & mitigates ARM Erratum 838869 (ES0430 §2.1.3). */
         (void)EXTI->PR1;
         __DSB();
     }

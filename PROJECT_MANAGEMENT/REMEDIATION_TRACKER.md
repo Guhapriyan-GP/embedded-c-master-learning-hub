@@ -2,7 +2,7 @@
 
 **Coordinator:** Agent 0 — Master Coordinator & Phase 9 Final Sign-Off  
 **Working Branch:** `feature/complete-remediation` (branched from `main` @ `585dc4fa`)  
-**Verified Immutable Backup:** `D:\General_ant\embedded-c-master-learning-hub-backup` (`565` files, `5,734,859` bytes, SHA-256 `84aa5ef4...015cb5`, `0` mismatches — [`BACKUP/BACKUP_MANIFEST.md`](../BACKUP/BACKUP_MANIFEST.md))  
+**Verified Immutable Backup:** `<backup-root>/` (`565` files, `5,734,859` bytes, SHA-256 `84aa5ef4...015cb5`, `0` mismatches — [`BACKUP/BACKUP_MANIFEST.md`](../BACKUP/BACKUP_MANIFEST.md))  
 **Target Silicon:** STM32G474RET6 (LQFP64, Rev X, Device ID `0x469`, Cortex-M4F r0p1 `0x410FC241`, 512 KB Flash, 128 KB SRAM) on **NUCLEO-G474RE** (MB1367 Rev C, STLINK-V3E `V3J17M11`, COM8, `VDD = 3.28–3.29 V`)  
 **Final Verdict:** **APPROVED FOR RELEASE ON `feature/complete-remediation` (`12/12` Phase 8 Red-Team Findings Closed — [`AUDIT/FINAL_REMEDIATION_REPORT.md`](../AUDIT/FINAL_REMEDIATION_REPORT.md))**
 

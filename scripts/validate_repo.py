@@ -60,7 +60,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-VALIDATOR_VERSION = "4.2.0"
+VALIDATOR_VERSION = "5.0.0"
 DEFAULT_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 EXCLUDED_DIR_NAMES = {
@@ -112,6 +112,11 @@ REQUIRED_DIRS = [
 
 REQUIRED_ROOT_AND_SUPPORT_FILES = [
     "START_HERE.md",
+    "SECURITY.md",
+    "THIRD_PARTY_LICENSES.md",
+    ".github/dependabot.yml",
+    "SBOM/spdx-sbom.json",
+    "scripts/generate_sbom.py",
     "Doxyfile",
     ".clang-tidy",
     ".clang-format",
@@ -128,8 +133,17 @@ REQUIRED_ROOT_AND_SUPPORT_FILES = [
 ]
 
 REQUIRED_AUDIT_FILES = [
+    "AUDIT/release_metrics.json",
     "AUDIT/concepts_sot.json",
     "AUDIT/COMPLETE_CONCEPT_INVENTORY.md",
+    "AUDIT/COMPREHENSIVE_FINAL_AUDIT.md",
+    "AUDIT/RELEASE_INTEGRITY_REPORT.md",
+    "AUDIT/HARDWARE_EVIDENCE_AUDIT.md",
+    "AUDIT/TECHNICAL_CORRECTNESS_REPORT.md",
+    "AUDIT/DRIVER_QUALITY_REPORT.md",
+    "AUDIT/FREERTOS_REVIEW.md",
+    "AUDIT/CURRICULUM_QUALITY_REPORT.md",
+    "AUDIT/CI_CD_AND_SECURITY_REPORT.md",
     "AUDIT/CURRICULUM_COVERAGE_MATRIX.md",
     "AUDIT/UPDATED_CONCEPT_COVERAGE_MATRIX.md",
     "AUDIT/MISSING_CONCEPTS_AND_GAPS.md",
@@ -936,6 +950,55 @@ def check_cmsis_register_cross_check(repo_root: Path, rep: ValidationReport) -> 
                             )
                         break
 
+        # Pass D (v5.0.0): Cross-verify Register Overview table reset values and access types
+        valid_access_types = {
+            "RW", "RO", "WO", "rc_w1", "rc_w0", "R/W", "R", "W", "RC_W1", "RC_W0",
+            "W1C", "W0C", "R/W1C", "R/W0C", "t"
+        }
+        col_map: dict[str, int] = {}
+        in_table = False
+        for lineno, ln in enumerate(lines, 1):
+            s = ln.strip()
+            if not s.startswith("|"):
+                in_table = False
+                col_map = {}
+                continue
+            cells = [c.strip() for c in s.strip("|").split("|")]
+            lowers = [c.lower() for c in cells]
+            if "offset" in " ".join(lowers) and ("access" in " ".join(lowers) or "type" in " ".join(lowers)):
+                col_map = {}
+                for idx, name in enumerate(lowers):
+                    if "offset" in name:
+                        col_map["offset"] = idx
+                    elif "access" in name or "type" in name:
+                        col_map["access"] = idx
+                    elif "reset" in name:
+                        col_map["reset"] = idx
+                    elif "register" in name:
+                        col_map["register"] = idx
+                in_table = True
+                continue
+            if set(s.replace("|", "").strip()) <= {"-", ":", " "}:
+                continue
+            if in_table and "offset" in col_map and "access" in col_map:
+                off_idx = col_map["offset"]
+                acc_idx = col_map["access"]
+                if len(cells) > max(off_idx, acc_idx):
+                    off_val = cells[off_idx]
+                    if re.search(r"0x[0-9A-Fa-f]{1,4}", off_val):
+                        acc_val = cells[acc_idx]
+                        clean_acc = re.sub(r"[*`]", "", acc_val).strip()
+                        first_tok = clean_acc.split()[0].split("/")[0]
+                        first_tok_clean = re.sub(r"[^A-Za-z0-9_]", "", first_tok)
+                        if first_tok_clean in valid_access_types:
+                            checked_bits += 0  # valid access verified
+                        else:
+                            mismatches.append(f"UNRECOGNIZED ACCESS TYPE {md.name}:{lineno} {cells[0]}: '{acc_val}'")
+                        if "reset" in col_map and len(cells) > col_map["reset"]:
+                            res_val = cells[col_map["reset"]]
+                            if not (re.search(r"0x[0-9A-Fa-fX?]{1,8}", res_val) or any(w in res_val.lower() for w in ("reset", "depends", "others", "reserved", "n/a", "n/r", "boot", "unknown", "impl", "factory", "option", "trim"))):
+                                mismatches.append(f"MALFORMED RESET VALUE {md.name}:{lineno} {cells[0]}: '{res_val}'")
+
     cited_files = len(reg_files) - len(missing_citations)
     scope_note = (
         "scope limited to parsed table entries, bullet bit positions & CMSIS C snippets, "
@@ -1273,6 +1336,121 @@ def check_sot_concepts(repo_root: Path, rep: ValidationReport) -> None:
             f"{overlap} flagged for both).",
             manual_review_queue,
         )
+
+
+# =============================================================================
+# 3B. Release Metrics Single Source of Truth, Dual Clock Profiles & Public Sanitization (v5.0.0)
+# =============================================================================
+def check_release_metrics(repo_root: Path, rep: ValidationReport) -> None:
+    metrics_path = repo_root / "AUDIT" / "release_metrics.json"
+    if not metrics_path.is_file():
+        rep.err("release_metrics", "Missing AUDIT/release_metrics.json canonical metrics file.")
+        return
+    try:
+        data = json.loads(metrics_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        rep.err("release_metrics", f"Failed to parse AUDIT/release_metrics.json as JSON: {exc}")
+        return
+
+    required_top_keys = [
+        "canonical_release_version", "validator_version", "target_silicon",
+        "concept_inventory", "curriculum", "laboratories", "drivers",
+        "rtos", "capstone_projects", "video_library", "host_testing_and_analysis",
+        "security_and_supply_chain"
+    ]
+    missing_keys = [k for k in required_top_keys if k not in data]
+    if missing_keys:
+        rep.err("release_metrics", "AUDIT/release_metrics.json missing required top-level keys", missing_keys)
+        return
+
+    # Cross-check concept_inventory with AUDIT/concepts_sot.json
+    sot_path = repo_root / "AUDIT" / "concepts_sot.json"
+    if sot_path.is_file():
+        try:
+            sot_data = json.loads(sot_path.read_text(encoding="utf-8"))
+            sot_concepts = sot_data.get("concepts", [])
+            sot_total = len(sot_concepts)
+            sot_counts: dict[str, int] = defaultdict(int)
+            for c in sot_concepts:
+                sot_counts[c.get("current_status", "UNKNOWN")] += 1
+
+            ci = data["concept_inventory"]
+            if ci.get("total_concepts") != sot_total:
+                rep.err("release_metrics", f"release_metrics total_concepts ({ci.get('total_concepts')}) != concepts_sot.json ({sot_total})")
+            for st in ("COMPLETE", "PARTIAL", "MISSING", "NEEDS_VERIFICATION", "NOT_APPLICABLE"):
+                if ci.get("status_counts", {}).get(st) != sot_counts[st]:
+                    rep.err("release_metrics", f"release_metrics status_counts.{st} ({ci.get('status_counts', {}).get(st)}) != concepts_sot.json ({sot_counts[st]})")
+        except Exception as exc:
+            rep.err("release_metrics", f"Error checking concepts_sot.json parity: {exc}")
+
+    # Cross-check sync with README.md and START_HERE.md
+    readme_txt = (repo_root / "README.md").read_text(encoding="utf-8", errors="replace")
+    start_txt = (repo_root / "START_HERE.md").read_text(encoding="utf-8", errors="replace")
+    if data["canonical_release_version"] not in readme_txt:
+        rep.err("release_metrics", f"README.md does not reference canonical release version '{data['canonical_release_version']}'")
+    if data["canonical_release_version"] not in start_txt:
+        rep.err("release_metrics", f"START_HERE.md does not reference canonical release version '{data['canonical_release_version']}'")
+
+    rep.info(
+        "release_metrics",
+        f"Authoritative release_metrics.json verified: version {data['canonical_release_version']}, "
+        f"validator {data['validator_version']}, {data['concept_inventory']['total_concepts']} concepts in strict sync."
+    )
+
+
+def check_dual_clock_profiles(repo_root: Path, rep: ValidationReport) -> None:
+    target_files = [
+        ("07-rcc-and-clocks/README.md", ["160 MHz", "170 MHz", "Range 1 Boost", "PWR_CR5", "R1MODE", "FLASH_ACR", "4 Wait States", "HPRE"]),
+        ("20-technical-diagrams/registers/rcc-register-map.md", ["160 MHz", "170 MHz", "Range 1 Boost", "PLL"]),
+        ("23-code-library/Drivers/clock_g4.h", ["160 MHz", "170 MHz", "CLOCK_PROFILE_160MHZ_HSI", "CLOCK_PROFILE_170MHZ_HSI", "Clock_Init_160MHz", "Clock_Init_170MHz"]),
+        ("AUDIT/release_metrics.json", ["160 MHz", "170 MHz", "PROFILE_A_170MHZ", "PROFILE_B_160MHZ"]),
+    ]
+    missing_profile_refs: list[str] = []
+    for rel_path, terms in target_files:
+        f = repo_root / rel_path
+        if not f.is_file():
+            missing_profile_refs.append(f"Missing file {rel_path}")
+            continue
+        txt = f.read_text(encoding="utf-8", errors="replace")
+        for t in terms:
+            if t not in txt:
+                missing_profile_refs.append(f"{rel_path}: missing required profile token '{t}'")
+    if missing_profile_refs:
+        rep.err("dual_clock_profiles", f"Inconsistent dual clock profile configuration ({len(missing_profile_refs)} errors)", missing_profile_refs)
+    else:
+        rep.info("dual_clock_profiles", "Dual clock profile consistency verified (160 MHz and 170 MHz Range 1 Boost profiles fully documented and intact).")
+
+
+def check_public_sanitization(repo_root: Path, rep: ValidationReport) -> None:
+    patterns = {
+        "stlink_serial": re.compile(r"003700413335510133383531"),
+        "local_workspace": re.compile(r"[A-Za-z]:[/\\]+General_ant", re.IGNORECASE),
+        "user_profile": re.compile(r"[A-Za-z]:[/\\]+Users[/\\]+[A-Za-z0-9 _.-]+", re.IGNORECASE),
+        "secret_token": re.compile(r"(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"),
+    }
+    leaks: list[str] = []
+    checked_files = 0
+    for p in iter_repo_files(repo_root, ""):
+        if p == repo_root / "scripts" / "validate_repo.py":
+            continue
+        if any(ex in p.parts for ex in EXCLUDED_DIR_NAMES):
+            continue
+        if p.suffix in (".png", ".jpg", ".jpeg", ".ico", ".bin", ".elf", ".o", ".a", ".pdf"):
+            continue
+        try:
+            txt = p.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        checked_files += 1
+        for leak_type, rx in patterns.items():
+            for idx, line in enumerate(txt.splitlines(), 1):
+                if rx.search(line):
+                    rel = p.relative_to(repo_root)
+                    leaks.append(f"{leak_type}: {rel}:{idx}")
+    if leaks:
+        rep.err("sanitization", f"Detected {len(leaks)} sensitive data / local path leak(s) across repository files", leaks)
+    else:
+        rep.info("sanitization", f"Zero sensitive data / local path leaks detected across {checked_files} repository files.")
 
 
 # =============================================================================
@@ -2695,6 +2873,9 @@ def run_validation(
     check_control_chars(repo_root, rep)
     check_cmsis_register_cross_check(repo_root, rep)
     check_sot_concepts(repo_root, rep)
+    check_release_metrics(repo_root, rep)
+    check_dual_clock_profiles(repo_root, rep)
+    check_public_sanitization(repo_root, rep)
     check_labs(repo_root, rep)
     ext_urls = check_markdown_links_and_mathjax(repo_root, rep)
     check_external_urls_live(ext_urls, rep, check_external_urls=check_external_urls)

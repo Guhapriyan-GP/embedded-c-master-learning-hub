@@ -1,6 +1,6 @@
 # Educational Video Coverage & Live-Verification Audit Report
 
-**Repository:** `D:\General_ant\embedded-c-master-learning-hub`  
+**Repository:** `<repo-root>/`  
 **Branch:** `feature/complete-remediation`  
 **Target Platform:** STM32G474RET6 (ARM Cortex-M4F @ 170 MHz) on NUCLEO-G474RE (`MB1367`)  
 **Audit & Live-Verification Date:** `2026-11-18`  

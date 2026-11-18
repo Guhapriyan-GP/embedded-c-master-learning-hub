@@ -3,7 +3,7 @@
 > **Date:** 2026-11-18  
 > **Hardware Owner:** Agent 4 — Hardware Validation (Exclusive Sole Board Owner)  
 > **Board & Silicon:** ST **NUCLEO-G474RE** (`MB1367 Rev C`), `STM32G474RET6` (ARM Cortex-M4F, `Device ID = 0x469`, `Rev X` / `0x2003`, `512 KB` Flash, `96 KB` SRAM1+2, `32 KB` CCM-SRAM)  
-> **Debugger / VCP:** Onboard **STLINK-V3E** (`SN: 003700413335510133383531`, FW `V3J17M11`, SWD `8000 KHz`, **COM8** `115200 8N1`, Bootloader `0xD5`, `VDD = 3.28–3.29 V`)  
+> **Debugger / VCP:** Onboard **STLINK-V3E** (`SN: <redacted-stlink-sn>`, FW `V3J17M11`, SWD `8000 KHz`, **COM8** `115200 8N1`, Bootloader `0xD5`, `VDD = 3.28–3.29 V`)  
 > **Safety Compliance:** Zero Flash option-byte (`OPTR`/RDP/WRP/PCROP/SEC/BOOT0) modifications, zero full mass erases, zero SWD (`PA13`/`PA14`) reconfiguration, zero external wires assumed. Board restored to clean 170 MHz blinky template (`23-code-library/templates/build/firmware.elf`) after all tests.
 
 ---
@@ -203,7 +203,7 @@ Project 03: FreeRTOS Digital Power Controller (STM32G474RE)
 After completing all 5 physical test suites, the clean starter template `23-code-library/templates/build/firmware.elf` (`170 MHz` Boost Mode + `PA5` LD2 blinky) was flashed and verified:
 
 ```text
-ST-LINK SN  : 003700413335510133383531
+ST-LINK SN  : <redacted-stlink-sn>
 ST-LINK FW  : V3J17M11
 Board       : NUCLEO-G474RE
 Voltage     : 3.28V

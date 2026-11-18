@@ -12,7 +12,7 @@
 | Concept ID | Concept Name | Architectural Scope | Mastery Tier |
 |---|---|---|---|
 | `RT-IRQ-001` | NVIC 4-Bit Priority Grouping (`AIRCR.PRIGROUP`), Preemption vs Subpriority, Tail-Chaining, Late-Arrival & Interrupt Latency/Jitter | `[ARM Cortex-M4F]` | Level 2 (Production) |
-| `RT-IRQ-002` | ISR Re-Entrancy, Flag-Clearing Semantics (`rc_w1` / `rc_w0`), Peripheral Readback + `__DSB()` Barrier (ARM AN321 §4.9 & ES0430 §2.1.3 / Erratum 838869), & Deferred Processing | `[ARM Cortex-M4F]` / `[STM32 Generic]` | Level 2 (Production) |
+| `RT-IRQ-002` | ISR Re-Entrancy, Flag-Clearing Semantics (`rc_w1` / `rc_w0`), Nuanced 3-Case Readback vs `__DSB()` Decision Rule (ARM AN321 §4.6/§4.9 & ES0430 §2.1.3 / Erratum 838869), & Deferred Processing | `[ARM Cortex-M4F]` / `[STM32 Generic]` | Level 2 (Production) |
 | `RT-TIME-002` | Critical Sections (`PRIMASK` vs Selective `BASEPRI`), Race Conditions & Atomic Data Sharing | `[ARM Cortex-M4F]` | Level 2 (Production) |
 | `PERIPH-SYSTICK-001` | Cortex-M4 24-Bit SysTick Timer (`CTRL`, `LOAD`, `VAL`, `CALIB`), 1 ms Timebase & Rollover-Safe Timing | `[ARM Cortex-M4F]` | Level 1 (Essential) |
 | `PERIPH-EXTI-001` | EXTI Lines `0..43` (`IMR1/2`, `RTSR1/2`, `FTSR1/2`, `PR1/2`), `SYSCFG->EXTICR[0..3]` (`SYSCFGEN`), Active-HIGH `PC13` Rising Edge | `[STM32G474RE Exact]` | Level 1 (Essential) |
@@ -66,10 +66,27 @@ The **Priority Grouping** field `SCB->AIRCR.PRIGROUP[10:8]` splits those 4 bits 
 > **FreeRTOS `ARM_CM4F` Consistency:** Set `NVIC_SetPriorityGrouping(0U)` (or `3U` — 4 preemption / 0 subpriority bits) and align `configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY` (e.g., `5U`, encoded as `configMAX_SYSCALL_INTERRUPT_PRIORITY = (5U << 4) = 0x50`). Priorities `5..15` are masked during `taskENTER_CRITICAL()` and may call `...FromISR()` APIs; priorities `0..4` remain **unmasked high-priority interrupts** and **must never** call any FreeRTOS API. Never set `configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY` to `0` (`BASEPRI = 0` disables masking!).
 
 ### 3.3 Hardware Latency Optimization: Tail-Chaining & Late-Arrival `[ARM Cortex-M4F]`
-- **Standard Interrupt Entry (PM0214 §2.3.7 / ARM DDI 0439):** **12 clock cycles** (~70.6 ns @ 170 MHz, ~75.0 ns @ 160 MHz, zero-wait-state SRAM/CCM stack) to automatically stack `{R0, R1, R2, R3, R12, LR, PC, xPSR}` and fetch the ISR vector.
-- **Tail-Chaining:** Whenever any eligible exception is already pending at the NVIC input upon exception return from ISR A, Cortex-M4 skips the 12-cycle unstack + 12-cycle re-stack and branches directly to the pending ISR in **6 cycles** (~35.3 ns @ 170 MHz). *(Note: this includes **re-entering the same ISR** in 6 cycles if a peripheral's IRQ signal has not yet deasserted across the AHB-to-APB bridge when `BX LR` / `POP {PC}` executes!)*
+
+> [!IMPORTANT]
+> **Ideal Architectural Minimum vs. Physical NUCLEO-G474RE Board Latency:** The textbook **12-cycle stacking** and **6-cycle tail-chaining** figures from ARM DDI 0439 / ST PM0214 §2.3.7 are **ideal ARMv7E-M architectural minimums** (assuming zero-wait-state vector/instruction fetches, zero AHB BusMatrix contention, no FPU state spill, and no masking/preemption). They are **NOT guaranteed physical NUCLEO-G474RE board latency** at 160 MHz or 170 MHz — see **§3.3.1** below for all 6 real-world contributors!
+
+- **Standard Interrupt Entry (Ideal Architectural Minimum — PM0214 §2.3.7 / ARM DDI 0439):** **12 clock cycles minimum** (~70.6 ns @ 170 MHz, ~75.0 ns @ 160 MHz under zero-wait-state vector/ISR fetch and zero bus contention) to automatically stack `{R0, R1, R2, R3, R12, LR, PC, xPSR}` and fetch the ISR vector.
+- **Tail-Chaining (Ideal Architectural Minimum):** Whenever any eligible exception is already pending at the NVIC input upon exception return from ISR A, Cortex-M4 skips the 12-cycle unstack + 12-cycle re-stack and branches directly to the pending ISR in **6 cycles minimum** (~35.3 ns @ 170 MHz, ~37.5 ns @ 160 MHz under zero-wait-state fetch and zero bus contention). *(Note: this includes **re-entering the same ISR** if a peripheral's IRQ signal has not yet deasserted across the AHB-to-APB bridge when `BX LR` / `POP {PC}` executes!)*
 - **Late-Arrival:** If a higher-priority IRQ arrives *during* the stacking phase of a lower-priority IRQ, the NVIC switches the vector fetch to the higher-priority ISR immediately without re-stacking.
-- **FPU Lazy Stacking (`FPU->FPCCR.ASPEN | LSPEN`):** When Thread Mode uses FPU instructions, hardware reserves 18 extra words (72 bytes, total 104-byte frame) on the stack without actually pushing `S0–S15` unless the ISR itself executes an FPU instruction — keeping non-FPU ISR entry latency at 12 cycles!
+- **FPU Lazy Stacking (`FPU->FPCCR.ASPEN | LSPEN`):** When Thread Mode uses FPU instructions (`CONTROL.FPCA = 1`), hardware reserves 18 extra words (72 bytes, total 104-byte frame) on the stack without actually pushing `S0–S15`/`FPSCR` unless the ISR itself executes an FPU instruction — adding **0 extra cycles** for non-FPU ISRs, or **+18 words (72 B)** pushed on demand (~17+ extra cycles at 0 WS) if the ISR touches the FPU.
+
+#### 3.3.1 Real-World STM32G474RE Physical Interrupt Latency Contributors (160 / 170 MHz) `[STM32G474RE Exact]`
+
+On physical STM32G474RE silicon running at **160 MHz** or **170 MHz** (Range 1 Boost Mode), actual pin-to-first-ISR-instruction latency exceeds the ideal 12-cycle architectural minimum whenever any of the following **6 physical contributors** apply:
+
+| # | Real-World Latency Contributor | STM32G474RE @ 160 / 170 MHz Quantitative Impact | Engineering Mitigation |
+|---|---|---|---|
+| **1** | **Flash Wait States (`4 WS` @ 160/170 MHz Boost)** | RM0440 Table 9 requires `FLASH_ACR.LATENCY = 4 WS` (`5` HCLK cycles/fetch) for both 160 MHz and 170 MHz. When the vector entry or ISR prologue misses the 1 KB ART I-Cache (`ICEN`), each uncached Flash read adds **+4 cycles** (+23.5 ns @ 170 MHz / +25.0 ns @ 160 MHz; typically +4 to +8+ cycles for a cold vector + ISR entry). | Keep `FLASH_ACR` `PRFTEN \| ICEN \| DCEN` enabled; relocate hot vectors & ISRs out of Flash into CCM-SRAM. |
+| **2** | **SRAM vs. Flash Fetch & CCM-SRAM Zero-Wait-State Benefit** | Vectors/ISRs in Flash suffer `4 WS` on ART miss; vectors/ISRs in SRAM1/SRAM2 (`0x20000000`) fetch over the shared S-Bus (0 WS when uncontended, but shares bandwidth with data/DMA). Placing hot ISRs in **32 KB CCM-SRAM (`0x10000000`)** fetches over the dedicated **I-Code/D-Code buses at true `0 WS`** with zero S-Bus interference. | Relocate 512-byte aligned `SCB->VTOR` (`__DSB(); __ISB();`) to SRAM/CCM-SRAM and link hard-RT ISRs into `.ccmram` (`0x10000000`). |
+| **3** | **AHB BusMatrix Contention (CPU vs. `DMA1`/`DMA2` Bursts)** | Concurrent `DMA1`/`DMA2` transfers targeting the same SRAM bank as `MSP` (stacking writes) or S-Bus vector reads incur round-robin AHB BusMatrix arbitration stalls (**+1 to +4+ cycles** per contended beat). | Partition BusMatrix slaves: keep `MSP` & hot ISRs in **CCM-SRAM (`0x10000000`)** while `DMA1`/`DMA2` stream buffers in **SRAM1 (`0x20000000`)** or **SRAM2 (`0x20014000`)**. |
+| **4** | **Multi-Cycle Non-Interruptible Instructions & Stalled Loads** | By default (`SCnSCB->ACTLR.DISMCYCINT = 0`), Cortex-M4 interrupts `LDM`/`STM`/`PUSH`/`POP` mid-sequence (`EPSR.ICI`) and abandons/restarts `SDIV`/`UDIV` (2–12 cycles). If **`SCnSCB->ACTLR.DISMCYCINT = 1`**, the core must complete the entire `LDM`/`STM` or divide first (**+2 to +16+ cycles**). Even with `DISMCYCINT = 0`, an in-flight bus-stalled load/store (e.g., divided APB peripheral read) cannot abort mid-transfer. | Leave `SCnSCB->ACTLR.DISMCYCINT = 0` (reset default) and avoid slow polling reads inside time-critical threads. |
+| **5** | **FPU Lazy Stacking (`FPU->FPCCR.ASPEN \| LSPEN`)** | With lazy stacking enabled (`ASPEN = 1, LSPEN = 1`): **0 extra cycles** if the ISR does **not** touch the FPU; if the ISR executes any FPU instruction while `CONTROL.FPCA = 1`, hardware stalls to push **+18 words (72 bytes: `S0–S15`, `FPSCR`, alignment word)** (**~+17+ cycles** at 0 WS, more under SRAM contention). Disabling lazy stacking (`LSPEN = 0`) pays that penalty unconditionally on every ISR entry. | Keep `ASPEN \| LSPEN` enabled (default) and keep ultra-low-latency ISRs integer/fixed-point (or `CORDIC`/`FMAC`) when possible. |
+| **6** | **Higher-Priority IRQ Preemption & `PRIMASK`/`BASEPRI` Critical Sections** | Active `PRIMASK` blocks all configurable IRQs (`0..15`); `BASEPRI` blocks IRQs with numeric priority $\ge$ threshold; any active or arriving higher-priority IRQ (lower numeric priority, NMI, or HardFault) adds its full execution time $t_{\text{higher ISRs}}$ (tens to thousands of cycles). | Use selective **`BASEPRI`** instead of `PRIMASK`, bound critical sections tightly, and reserve top priorities (`0..2`) strictly for short hard-RT ISRs. |
 
 ### 3.4 Cortex-M4 24-Bit SysTick Timer (`PERIPH-SYSTICK-001`) `[ARM Cortex-M4F]`
 Integrated inside the Cortex-M4 Private Peripheral Bus (`0xE000E010`), SysTick is a 24-bit down-counter reloading from `LOAD` when transitioning `1 -> 0` (setting `CTRL.COUNTFLAG` and pending `SysTick_IRQn = -1`).
@@ -106,10 +123,14 @@ Two **distinct** hardware mechanisms — with **different root causes and differ
    - **ARM Workaround & Placement:** Place a **Data Synchronization Barrier (`__DSB();`)** immediately before exception return (`BX LR`) so the CPU stalls until all buffered stores complete before `BX` executes (or ensure no buffered store-immediate immediately precedes `BX LR`). *(ST ES0430 §2.1.3 notes its Category B / Rare profile; ARM's Cortex-M4 Errata Notice and production SDKs/RTOS ports apply `__DSB();` at ISR exit.)*
    - **Does a Typical STM32G4 EXTI ISR Satisfy Erratum 838869's Conditions?** **Yes, potentially.** A short leaf EXTI ISR compiles under `-O2` to return via **`BX LR`** (no `POP {..., PC}` memory load ahead of return) and frequently ends with a store-immediate (`STR` to `EXTI->PR1`, `GPIOA->BSRR`, or a `volatile` SRAM counter such as `g_b1_press_count++`). Even if `(void)EXTI->PR1;` already flushed the APB2 flag-clear earlier in the handler, any **trailing store** placed after `(void)EXTI->PR1;` can still sit in the CPU write buffer when `BX LR` executes — which is why **`__DSB();` belongs right before ISR exit**!
 
-- **Authoritative 3-Step Production Pattern:**
-  1. Clear the peripheral interrupt flag **early** in the ISR using **direct write** (`EXTI->PR1 = EXTI_PR1_PIF13;` — NEVER `|=` on an `rc_w1` register!).
-  2. Perform a **dummy readback** of the same peripheral register (`(void)EXTI->PR1;`) to force the posted AHB-to-APB2 write to commit at the EXTI slave before exit (**ARM AN321 §4.9**).
-  3. Execute **`__DSB();`** right before returning from the ISR to drain the Cortex-M4 write buffer for all trailing stores and satisfy **ARM Cortex-M4 Erratum 838869 / ST ES0430 §2.1.3**.
+- **Nuanced 3-Case Engineering Decision Table (Do NOT Apply One Blanket Rule to Every Context!):**
+  Not every EXTI, timer, or DMA flag clear universally requires **both** a dummy readback **and** a trailing `__DSB()`! Apply the exact synchronization primitive dictated by your ISR structure and bus path:
+
+| Case | Scenario | Required Synchronization Pattern | Why / Architectural Basis |
+|---|---|---|---|
+| **Case 1** | **APB/Peripheral Flag Clear Early in a Non-Leaf ISR with Substantial Work Before Exit** | Direct write (`EXTI->PR1 = mask;`, `TIMx->SR = ~flag;`, `DMAx->IFCR = mask;`) + dummy readback (`(void)EXTI->PR1;`, `(void)TIMx->SR;`, `(void)DMAx->ISR;`) | Dummy readback commits the flag clear across the AHB-to-APB bridge (or AHB peripheral slave) per **ARM AN321 §4.9**, preventing duplicate same-ISR re-entry. When significant instructions/function calls execute before return (or a non-leaf ISR restores registers via `POP {..., PC}` with no trailing buffered store-immediate immediately preceding `BX LR`), a trailing `__DSB();` is **defensive** rather than strictly required by Erratum 838869. |
+| **Case 2** | **Short/Leaf ISR with a Trailing Buffered Store Immediately Before `BX LR` at 160/170 MHz** | Early direct flag clear + dummy readback (`(void)REG;`) **AND** trailing **`__DSB();`** immediately before `}` | Early `(void)REG;` commits the peripheral clear (**ARM AN321 §4.9**), while trailing `__DSB();` drains the Cortex-M4 write buffer for any final store (`EXTI->PR1`, `TIMx->SR`, `GPIOA->BSRR`, `g_count++`) right before `-O2`-generated `BX LR` (**ARM Cortex-M4 r0p1 Erratum 838869 / ST ES0430 §2.1.3**). **Both are recommended** for short/leaf ISRs (such as §8.2 below). |
+| **Case 3** | **Core Interrupt / System Control (`NVIC_DisableIRQ`, `SCB->VTOR`, `MPU->CTRL`)** | **`__DSB(); __ISB();`** immediately after the register write (**no peripheral readback**) | Core PPB registers (`0xE000E000`) are Strongly-Ordered internal CPU registers with no downstream APB bridge; `__DSB(); __ISB();` guarantees the core sees the updated mask/vector/MPU configuration before executing subsequent instructions (**ARM AN321 §4.6 & §4.11**). |
 
 ---
 
@@ -176,10 +197,16 @@ $$
 ### 6.2 Worst-Case Interrupt Response Latency & Jitter Budget
 
 $$
-t_{\text{response,max}} = t_{\text{crit}} + t_{\text{higher ISRs}} + \frac{12\text{ cycles} + N_{\text{wait}}}{f_{\text{HCLK}}}
+t_{\text{response,max}} = t_{\text{crit}} + t_{\text{higher ISRs}} + \frac{12\text{ cycles}_{\text{arch,min}} + N_{\text{flash}} + N_{\text{bus}} + N_{\text{mcyc}} + N_{\text{fpu}}}{f_{\text{HCLK}}}
 $$
 
-At $170\text{ MHz}$ ($5.882\text{ ns/cycle}$), hardware stacking of 12 cycles takes **$70.6\text{ ns}$** (zero contention). Any `PRIMASK` critical section of $200\text{ cycles}$ adds **$1.18\ \mu\text{s}$** of jitter to every interrupt — proving why selective **`BASEPRI`** masking is essential for hard-real-time control loops!
+where the **12-cycle** term is strictly the **ideal ARMv7E-M architectural minimum** (`70.6 ns` @ 170 MHz, `75.0 ns` @ 160 MHz under zero-wait-state fetch and zero bus contention — **not** guaranteed physical NUCLEO-G474RE board latency), and the physical STM32G474RE penalty terms (§3.3.1) are:
+- $N_{\text{flash}}$: Flash `4 WS` stall cycles on ART I-Cache misses (`0` if vector table + ISR reside in CCM-SRAM `0x10000000`);
+- $N_{\text{bus}}$: AHB BusMatrix arbitration stalls from concurrent `DMA1`/`DMA2` bursts targeting the same SRAM bank as `MSP`;
+- $N_{\text{mcyc}}$: Completion delay of non-interruptible bus-stalled loads or multi-cycle instructions (`SDIV`/`UDIV`/`LDM`/`STM` if `ACTLR.DISMCYCINT = 1`);
+- $N_{\text{fpu}}$: `0` cycles for non-FPU ISRs under lazy stacking (`FPCCR.ASPEN | LSPEN`), or `+17+` cycles (+18 words = 72 B pushed) if the ISR touches the FPU while `CONTROL.FPCA = 1`.
+
+Any `PRIMASK` critical section of $200\text{ cycles}$ adds **$1.18\ \mu\text{s}$** (@ 170 MHz) / **$1.25\ \mu\text{s}$** (@ 160 MHz) of jitter to every configurable interrupt — proving why selective **`BASEPRI`** masking is essential for hard-real-time control loops, and why physical board latency must be **measured empirically** (`DWT->CYCCNT` + oscilloscope GPIO toggle) rather than assumed equal to 12 cycles!
 
 ---
 
@@ -302,8 +329,9 @@ void EXTI15_10_IRQHandler(void)
         g_pb10_edge_count++;
     }
 
-    /* 1. Dummy readback guarantees APB2 write commits at EXTI before exit (ARM AN321 §4.9).
-     * 2. __DSB() drains write buffer & mitigates ARM Erratum 838869 (ST ES0430 §2.1.3). */
+    /* Case 2 (short/leaf ISR with trailing stores before BX LR — see §3.6 Decision Table):
+     * 1. Dummy readback guarantees APB2 write commits at EXTI before exit (ARM AN321 §4.9).
+     * 2. Tail __DSB() drains write buffer & mitigates ARM Erratum 838869 (ST ES0430 §2.1.3). */
     (void)EXTI->PR1;
     __DSB();
 }
@@ -329,7 +357,7 @@ void EXTI15_10_IRQHandler(void)
 
 1. **Forgetting `RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN`:** Writes to `SYSCFG->EXTICR[3]` are silently ignored, leaving `EXTI13` routed to `PA13` (SWDIO!) instead of `PC13`.
 2. **Using `EXTI->PR1 |= EXTI_PR1_PIF13;` (`rc_w1` Bug):** Reading `PR1` and ORing writes `1` back to EVERY currently pending EXTI line, silently wiping unrelated interrupts (`EXTI10`..`EXTI15`)! Always use `EXTI->PR1 = EXTI_PR1_PIF13;`.
-3. **Omitting Peripheral Readback and `__DSB()` Before ISR Return (ARM AN321 §4.9 & ES0430 §2.1.3 / ARM 838869):** Omitting `(void)EXTI->PR1;` after a late APB2 flag clear can cause 6-cycle tail-chained phantom re-entry on fast 160/170 MHz ISRs; omitting `__DSB()` leaves Cortex-M4 r0p1 exposed to Erratum 838869 (store-immediate overlapping exception return vectoring to an incorrect interrupt).
+3. **Misapplying Peripheral Readback vs. `__DSB()` Before ISR Return (ARM AN321 §4.9 & ES0430 §2.1.3 / ARM 838869):** Omitting `(void)EXTI->PR1;` after a late APB2 flag clear can cause tail-chained phantom same-ISR re-entry on fast 160/170 MHz ISRs; omitting tail `__DSB();` in a **Case 2 short/leaf ISR** with a trailing buffered store right before `BX LR` leaves Cortex-M4 r0p1 exposed to Erratum 838869 (wrong-vector fetch). Use the 3-case Engineering Decision Table in §3.6 rather than treating every non-leaf ISR and core NVIC register identically.
 4. **Using Falling Edge (`FTSR1`) on NUCLEO-G474RE `B1` (`PC13`):** B1 is Active-HIGH (`UM2505`); falling edge triggers on button *release*, not press.
 5. **Forgetting `SystemClock_Config_170MHz()` Before `SysTick->LOAD = 169999`:** Leaves SysTick running 10.625× too slow on 16 MHz HSI16.
 6. **Executing `printf()` or Blocking Loops Inside an ISR:** Causes massive latency, non-reentrant newlib heap corruption, and priority starvation.
@@ -364,7 +392,7 @@ void EXTI15_10_IRQHandler(void)
 |---|---|---|
 | `PERIPH-SYSTICK-001` | Verify $1.000\text{ ms} \pm 0.01\%$ SysTick period at 170 MHz and rollover-safe timeout across `0xFFFFFFFF -> 0x00000000` | Oscilloscope + Unit Test |
 | `PERIPH-EXTI-001` / `002` | Trigger `EXTI15_10_IRQHandler` on `PC13` rising edge and simultaneous `SWIER1` multi-pin trigger with `0` lost or double-counted events | GDB + Logic Analyzer |
-| `RT-IRQ-001` / `002` | Verify `PRIGROUP = 3`, nested preemption trace, `< 150 ns` ISR entry latency at 170 MHz, and `0` double triggers using `(void)EXTI->PR1; __DSB();` | Oscilloscope + GDB |
+| `RT-IRQ-001` / `002` | Verify `PRIGROUP = 3`, nested preemption trace, empirically measure Flash vs. CCM-SRAM ISR entry latency at 170/160 MHz (quantifying deviation above the ideal 12-cycle architectural minimum), and confirm `0` double triggers using §3.6 Case 2 `(void)EXTI->PR1; __DSB();` | Oscilloscope + GDB |
 | `RT-TIME-002` | Prove `0` torn 64-bit reads over 10M iterations using `BASEPRI` while Priority-1 ISR remains completely unmasked by `BASEPRI` (zero critical-section masking delay) | Logic Analyzer + `DWT->CYCCNT` |
 
 ---

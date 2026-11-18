@@ -5,7 +5,7 @@
 > **Prerequisites:** [`06-stm32-fundamentals/` (`STM32-SRAM-001`)](../06-stm32-fundamentals/README.md), [`10-interrupts/`](../10-interrupts/README.md), [`11-communication/`](../11-communication/README.md), [`12-adc-dac-analog/`](../12-adc-dac-analog/README.md)
 
 > **Directory:** `13-dma/` | **Target Platform:** STM32G474RET6 (`DMA1` 8 Ch + `DMA2` 8 Ch + `DMAMUX1` 16 Ch + 4 Request Generators)  
-> **Code Verification Notice:** All bare-metal C snippets in this module are **Statically Reviewed against `stm32g474xx.h`, RM0440, and ES0430 (Not Tested on Physical Hardware)**.
+> **Code Verification Notice:** All bare-metal C snippets in Section 8 are **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror`)** against `stm32g474xx.h`, RM0440, and ES0430 (Not Tested on Physical Hardware).
 
 ---
 
@@ -60,12 +60,16 @@ This is one of the most important architectural subtleties of the STM32G474RE mu
 - **`0x20018000..0x2001FFFF` (CCM-SRAM S-Bus Alias):** STM32G4 maps the exact same 32 KB physical CCM-SRAM contiguously after SRAM2 (`0x20014000..0x20017FFF`) on the **AHB BusMatrix S-Bus** — making it **100% accessible to DMA1 and DMA2**!
 - **Zero-Contention Partitioning:** Place time-critical CPU ISR code and stack in native CCM-SRAM (`0x10000000`, I/D-Bus) while DMA1/DMA2 stream ADC/DAC/SPI buffers in **SRAM1 (`0x20000000`)** and **SRAM2 (`0x20014000`)** — CPU and DMA operate on completely independent BusMatrix slaves with **zero AHB arbitration stalls**!
 
-### 3.5 `volatile` DMA Buffers & Mandatory ES0430 §2.3.1 `CGIFx` Erratum
+### 3.5 `volatile` DMA Buffers, Mandatory ES0430 §2.3.1 `CGIFx` Erratum & Nuanced ISR Flag-Clear Synchronization
 - Any RAM buffer written by DMA and read by CPU **MUST be qualified `volatile`** (or read via compiler memory barrier `asm volatile("" ::: "memory")`) so `-O2`/`-O3` cannot hoist or cache stale reads in registers.
-- **CRITICAL SILICON ERRATUM (`ES0430 §2.3.1`):** On STM32G4, writing `1` to the global interrupt clear bit **`DMA_IFCR_CGIFx`** simultaneously with an active Transfer Error can clear `TEIFx` without disabling the channel! **RULE:** **NEVER write `CGIFx`!** Always clear individual flags explicitly:
+- **CRITICAL SILICON ERRATUM (`ES0430 §2.3.1`):** On STM32G4, writing `1` to the global interrupt clear bit **`DMA_IFCR_CGIFx`** simultaneously with an active Transfer Error can clear `TEIFx` without disabling the channel! **RULE:** **NEVER write `CGIFx`!** Always clear individual flags explicitly via direct write (`=`):
   ```c
   DMA1->IFCR = DMA_IFCR_CTCIF1 | DMA_IFCR_CHTIF1 | DMA_IFCR_CTEIF1; /* NEVER DMA_IFCR_CGIF1! */
   ```
+- **Nuanced DMA ISR Readback & `__DSB()` Rule (Cross-Reference [`10-interrupts/README.md` §3.6](../10-interrupts/README.md#36-peripheral-flag-clear-synchronization-dummy-readback--__dsb-arm-an321-49-vs-arm-erratum-838869--st-es0430-213-arm-cortex-m4f)):** Do **not** assume every DMA ISR universally requires both readback and `__DSB()` for the same reason. `DMA1`/`DMA2` reside on **AHB1** (`0x40020000`/`0x40020400`):
+  - **Case 1 (Non-leaf DMA ISR with substantial processing before exit):** Clearing individual `DMA1->IFCR` bits early + `(void)DMA1->ISR;` commits the flag clear at the AHB1 DMA slave (**ARM AN321 §4.9**); a trailing `__DSB();` is defensive rather than strictly required by Erratum 838869.
+  - **Case 2 (Short/leaf DMA ISR ending with trailing buffered SRAM/peripheral stores right before `BX LR` at 160/170 MHz — such as `DMA1_Channel1_IRQHandler` in §8.1):** Pair `(void)DMA1->ISR;` (**ARM AN321 §4.9**) **and** trailing `__DSB();` (**ARM Cortex-M4 r0p1 Erratum 838869 / ST ES0430 §2.1.3**).
+  - **Case 3 (`NVIC_DisableIRQ(DMA1_Channel1_IRQn)`):** Requires `__DSB(); __ISB();` (**ARM AN321 §4.6**, no peripheral readback).
 
 ---
 
@@ -112,11 +116,11 @@ Verified directly against `stm32g474xx.h` and RM0440 Table 91:
 For a circular buffer of $2N$ samples fed at aggregate sample rate $f_s$:
 $$t_{\text{half}} = \frac{N}{f_s}, \qquad \text{Requirement: } \text{WCET}_{\text{process}}(N) + t_{\text{ISR ovh}} < t_{\text{half}}$$
 **Worked Example:** `ADC1` scanning 2 channels at $20\text{ kHz}$ ($f_s = 40\text{ kS/s}$), buffer `2 * N = 128` samples ($N = 64$):
-$$t_{\text{half}} = \frac{64}{40{,}000} = \mathbf{1.600\text{ ms}} \quad (272{,}000\text{ CPU cycles @ 170 MHz})$$
+$$t_{\text{half}} = \frac{64}{40{,}000} = \mathbf{1.600\text{ ms}} \quad (272{,}000\text{ CPU cycles @ 170 MHz Profile A; } 256{,}000\text{ cycles @ 160 MHz Profile B})$$
 
 ### 6.2 Peak AHB DMA Bandwidth Budget
 $$\text{BW}_{\text{DMA}} = f_s \times B_{\text{transfer}} \times 2\ (\text{read} + \text{write})$$
-For 4 MSPS 16-bit ADC streaming: $4\times 10^6 \times 2\text{ B} = 8\text{ MB/s}$ (~1.2% of 170 MHz × 4 B = `680 MB/s` theoretical AHB peak!).
+For 4 MSPS 16-bit ADC streaming: $4\times 10^6 \times 2\text{ B} = 8\text{ MB/s}$ (~1.2% of 170 MHz × 4 B = `680 MB/s` theoretical AHB peak; ~1.25% of `640 MB/s` @ 160 MHz Profile B!).
 
 ---
 
@@ -125,13 +129,14 @@ For 4 MSPS 16-bit ADC streaming: $4\times 10^6 \times 2\text{ B} = 8\text{ MB/s}
 | Document | Exact Sections |
 |---|---|
 | **ST RM0440** | Ch. 2 (*BusMatrix & CCM-SRAM alias `0x20018000`*), Ch. 11/12 (*DMA*), Ch. 12/13 (*DMAMUX*, Table 91) |
-| **ST ES0430** | **§2.3.1 (*DMA `CGIFx` clear race — NEVER use `CGIFx`!*)**, §2.4.1 (*DMAMUX overrun clear*) |
+| **ST ES0430** | **§2.1.3 (*ARM Erratum 838869: Store immediate overlapping exception return — `__DSB()` in Case 2 short/leaf ISRs*)**, **§2.3.1 (*DMA `CGIFx` clear race — NEVER use `CGIFx`!*)**, §2.4.1 (*DMAMUX overrun clear*) |
+| **ARM AN321 (DAI0321A)** | §4.6 (*`NVIC_DisableIRQ` `__DSB(); __ISB();`*), **§4.9 (*Peripheral Interrupt Flag Clearing & Readback Across Bus Bridges*)** |
 
 ---
 
 ## 8. Production-Grade Bare-Metal C Code Examples
 
-> **Verification Status:** Statically Reviewed against `stm32g474xx.h`, RM0440, and ES0430 §2.3.1 (Not Tested on Physical Hardware).
+> **Verification Status:** **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror`)** against `stm32g474xx.h`, RM0440, and ES0430 §2.1.3 / §2.3.1 (Not Tested on Physical Hardware).
 
 ### 8.1 Ping-Pong Circular `DMA1_Channel1` for `ADC1` (`DMAMUX1` ID = `5`, ES0430-Safe `IFCR`)
 ```c
@@ -163,8 +168,8 @@ void DMA1_Ch1_ADC1_PingPong_Init(void)
     DMAMUX1_Channel0->CCR = (5U << DMAMUX_CxCR_DMAREQ_ID_Pos);
 
     /* 4. Configure addresses, count, and 16-bit Circular P2M with HT/TC/TE interrupts */
-    DMA1_Channel1->CPAR  = (uint32_t)&ADC1->DR;
-    DMA1_Channel1->CMAR  = (uint32_t)g_adc_dma_buf; /* SRAM1/SRAM2 or 0x20018000 CCM alias! */
+    DMA1_Channel1->CPAR  = (uint32_t)(uintptr_t)&ADC1->DR;
+    DMA1_Channel1->CMAR  = (uint32_t)(uintptr_t)g_adc_dma_buf; /* SRAM1/SRAM2 or 0x20018000 CCM alias! */
     DMA1_Channel1->CNDTR = ADC_TOTAL_SAMPLES;
     DMA1_Channel1->CCR   = DMA_CCR_PL_1       /* High priority */
                          | DMA_CCR_MSIZE_0    /* 16-bit memory */
@@ -198,6 +203,10 @@ void DMA1_Channel1_IRQHandler(void)
         DMA1->IFCR = DMA_IFCR_CTEIF1;
         g_dma_err_cnt++;
     }
+    /* Case 2 (short/leaf ISR with trailing flag/counter stores before BX LR — see 10-interrupts §3.6):
+     * 1. Dummy readback confirms AHB1 IFCR write completion (ARM AN321 §4.9).
+     * 2. Tail __DSB() drains core write buffer & guards ARM Erratum 838869 (ST ES0430 §2.1.3). */
+    (void)DMA1->ISR;
     __DSB();
 }
 ```

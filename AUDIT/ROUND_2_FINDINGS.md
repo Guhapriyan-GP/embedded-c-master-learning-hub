@@ -1,5 +1,8 @@
 # Audit Round 2 — Consolidated Findings Register (`R2-001`..`R2-012`)
 
+> [!NOTE]
+> **Historical Audit Snapshot Notice:** This document records an earlier audit milestone (Round 2 / commit `848d4ed`, 2026-11-18). Its findings and metric counts reflect that historical state and are preserved verbatim for traceability. For the authoritative, canonical release metrics and active status of the current repository (`v4.0.0`), see [`AUDIT/release_metrics.json`](release_metrics.json) and [`AUDIT/RELEASE_INTEGRITY_REPORT.md`](RELEASE_INTEGRITY_REPORT.md).
+
 > **Date:** 2026-11-18  
 > **Branch:** `feature/complete-remediation`  
 > **Target Silicon / Board:** **STM32G474RET6** (LQFP64, ARM Cortex-M4F r0p1 `__CM4_REV = 0x0001U`, `__NVIC_PRIO_BITS = 4U`) on **NUCLEO-G474RE (MB1367 Rev C)**  

@@ -1,8 +1,11 @@
 # Audit Round 2 — Exact Validation Commands & Tool Outputs
 
+> [!NOTE]
+> **Historical Audit Snapshot Notice:** This document records an earlier audit milestone (Round 2 / commit `848d4ed`, 2026-11-18). Its findings and metric counts reflect that historical state and are preserved verbatim for traceability. For the authoritative, canonical release metrics and active status of the current repository (`v4.0.0`), see [`AUDIT/release_metrics.json`](release_metrics.json) and [`AUDIT/RELEASE_INTEGRITY_REPORT.md`](RELEASE_INTEGRITY_REPORT.md).
+
 > **Date:** 2026-11-18  
 > **Branch:** `feature/complete-remediation`  
-> **Repository:** `D:\General_ant\embedded-c-master-learning-hub`  
+> **Repository:** `<repo-root>/`  
 > **Validator Version:** [`scripts/validate_repo.py`](../scripts/validate_repo.py) **`v4.2.0`**  
 > **Companion Reports:** [`AUDIT/ROUND_2_FINDINGS.md`](ROUND_2_FINDINGS.md) | [`AUDIT/ROUND_2_REMEDIATION_REPORT.md`](ROUND_2_REMEDIATION_REPORT.md) | [`AUDIT/MASTER_REMEDIATION_TRACKER.md`](MASTER_REMEDIATION_TRACKER.md)  
 > **Verification Honesty Boundary:** All Round 2 builds and tests below were executed live on host (`arm-none-eabi-gcc 14.3.1`, `gcc 15.2.0`, `Python 3.14.6`, `GNU Make 4.4.1`). Firmware artifacts are **Compile-Verified (Not Tested on Physical Hardware in Round 2)**; STM32CubeG4 LL/HAL implementations are **Statically Reviewed (STM32CubeG4 HAL/LL package not installed on host)**; Mermaid visual rendering is **`UNVERIFIED` (`mmdc` unavailable on host)**.
@@ -23,7 +26,7 @@
 
 ```text
 === Embedded C & STM32G474RE Master Learning Hub Validator v4.2.0 ===
-Repository: D:\General_ant\embedded-c-master-learning-hub
+Repository: <repo-root>/
 [INFO/PASS] [structure] All 34 required directories present.
 [INFO/PASS] [structure] All 14 onboarding/governance/tooling files present.
 [INFO/PASS] [structure] All 29 mandatory AUDIT files present.
@@ -81,7 +84,7 @@ Repository: D:\General_ant\embedded-c-master-learning-hub
 
 ```text
 === Embedded C & STM32G474RE Master Learning Hub Validator v4.2.0 ===
-Repository: D:\General_ant\embedded-c-master-learning-hub
+Repository: <repo-root>/
 [INFO/PASS] [structure] All 34 required directories present.
 [INFO/PASS] [structure] All 14 onboarding/governance/tooling files present.
 [INFO/PASS] [structure] All 29 mandatory AUDIT files present.
@@ -139,7 +142,7 @@ Repository: D:\General_ant\embedded-c-master-learning-hub
 
 ```text
 === Embedded C & STM32G474RE Master Learning Hub Validator v4.2.0 ===
-Repository: D:\General_ant\embedded-c-master-learning-hub
+Repository: <repo-root>/
 [INFO/PASS] [structure] All 34 required directories present.
 [INFO/PASS] [structure] All 14 onboarding/governance/tooling files present.
 [INFO/PASS] [structure] All 29 mandatory AUDIT files present.

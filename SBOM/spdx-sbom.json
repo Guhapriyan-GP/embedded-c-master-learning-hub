@@ -1,0 +1,1176 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "embedded-c-master-learning-hub-4.0.0-sbom",
+  "documentNamespace": "https://github.com/embedded-c-master-learning-hub/spdx/embedded-c-master-learning-hub-4.0.0",
+  "creationInfo": {
+    "created": "2026-11-18T00:00:00Z",
+    "creators": [
+      "Tool: embedded-c-master-learning-hub/scripts/generate_sbom.py-1.0.0"
+    ],
+    "licenseListVersion": "3.25",
+    "comment": "Deterministic SPDX 2.3 SBOM covering all vendored third-party C firmware components. Text files are LF-canonicalized prior to SHA-1/SHA-256 hashing for Windows/Linux CI parity."
+  },
+  "documentDescribes": [
+    "SPDXRef-Package-Root"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-Root",
+      "name": "embedded-c-master-learning-hub",
+      "versionInfo": "4.0.0",
+      "supplier": "Organization: Embedded C Master Learning Hub Contributors",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) 2026 Embedded C Master Learning Hub Contributors",
+      "summary": "Bare-Metal Embedded C & STM32G474RE (NUCLEO-G474RE) Master Learning Hub curriculum, bare-metal drivers, FreeRTOS reference firmware, and capstone projects.",
+      "primaryPackagePurpose": "APPLICATION"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-CMSIS-Core",
+      "name": "ARM-CMSIS-Core",
+      "versionInfo": "5.6.0",
+      "supplier": "Organization: ARM Limited",
+      "originator": "Organization: ARM Limited",
+      "downloadLocation": "https://github.com/ARM-software/CMSIS_5",
+      "homepage": "https://arm-software.github.io/CMSIS_5/Core/html/index.html",
+      "filesAnalyzed": true,
+      "packageVerificationCode": {
+        "packageVerificationCodeValue": "363be1ce48b8992387f0390ea974404548025c2c"
+      },
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "licenseInfoFromFiles": [
+        "Apache-2.0"
+      ],
+      "copyrightText": "Copyright (c) 2009-2022 ARM Limited. All rights reserved.",
+      "summary": "ARM CMSIS-Core (Cortex-M4) minimal vendored header subset (core_cm4.h, cmsis_version.h, cmsis_compiler.h, cmsis_gcc.h, mpu_armv7.h).",
+      "comment": "LF-canonicalized digests for cross-OS reproducibility. Header banners: cmsis_version.h V5.0.5 (__CM_CMSIS_VERSION 5.6), core_cm4.h V5.1.2, cmsis_compiler.h V5.1.0, cmsis_gcc.h V5.4.1, mpu_armv7.h V5.1.2.",
+      "primaryPackagePurpose": "LIBRARY",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:github/ARM-software/CMSIS_5@5.6.0"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-STM32G4-CMSIS-Device",
+      "name": "STM32G4xx-CMSIS-Device",
+      "versionInfo": "1.2.6",
+      "supplier": "Organization: STMicroelectronics",
+      "originator": "Organization: STMicroelectronics",
+      "downloadLocation": "https://github.com/STMicroelectronics/cmsis_device_g4/releases/tag/v1.2.6",
+      "homepage": "https://github.com/STMicroelectronics/cmsis_device_g4",
+      "filesAnalyzed": true,
+      "packageVerificationCode": {
+        "packageVerificationCodeValue": "23efcdd0b6e5ed3d416ea251473ab8cc0bb5dd19"
+      },
+      "licenseConcluded": "BSD-3-Clause",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseInfoFromFiles": [
+        "BSD-3-Clause"
+      ],
+      "copyrightText": "Copyright (c) 2019 STMicroelectronics. All rights reserved.",
+      "summary": "STMicroelectronics CMSIS Device Peripheral Access Layer for STM32G474xx (stm32g4xx.h, stm32g474xx.h, system_stm32g4xx.h, system_stm32g4xx.c).",
+      "comment": "LF-canonicalized digests for cross-OS reproducibility. Verified __STM32G4_CMSIS_VERSION = V1.2.6 in stm32g4xx.h.",
+      "primaryPackagePurpose": "LIBRARY",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:github/STMicroelectronics/cmsis_device_g4@v1.2.6"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-FreeRTOS-Kernel",
+      "name": "FreeRTOS-Kernel",
+      "versionInfo": "V11.1.0",
+      "supplier": "Organization: Amazon Web Services, Inc.",
+      "originator": "Organization: Real Time Engineers Ltd. / Amazon.com, Inc.",
+      "downloadLocation": "git+https://github.com/FreeRTOS/FreeRTOS-Kernel.git@dbf70559b27d39c1fdb68dfb9a32140b6a6777a0",
+      "homepage": "https://www.freertos.org/",
+      "filesAnalyzed": true,
+      "packageVerificationCode": {
+        "packageVerificationCodeValue": "a1bbe41bf6f252e9fe3bb859acfe6ad18eb7e032"
+      },
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "licenseInfoFromFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+      "summary": "FreeRTOS-Kernel V11.1.0 minimal Cortex-M4F GCC port (ARM_CM4F) and heap_4 allocator subset.",
+      "comment": "LF-canonicalized digests for cross-OS reproducibility. Upstream release V11.1.0, commit dbf70559b27d39c1fdb68dfb9a32140b6a6777a0.",
+      "primaryPackagePurpose": "LIBRARY",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:github/FreeRTOS/FreeRTOS-Kernel@V11.1.0"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-Drivers-CMSIS-Core-Include-cmsis-compiler.h",
+      "fileName": "./23-code-library/Drivers/CMSIS/Core/Include/cmsis_compiler.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "1c25dcc2155b6f7f262f842b989f4f9f53826dff"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "b51963d271c1571ca3463654c76aa7ea50c4eac5d0a2710df10414ac64d9e0f8"
+        }
+      ],
+      "licenseConcluded": "Apache-2.0",
+      "licenseInfoInFiles": [
+        "Apache-2.0"
+      ],
+      "copyrightText": "Copyright (c) 2009-2022 ARM Limited. All rights reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-Drivers-CMSIS-Core-Include-cmsis-gcc.h",
+      "fileName": "./23-code-library/Drivers/CMSIS/Core/Include/cmsis_gcc.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "ec2c038f0436cd878e6897b3307d084d7508665c"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "43bfd1fe69fbbc2ca70aaf7d43cc3e20f16e0c7f66e1bdef9b51af6dc14b2617"
+        }
+      ],
+      "licenseConcluded": "Apache-2.0",
+      "licenseInfoInFiles": [
+        "Apache-2.0"
+      ],
+      "copyrightText": "Copyright (c) 2009-2022 ARM Limited. All rights reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-Drivers-CMSIS-Core-Include-cmsis-version.h",
+      "fileName": "./23-code-library/Drivers/CMSIS/Core/Include/cmsis_version.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "94f4929b9558e0f4333793a9e724021d60ef1452"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "184c19fd3ee73632edf35a0b4d49cd48be75fbf49e6ccb19d9db05fa83bea4b3"
+        }
+      ],
+      "licenseConcluded": "Apache-2.0",
+      "licenseInfoInFiles": [
+        "Apache-2.0"
+      ],
+      "copyrightText": "Copyright (c) 2009-2022 ARM Limited. All rights reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-Drivers-CMSIS-Core-Include-core-cm4.h",
+      "fileName": "./23-code-library/Drivers/CMSIS/Core/Include/core_cm4.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "3d821b2a5baa1104dee5b51cbd40cd4095e342e8"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "f5b63d52dd1557b15ca414cb59c264f595a7b5669db2a5878dffe22f4caedc8c"
+        }
+      ],
+      "licenseConcluded": "Apache-2.0",
+      "licenseInfoInFiles": [
+        "Apache-2.0"
+      ],
+      "copyrightText": "Copyright (c) 2009-2022 ARM Limited. All rights reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-Drivers-CMSIS-Core-Include-mpu-armv7.h",
+      "fileName": "./23-code-library/Drivers/CMSIS/Core/Include/mpu_armv7.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "532b1e3b3a1d0a6b5cb48ba8885b23e96454e930"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "29206b52ee02290ed6f5a5415ebd4187de802cf176d9b3cb844390d8e5571372"
+        }
+      ],
+      "licenseConcluded": "Apache-2.0",
+      "licenseInfoInFiles": [
+        "Apache-2.0"
+      ],
+      "copyrightText": "Copyright (c) 2009-2022 ARM Limited. All rights reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-Drivers-CMSIS-Device-ST-STM32G4xx-Include-stm32g474xx.h",
+      "fileName": "./23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g474xx.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "9ac7fc9e6f9983baaeabbe41e5366393f7e71395"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e7e5851721452c415c627e233d0a617b72ba891718a4f12a495b20dee25d82b0"
+        }
+      ],
+      "licenseConcluded": "BSD-3-Clause",
+      "licenseInfoInFiles": [
+        "BSD-3-Clause"
+      ],
+      "copyrightText": "Copyright (c) 2019 STMicroelectronics. All rights reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-Drivers-CMSIS-Device-ST-STM32G4xx-Include-stm32g4xx.h",
+      "fileName": "./23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g4xx.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "8aa1aa2185321f679dcffa95984e3f4ab5504b37"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "6c074c8813dce7f1349f99d5f941b75276d44e3983618d4f3773de060adc80ff"
+        }
+      ],
+      "licenseConcluded": "BSD-3-Clause",
+      "licenseInfoInFiles": [
+        "BSD-3-Clause"
+      ],
+      "copyrightText": "Copyright (c) 2019 STMicroelectronics. All rights reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-Drivers-CMSIS-Device-ST-STM32G4xx-Include-system-stm32g4xx.h",
+      "fileName": "./23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include/system_stm32g4xx.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "25bd62b675b38e4682ead355dd570db68dc8bd5d"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "36304c07e9cee84064015ebd7ae517af6f466c466c1bbf5e342c57a296601db2"
+        }
+      ],
+      "licenseConcluded": "BSD-3-Clause",
+      "licenseInfoInFiles": [
+        "BSD-3-Clause"
+      ],
+      "copyrightText": "Copyright (c) 2019 STMicroelectronics. All rights reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-templates-Src-system-stm32g4xx.c",
+      "fileName": "./23-code-library/templates/Src/system_stm32g4xx.c",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "eca840fab961327587c8c110d3152e3d76a2c1fa"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "4ce1eb09cbcdeca342c70ed9b26a8886bd3d859ec6393e8993f5e2d97ef5b47b"
+        }
+      ],
+      "licenseConcluded": "BSD-3-Clause",
+      "licenseInfoInFiles": [
+        "BSD-3-Clause"
+      ],
+      "copyrightText": "Copyright (c) 2019 STMicroelectronics. All rights reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-LICENSE.md",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/LICENSE.md",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "218fc8c15534e8840cbff5801582c450c97869ab"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-VERSION.txt",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/VERSION.txt",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "9c2064583722ec80bf13df4097b525c500821827"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "99dc634d3a5ffe3d83f5de11be998c16847dffd68c943e64a7ed7ed456f5ec80"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-event-groups.c",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/event_groups.c",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "1a490cd2efa56dc38b1070685a4532fd3a50ef00"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "b163f5ccf86f49a43f684b1dc96b710ae39d39eb40579a936d5c9796b73c8127"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-CMakeLists.txt",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/CMakeLists.txt",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "dd875a0e6c36cb96c348fd782765d6c56c022027"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "03c610fd7c2096e43dba727fa265591b6f3992dfbe880bc02a94312504c15118"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-FreeRTOS.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/FreeRTOS.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "d30e786036c56ffa9c7ada3ddc1c1a3ee820a342"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "189d9626143b76b1a948a612c051617052f16b3e193324cc96b20e0eb4b8a103"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-StackMacros.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/StackMacros.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "35dab502ca3ca9777c77b5b05084e06e1b6ee486"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "129a0acee3ad207d64127e536ce87a9a3566e9268e05a108790a0c51b0e49891"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-atomic.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/atomic.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "0bc9d6879be9cc1a1d92eb2403b6cbc781526e0a"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "499c8e2d4adec5c1f92d243be90b31f4ff9b74dffda2e9ab02ca47fcae9b96d6"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-croutine.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/croutine.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "8d81ed61bb730af6aa650e7b82b914b1db4d17ac"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "2bb704db1951c9e97b3f3342d191038cb918aac8fee4f06f3ef35c4a651686d0"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-deprecated-definitions.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/deprecated_definitions.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "0fcafc244508401a11f4130ca2b2f26825ce362d"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "157c9b113297981d1944d37826e10955be95ae4158483ddfaf2f287d0e02e024"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-event-groups.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/event_groups.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "a8ffa1b9ebfea39f88c19e506f1b264115784647"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "fb936e87b90f351b9db324b917ed51c7c45ac9d53a585ad2b255351ab975762f"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-list.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/list.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "f13779f0c14c6835283b6a290bafc549a3f39ffd"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e18c1bd8dffddc0608112f3e47f28962dc8df916984e68286bbc9a9fa4f83d7c"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-message-buffer.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/message_buffer.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "0b995f7a1ad10a88dc2bd7949cbdba6935edc71b"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e9a981c053ca946041adf3777eef48a8a79513efd4f2fb26d712d72c72ac25a0"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-mpu-prototypes.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/mpu_prototypes.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "2f2639780b0525d706f9714ae4ccd1a7feff7406"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "c2e3bb81be1bc582717a652d7a06e4de90ff947376d0bc8d3c1030be35fe82af"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-mpu-syscall-numbers.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/mpu_syscall_numbers.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "a0c46e373ba2b48a4586d696b65f67dbc22152bd"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "6701d2eac55e478e90d62ff2947b0d2c7f5157f3b344bcfec47ac80186c57816"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-mpu-wrappers.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/mpu_wrappers.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "774486c7a3b8e1d2584e3144d9b0d369e29a3db2"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "b2dd748823dce76d42a15a7a00e1bad3140eaaf615487716d3eca4763e0ac9bc"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-newlib-freertos.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/newlib-freertos.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "91f41004a56381af389b989632cb765452a8f2b3"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "fe93d3f7609f3897b8d429b7a2c335f03c4b96a47614973880c490a1c6a5152c"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-picolibc-freertos.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/picolibc-freertos.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "296180a38aff083b8ed936e5eb8b97435d969c05"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "7c0640a34b316f53c6b59f97248474bc06f1d543165db9871889a0fd2c4b62b1"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-portable.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/portable.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "8ec5fa57123f01ccbedd8da782ad3414c5123c43"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "973c26ded2da7465cc843cf888d88bfc4e5bf9bb4099b48b131082eb95d35222"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-projdefs.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/projdefs.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "5ccf726c996a7f6e8caa34cd176e49f416a79c8e"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "05308062697b6093618d4b7110dbf125c5b4839072680d3b7239bc2644082347"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-queue.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/queue.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "684255d1207758a179fbb33769f1e80e1c0dd3b5"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "acaf6a17c7eb7106cbf4f0c6ba1438fb881127f9f4dae8085582dea8467659c0"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-semphr.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/semphr.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "4cff4752830dfcb0c5c85b224561fe8f1f8c0d6f"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "454fae279911c48b3636b341c77ecd18a00abc8c50206b9e83cf7d4ae2bccd7f"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-stack-macros.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/stack_macros.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "7a59482b552d04a216f97ceabdd16fc6d0ac5519"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "022a341340eee8fbc21fc7fac1aafa3e6a9a720a24e91ea718af0b46fe843052"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-stdint.readme",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/stdint.readme",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "afa0c1cb2e24e372670ce11b01ce6c6d9e4533cf"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "41e180ee47bba695a9e814ead2905452e42fbadbbe2ea33123411e9768d961fd"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-stream-buffer.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/stream_buffer.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "7e03c662d1ada81c3a7a1d82628f54f937af34fd"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "7c9b13d0f5c52f3b797a791dfb2ef3573a145063b675925397122a056e7c9c44"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-task.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/task.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "cc280f3f4e21c68a4dc6694e1362d1221dba3f02"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "f3a76f99198a537ffce4b7876566502e7156a4fbd5b57b56f213bb7884b772c9"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-timers.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/include/timers.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "a9647ab40fed63cafb71db75e1b476829c5f148f"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "14c35d6830037b75612ad1f60367bd7a8e80122d9c8612ff4eaebaf5917b9924"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-list.c",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/list.c",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "95aa5a49a56b9cec24a71261800ecd98f4c32a02"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e0a4d7a061e86ccb8ee4e08b0c1229c51d8c0a7a6f1c51c45083314f2e42b297"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-portable-GCC-ARM-CM4F-port.c",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/portable/GCC/ARM_CM4F/port.c",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "cea22d5d2ecd6e0a5a9e9a81947dded4cc6366df"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "cb2ce141eb035a890147da04a03dc390504d770d9d3288282ec277b47e92a482"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-portable-GCC-ARM-CM4F-portmacro.h",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/portable/GCC/ARM_CM4F/portmacro.h",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "a156c3c6b2b735176e3e456c54d978e8e3af00b3"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e870959ed8a21b7b13de6db819d4fabddc6a49dfffcbe4d4c931fe82b27ffb2c"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-portable-MemMang-heap-4.c",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/portable/MemMang/heap_4.c",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "c27d581289c142dd71d6b6e5be797afe5e049fac"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "8f7516b63745685937900c41cae21041496e6f4310cbbbb3988500c144f9441a"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-queue.c",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/queue.c",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "69ebc4bd69bfa1401c6e8725f36a581c85d718b1"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e66b73eb6dd7e6b2ccd121ab8d7345ab9698cd655b32171476643284e6dc4f4a"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-stream-buffer.c",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/stream_buffer.c",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "7f9e5da8efc17ed8da38553a517c510d823a82a4"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "f2041618919a475c1438309013149105e5145acac4cdc57f79ee1a6dbe3b98a4"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-tasks.c",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/tasks.c",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "8b450f2d352e70551d8bcfa4b4ef4eb1990fec26"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "6a54883765441f12b45b7f2e36838727e8e0aa872054df30c814c473ee3e4149"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "SPDXID": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-timers.c",
+      "fileName": "./23-code-library/freertos/FreeRTOS-Kernel/timers.c",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "d5b7529301689737f32d77a91962a3087784230b"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "7f91da3b57555aa016c8bc91f90edd348268a8bca42d035d9d53c0e9cbdc40b3"
+        }
+      ],
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ],
+      "copyrightText": "Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Root"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-CMSIS-Core",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-Drivers-CMSIS-Core-Include-cmsis-compiler.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-CMSIS-Core",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-Drivers-CMSIS-Core-Include-cmsis-gcc.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-CMSIS-Core",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-Drivers-CMSIS-Core-Include-cmsis-version.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-CMSIS-Core",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-Drivers-CMSIS-Core-Include-core-cm4.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-CMSIS-Core",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-Drivers-CMSIS-Core-Include-mpu-armv7.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Root",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-Package-CMSIS-Core"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-STM32G4-CMSIS-Device",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-Drivers-CMSIS-Device-ST-STM32G4xx-Include-stm32g474xx.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-STM32G4-CMSIS-Device",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-Drivers-CMSIS-Device-ST-STM32G4xx-Include-stm32g4xx.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-STM32G4-CMSIS-Device",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-Drivers-CMSIS-Device-ST-STM32G4xx-Include-system-stm32g4xx.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-STM32G4-CMSIS-Device",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-templates-Src-system-stm32g4xx.c"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Root",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-Package-STM32G4-CMSIS-Device"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-LICENSE.md"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-VERSION.txt"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-event-groups.c"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-CMakeLists.txt"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-FreeRTOS.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-StackMacros.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-atomic.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-croutine.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-deprecated-definitions.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-event-groups.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-list.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-message-buffer.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-mpu-prototypes.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-mpu-syscall-numbers.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-mpu-wrappers.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-newlib-freertos.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-picolibc-freertos.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-portable.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-projdefs.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-queue.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-semphr.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-stack-macros.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-stdint.readme"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-stream-buffer.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-task.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-include-timers.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-list.c"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-portable-GCC-ARM-CM4F-port.c"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-portable-GCC-ARM-CM4F-portmacro.h"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-portable-MemMang-heap-4.c"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-queue.c"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-stream-buffer.c"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-tasks.c"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-FreeRTOS-Kernel",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-23-code-library-freertos-FreeRTOS-Kernel-timers.c"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Root",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-Package-FreeRTOS-Kernel"
+    }
+  ]
+}

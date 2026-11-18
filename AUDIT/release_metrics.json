@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema_version": "1.0.0",
+  "project": "Embedded C & STM32G474RE Master Learning Hub",
+  "repository": "https://github.com/Guhapriyan-GP/embedded-c-master-learning-hub",
+  "canonical_release_version": "v4.0.0",
+  "validator_version": "v5.0.0",
+  "release_date": "2026-11-18",
+  "target_silicon": {
+    "mcu": "STM32G474RET6",
+    "package": "LQFP64 (64-pin, 52 available I/O)",
+    "core": "ARM Cortex-M4F r0p1 with FPU and MPU",
+    "board": "NUCLEO-G474RE (MB1367 Rev C)",
+    "clock_profiles": [
+      {
+        "profile_id": "PROFILE_A_170MHZ",
+        "name": "170 MHz Range 1 Boost",
+        "source": "16 MHz HSI16 + PLL (M=4, N=85, R=2)",
+        "voltage_range": "Range 1 Boost (PWR_CR5.R1MODE=0)",
+        "flash_wait_states": 4,
+        "hpre_ramp_intermediate": true
+      },
+      {
+        "profile_id": "PROFILE_B_160MHZ",
+        "name": "160 MHz Range 1 Boost",
+        "source": "16 MHz HSI16 + PLL (M=4, N=80, R=2)",
+        "voltage_range": "Range 1 Boost (PWR_CR5.R1MODE=0)",
+        "flash_wait_states": 4,
+        "hpre_ramp_intermediate": true
+      }
+    ],
+    "unbonded_or_absent_peripherals": [
+      "AES (absent on G474 silicon)",
+      "CRYP (absent on G474 silicon)",
+      "FMC / FSMC (unbonded on LQFP64)",
+      "GPIOE (unbonded on LQFP64)",
+      "SPI4 (unbonded on LQFP64)"
+    ]
+  },
+  "concept_inventory": {
+    "source_of_truth_file": "AUDIT/concepts_sot.json",
+    "total_concepts": 350,
+    "total_domains": 27,
+    "status_counts": {
+      "COMPLETE": 265,
+      "PARTIAL": 74,
+      "MISSING": 0,
+      "NEEDS_VERIFICATION": 5,
+      "NOT_APPLICABLE": 6
+    },
+    "dag_integrity": {
+      "cycles": 0,
+      "unknown_prerequisites": 0,
+      "inverted_level_edges": 0
+    }
+  },
+  "curriculum": {
+    "logical_stages": 17,
+    "stage_directories": 17,
+    "stage_elements_evaluated": 221,
+    "stage_elements_pass": 214,
+    "stage_elements_partial": 7,
+    "stage_elements_missing": 0,
+    "compliance_percentage": 96.8,
+    "mastery_tracking_states": 7
+  },
+  "laboratories": {
+    "total_labs": 20,
+    "cross_compiled_baremetal": 18,
+    "freertos_compiled": 1,
+    "host_tested": 1,
+    "standardized_sections_complete": 20,
+    "onboard_hardware_verified": 13,
+    "pending_external_hardware": 6,
+    "host_only": 1
+  },
+  "drivers": {
+    "total_drivers": 12,
+    "c_source_drivers": 10,
+    "header_only_drivers": 2,
+    "disassembly_verified_zero_libatomic": 1,
+    "max_stack_footprint_bytes": 56,
+    "dynamic_allocation_bytes": 0,
+    "documented_attributes_per_driver": 12
+  },
+  "rtos": {
+    "kernel": "FreeRTOS-Kernel",
+    "version": "V11.1.0",
+    "port": "GCC/ARM_CM4F",
+    "onboard_test_suite_passed": 6,
+    "total_onboard_assertions": 6,
+    "response_time_analysis": {
+      "method": "Joseph & Pandya (1986) Iterative Recurrence",
+      "total_utilization_percent": 18.05,
+      "rms_utilization_bound_percent": 75.68,
+      "schedulable": true
+    }
+  },
+  "capstone_projects": {
+    "total_projects": 3,
+    "onboard_verified": 3,
+    "power_sim_mode_default": 1
+  },
+  "video_library": {
+    "total_videos": 70,
+    "live_http_200_verified": 70,
+    "broken_or_unmapped": 0
+  },
+  "host_testing_and_analysis": {
+    "test_suites": 5,
+    "total_assertions": 873,
+    "passed_assertions": 873,
+    "failed_assertions": 0,
+    "gcc_fanalyzer_warnings": 0,
+    "pure_helpers_line_coverage_percent": 96.04,
+    "full_register_mock_line_coverage_percent": 90.07
+  },
+  "security_and_supply_chain": {
+    "sbom_standard": "SPDX 2.3",
+    "sbom_total_packages": 4,
+    "github_actions_sha_pinned": 4,
+    "leaked_stlink_serials": 0,
+    "leaked_filesystem_paths": 0,
+    "leaked_tokens": 0
+  }
+}

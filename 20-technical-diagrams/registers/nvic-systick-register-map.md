@@ -33,7 +33,8 @@
 | `NVIC->STIR` | `0xE00` | WO | Software Trigger Interrupt Register (Base `0xE000EF00`; write IRQ number `0..101`) |
 
 > **FreeRTOS Requirement:** Always call `NVIC_SetPriorityGrouping(0U)` (or `3U` — all 4 bits preemption, 0 bits subpriority) before `vTaskStartScheduler()`, and keep `BASEPRI` (`configMAX_SYSCALL_INTERRUPT_PRIORITY`) aligned to bits `[7:4]`.  
-> **Barrier & Errata Rules (ARM AN321 & ST ES0430 §2.1.3):** After `NVIC_DisableIRQ()`, execute `__DSB(); __ISB();` if subsequent code must not be preempted (`ARM AN321 §4.6`). Inside peripheral ISRs, clear the flag early, read the peripheral register back (`(void)REG;`) to stall until the clear commits across the AHB-to-APB bridge (`ARM AN321 §4.9`), and execute `__DSB();` before return to mitigate **ARM Erratum 838869 / ST ES0430 §2.1.3** (*store immediate overlapping exception return might vector to incorrect interrupt*).
+> **Interrupt Latency Note:** Cortex-M4's 12-cycle stacking and 6-cycle tail-chaining are **ideal ARMv7E-M architectural minimums** (0 WS fetch & 0 contention) — NOT guaranteed physical NUCLEO-G474RE board latency at 160/170 MHz (see [`10-interrupts/README.md` §3.3.1](../../10-interrupts/README.md#331-real-world-stm32g474re-physical-interrupt-latency-contributors-160--170-mhz-stm32g474re-exact)).  
+> **Nuanced 3-Case Barrier & Errata Rule (ARM AN321 & ST ES0430 §2.1.3 — [`10-interrupts/README.md` §3.6](../../10-interrupts/README.md#36-peripheral-flag-clear-synchronization-dummy-readback--__dsb-arm-an321-49-vs-arm-erratum-838869--st-es0430-213-arm-cortex-m4f)):** **(Case 1)** Early APB flag clear in a non-leaf ISR with substantial work before exit uses direct write + `(void)REG;` readback (`ARM AN321 §4.9`; tail `__DSB()` is defensive); **(Case 2)** short/leaf ISR with a trailing buffered store right before `BX LR` at 160/170 MHz uses **both** `(void)REG;` and tail `__DSB();` (`ARM Erratum 838869 / ST ES0430 §2.1.3`); **(Case 3)** core interrupt/system control (`NVIC_DisableIRQ`, `SCB->VTOR`, `MPU->CTRL`) uses **`__DSB(); __ISB();`** (`ARM AN321 §4.6 / §4.11`, no peripheral readback).
 
 ---
 
@@ -84,7 +85,7 @@
 
 ### 6. CMSIS Code Examples: DWT Cycle Profiling & MPU 32-Byte Stack Guard
 
-> **Status:** Statically Reviewed (Not Tested on Physical Hardware).
+> **Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror`; Not Tested on Physical Hardware).
 
 ```c
 #include "stm32g474xx.h"

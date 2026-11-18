@@ -53,7 +53,7 @@ $$f_{\text{UEV}} = \frac{f_{\text{TIMCLK}}}{(\text{PSC} + 1) \times (\text{ARR} 
   - `DTG[7:5] = 111`: $T_{\text{DT}} = (32 + \text{DTG}[4:0]) \times 16\,t_{\text{DTS}}$
 - **Bits [9:8] (`LOCK`):** Write-once register lock level (`00` off, `01`..`11` progressively lock `BDTR`/`CCMR`/`CCER`).
 - **Bit 10 (`OSSI`) / Bit 11 (`OSSR`):** Off-state selection for Idle / Run modes.
-- **Bit 12 (`BKE`) / Bit 13 (`BKP`):** Break input 1 enable & polarity (`0`=active LOW, `1`=active HIGH). Asserting Break clears **`MOE = 0` in hardware** (< 50 ns, zero CPU latency) to prevent shoot-through!
+- **Bit 12 (`BKE`) / Bit 13 (`BKP`):** Break input 1 enable & polarity (`0`=active LOW, `1`=active HIGH). Asserting Break clears **`MOE = 0` in hardware** (< 50 ns, zero CPU involvement) to prevent shoot-through!
 - **Bit 14 (`AOE`):** Automatic Output Enable (`1` = `MOE` auto-re-enables at next UEV after fault clears; keep `0` for latched fault safety!).
 - **Bit 15 (`MOE`):** **Main Output Enable** — MUST be set to `1` on `TIM1`, `TIM8`, `TIM20`, `TIM15`, `TIM16`, `TIM17`, otherwise PWM pins remain silent!
 - **Bits [19:16] (`BKF`) / [23:20] (`BK2F`) / Bit 24 (`BK2E`) / Bit 25 (`BK2P`):** Digital filters and second Break channel (`BKIN2`).
@@ -63,13 +63,13 @@ $$f_{\text{UEV}} = \frac{f_{\text{TIMCLK}}}{(\text{PSC} + 1) \times (\text{ARR} 
 ### 3. Critical Access Semantics (`EGR` & `SR`)
 
 1. **`TIMx->EGR` is Write-Only (WO):** Always write **`TIM2->EGR = TIM_EGR_UG;`** — NEVER `TIM2->EGR |= TIM_EGR_UG;` (reading a WO register is undefined / wastes an RMW cycle).
-2. **`TIMx->SR` is `rc_w0` (Read / Clear by Writing 0):** Writing `1` to a bit has NO effect; writing `0` clears that flag. Always clear an interrupt flag early with **`TIM2->SR = ~TIM_SR_UIF;`** — NEVER `TIM2->SR &= ~TIM_SR_UIF;` (an RMW read-modify-write can accidentally clear another flag that asserted between the read and write!). Follow with **`(void)TIM2->SR; __DSB();`** before ISR exit so the clear commits across the AHB-to-APB bridge (**ARM AN321 §4.9**) and mitigates **ARM Erratum 838869 / ST ES0430 §2.1.3**.
+2. **`TIMx->SR` is `rc_w0` (Read / Clear by Writing 0):** Writing `1` to a bit has NO effect; writing `0` clears that flag. Always clear an interrupt flag early with **`TIM2->SR = ~TIM_SR_UIF;`** — NEVER `TIM2->SR &= ~TIM_SR_UIF;` (an RMW read-modify-write can accidentally clear another flag that asserted between the read and write!). Perform **`(void)TIM2->SR;`** to commit the clear across the AHB-to-APB bridge (**ARM AN321 §4.9**), and add trailing **`__DSB();`** in **Case 2 short/leaf ISRs** ending with a buffered store immediately before `BX LR` (**ARM Erratum 838869 / ST ES0430 §2.1.3** — see the 3-case decision table in [`10-interrupts/README.md` §3.6](../../10-interrupts/README.md#36-peripheral-flag-clear-synchronization-dummy-readback--__dsb-arm-an321-49-vs-arm-erratum-838869--st-es0430-213-arm-cortex-m4f)).
 
 ---
 
 ### 4. CMSIS Code Example: 20 kHz PWM on `TIM2` + Safe ISR Flag Clearing
 
-> **Status:** Statically Reviewed (Not Tested on Physical Hardware).
+> **Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror`; Not Tested on Physical Hardware).
 
 ```c
 #include "stm32g474xx.h"
@@ -106,6 +106,7 @@ void TIM2_PWM_20kHz_Init(void) {
 void TIM2_IRQHandler(void) {
     if (TIM2->SR & TIM_SR_UIF) {
         TIM2->SR = ~TIM_SR_UIF;     /* Atomic rc_w0 flag clear (NEVER '&=') */
+        /* Case 2 (short/leaf ISR before BX LR — see 10-interrupts §3.6): */
         (void)TIM2->SR;             /* APB1 bridge sync readback (ARM AN321 §4.9) */
         __DSB();                    /* Core write-buffer drain & ARM Erratum 838869 (ES0430 §2.1.3) */
     }

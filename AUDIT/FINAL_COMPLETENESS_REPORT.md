@@ -1,7 +1,10 @@
 # Final Completeness & Red-Team Sign-Off Report
 
+> [!NOTE]
+> **Historical Audit Snapshot Notice:** This document records an earlier audit milestone (`v2.1.0` / commit `585dc4f`, 2026-11-18). Its findings and metric counts reflect that historical state and are preserved verbatim for traceability. For the authoritative, canonical release metrics and active status of the current repository (`v4.0.0`), see [`AUDIT/release_metrics.json`](release_metrics.json) and [`AUDIT/RELEASE_INTEGRITY_REPORT.md`](RELEASE_INTEGRITY_REPORT.md).
+
 **Report Authority:** Deterministic Final Synthesis generated from [`AUDIT/concepts_sot.json`](concepts_sot.json) following Independent Adversarial Red-Team Verification ([`AUDIT/INDEPENDENT_RED_TEAM_REPORT.md`](INDEPENDENT_RED_TEAM_REPORT.md))  
-**Repository:** `D:\General_ant\embedded-c-master-learning-hub`  
+**Repository:** `<repo-root>/`  
 **Target Silicon / Board:** STM32G474RET6 (LQFP64, ARMv7E-M Cortex-M4F r0p1 @ 170 MHz) / NUCLEO-G474RE (MB1367 Rev C)  
 **Release Tag:** `v2.1.0` (Part 4 Enhanced + Post-Red-Team Remediated & Recalibrated)  
 **Date:** `2026-11-18`

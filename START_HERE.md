@@ -2,11 +2,14 @@
 
 Welcome to the **Embedded C Master Learning Hub**! If you are opening this repository for the first time on **Windows 11** with **VS Code** and a **ST NUCLEO-G474RE** board, **this is your single starting point**.
 
-> **Engineering Honesty & Verification Status:**
-> - **Starter Template, 4 Reusable Drivers & Labs 01–14, 16–19:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`, zero warnings).
-> - **Host C Unit Tests (`tests/`):** Compile- & Execution-Verified (`gcc 15.2.0`, 113/113 assertions passed).
-> - **Lab 15 (FreeRTOS) & Instructional Snippets:** Statically Reviewed (Not Tested on Physical Hardware).
-> - **Physical Board Status:** Target firmware has **not** yet been run on physical NUCLEO-G474RE silicon by the authors — every register address, bitfield, and schematic note is verified directly against ST `stm32g474xx.h`, `RM0440`, `DS12288`, `PM0214`, `UM2505`, and `ES0430`. Always inspect jumpers (`JP6` vs `JP5`) and voltage limits ($V_{\text{DD}} \le 3.3\text{ V}$) before powering hardware.
+> **Engineering Honesty & Verification Status (`v4.0.0` — Canonical Single Source of Truth: [`AUDIT/release_metrics.json`](AUDIT/release_metrics.json)):**
+> - **Onboard Target Silicon Proof ([`AUDIT/HARDWARE_EVIDENCE_AUDIT.md`](AUDIT/HARDWARE_EVIDENCE_AUDIT.md)):** Tested live on physical **ST NUCLEO-G474RE (`MB1367 Rev C`, `STM32G474RET6` Rev X / ID `0x469`, STLINK-V3E `V3J17M11`, `VDD = 3.28–3.29 V`)**:
+>   - **`9/9` Onboard Silicon Self-Test PASS** (`160 MHz` & `170 MHz` Range 1 Boost, `VDDA = 3288 mV`, `Die Temp = 32.91 °C`, `CORDIC` `9.72×` faster than FPU, `FMAC` `0 LSB` diff, `CRC-32 = 0xCBF43926`, `FDCAN1` 16 B BRS loopback, `MPU` arming + `.noinit` `DIV0` reboot persistence, `IWDG` `6/6` kicks).
+>   - **Official Pinned `FreeRTOS-Kernel V11.1.0` (`23-code-library/freertos/`) — `6/6` Live Onboard PASS** (`ARM_CM4F`, `heap_4`, `PRIGROUP=0`, `BASEPRI=0x50`, Semaphores, Priority Inheritance, Deadlock Guard, `FromISR` + Queue + `fpu_err=0`, Stack HWM, 8 s `[TELEM]`).
+>   - **`10/12` Reusable Drivers & `3/3` Capstone Projects (`19-projects/01..03/`) `ONBOARD HARDWARE TESTED` (`PASS`)** in zero-wire safe modes.
+> - **Starter Template, 12 Reusable Drivers & Labs 01–20:** `18/18` bare-metal labs cross-compiled (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`, zero warnings), Lab 15 FreeRTOS cross-compiled, and Lab 20 host-tested.
+> - **Host C Unit Tests (`tests/`):** **`873/873` passing assertions** across 5 test suites (`gcc 15.2.0`), `96.04%` reachable-line coverage, `0` `-fanalyzer` warnings.
+> - **Deferred Hardware:** Breadboard sensor/instrument setups (`Labs 07, 09, 11, 12, 14, 16`) and external power-stage connections (`Capstone 03` `POWER_SIM_MODE=0`) are honestly documented in [`HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md`](HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md). Always inspect jumpers (`JP6` vs `JP5`) and voltage limits ($V_{\text{DD}} \le 3.3\text{ V}$) before connecting external hardware.
 
 ---
 

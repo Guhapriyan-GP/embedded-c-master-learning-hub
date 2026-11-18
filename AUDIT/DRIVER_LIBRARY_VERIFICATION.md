@@ -97,7 +97,7 @@ All 8 new drivers guard CMSIS hardware sections behind `#if !defined(DRIVER_HOST
 
 ## 5. Physical Hardware Verification Status per Driver (NUCLEO-G474RE Bring-Up)
 
-Executed on physical **NUCLEO-G474RE (`MB1367 Rev C`, ST-LINK SN `003700413335510133383531`, `VDD = 3.28 V`, `COM8`)** via [`HARDWARE_VALIDATION/onboard_selftest/`](../HARDWARE_VALIDATION/onboard_selftest/Src/main.c) and Capstones 01–03 (see [`AUDIT/HARDWARE_VALIDATION_SUMMARY.md`](HARDWARE_VALIDATION_SUMMARY.md) & [`HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md`](../HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md)):
+Executed on physical **NUCLEO-G474RE (`MB1367 Rev C`, ST-LINK SN `<redacted-stlink-sn>`, `VDD = 3.28 V`, `COM8`)** via [`HARDWARE_VALIDATION/onboard_selftest/`](../HARDWARE_VALIDATION/onboard_selftest/Src/main.c) and Capstones 01–03 (see [`AUDIT/HARDWARE_VALIDATION_SUMMARY.md`](HARDWARE_VALIDATION_SUMMARY.md) & [`HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md`](../HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md)):
 
 1. **`clock_g4` — `ONBOARD HARDWARE TESTED` (`PASS`):** Verified `Clock_Init_160MHz()` (`DWT_10ms = 1,599,997` cyc, `PWR->CR5 = 0`, `FLASH->ACR = 0x00040704`) and `Clock_Init_170MHz()` (`DWT_10ms = 1,699,989` cyc). *(Optional `Clock_Init_170MHz_HSE24()` + `PA8` MCO scope check: `EXTERNAL HARDWARE PENDING`.)*
 2. **`gpio_g4` + `exti_g4` — `ONBOARD HARDWARE TESTED` (`PASS`):** Verified `PA5` (`LD2`) atomic `BSRR` set/reset/toggle readback, `PC13` `MODER=00b` & unpressed Active-HIGH `0`, and `EXTI_TriggerSoftware(13)` invoking registered callback 3/3 times (`SYSCFG->EXTICR[3] = 0x00000020`). Note: Physical bring-up caught missing `GPIO_EnableClock()` calls in Capstones 01–03 (fixed and re-verified).

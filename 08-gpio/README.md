@@ -181,7 +181,7 @@ $$t = -R C \ln\!\left(1 - \frac{V_{\text{IT}+}}{V_{\text{DD}}}\right) \approx 1.
 
 ## 8. Production-Grade Bare-Metal C Code Examples
 
-> **Verification Status:** Statically Reviewed against `stm32g474xx.h`, RM0440, and UM2505 (Not Tested on Physical Hardware).
+> **Verification Status:** **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror`)** against `stm32g474xx.h`, RM0440, and UM2505 (Not Tested on Physical Hardware).
 
 ### 8.1 Glitch-Free GPIO Init (`PA5` LD2 + `PC13` Active-HIGH B1) & Sibling-Safe `BSRR` Toggle
 ```c
