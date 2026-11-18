@@ -1,75 +1,103 @@
 /**
- * @file main.c
- * @brief Bare-Metal Embedded C Blinky & Button Input for STM32G474RE (NUCLEO-G474RE).
+ * @file    main.c
+ * @brief   Bare-Metal Embedded C Starter Application for STM32G474RE (NUCLEO-G474RE).
  *
- * Hardware connections on NUCLEO-G474RE:
- * - User LED (LD2, Green) : Pin PA5 (Active HIGH)
- * - User Button (B1, Blue) : Pin PC13 (Active LOW with external pull-up)
+ * Verified Hardware Connections (UM2505 — MB1367 Rev C):
+ *   - User LED (LD2, Green)  : PA5  (Active HIGH, Push-Pull)
+ *   - User Button (B1, Blue) : PC13 (Active HIGH with external pull-down resistor!)
  *
- * Direct register-level programming: NO HAL, NO peripheral libraries.
+ * Features Demonstrated:
+ *   - Verified 170 MHz Range 1 Boost Mode clock initialization (RM0440 Section 6.1.5)
+ *   - Cortex-M4 DWT->CYCCNT deterministic millisecond delays
+ *   - Explicit STM32G4 GPIO configuration (clearing 0b11 Analog reset default)
+ *   - Atomic BSRR LED control (ISR-safe)
+ *   - Persistent .noinit HardFault crash-log readiness check on boot
+ *   - Zero-wait-state .ccmram execution verification helper
  */
 
+#include "clock_g4.h"
+#include "fault_handler.h"
+#include "gpio_g4.h"
+#include "ring_buffer.h"
 #include "stm32g474xx.h"
 
-/* Software delay loop */
-static void delay(volatile uint32_t count) {
-    while (count--) {
-        __asm__("nop");
-    }
+#define LD2_PIN     5U
+#define B1_PIN      13U
+#define BLINK_FAST  100U
+#define BLINK_SLOW  500U
+
+/* Example zero-wait-state function placed in CCM-SRAM (0x10000000) to verify
+ * .ccmram Flash-to-CCMRAM copy loop in Reset_Handler and CCMRAM (xrw) flags. */
+__attribute__((section(".ccmram"), noinline))
+static uint32_t compute_blink_period_ms(bool button_pressed) {
+    return button_pressed ? BLINK_FAST : BLINK_SLOW;
 }
 
 int main(void) {
-    /* -------------------------------------------------------------
-     * 1. Enable AHB2 Peripheral Clocks:
-     *    - Bit 0: GPIOAEN (for PA5 / Green User LED LD2)
-     *    - Bit 2: GPIOCEN (for PC13 / Blue User Button B1)
-     * ------------------------------------------------------------- */
-    RCC->AHB2ENR |= (RCC_AHB2ENR_GPIOAEN | RCC_AHB2ENR_GPIOCEN);
+    /* 1. Enable MemManage / BusFault / UsageFault + Divide-by-Zero trap */
+    FaultHandler_EnableDetailedFaults(true);
 
-    /* Small delay to allow peripheral clock to stabilize */
-    delay(10);
+    /* If recovering from a prior HardFault, keep g_crash_log inspectable in GDB
+     * (or clear after reporting over UART/SWO in production telemetry). */
+    volatile bool had_prior_crash = FaultHandler_HasValidCrashLog();
+    (void)had_prior_crash;
 
-    /* -------------------------------------------------------------
-     * 2. Configure PA5 as General Purpose Output:
-     *    - GPIOA->MODER bits [11:10]:
-     *      00: Input, 01: Output, 10: Alternate Function, 11: Analog
-     * ------------------------------------------------------------- */
-    GPIOA->MODER &= ~(0x3UL << (5 * 2)); // Clear bits 11:10
-    GPIOA->MODER |=  (0x1UL << (5 * 2)); // Set bit 10 (Output mode)
+    /* 2. Switch system clock to 170 MHz Range 1 Boost Mode (RM0440 Section 6.1.5) */
+    (void)Clock_Init_170MHz();
+    Clock_DWT_Init();
 
-    /* Output type: Push-Pull (Bit 5 = 0) */
-    GPIOA->OTYPER &= ~(1UL << 5);
+    /* 3. Enable GPIOA and GPIOC AHB2 peripheral clocks */
+    GPIO_EnableClock(GPIOA);
+    GPIO_EnableClock(GPIOC);
 
-    /* Output speed: Low speed (Bits 11:10 = 00) */
-    GPIOA->OSPEEDR &= ~(0x3UL << (5 * 2));
+    /* 4. Configure PA5 (LD2 Green LED) as Push-Pull Output, Low Speed, No Pull */
+    const gpio_pin_config_t led_cfg = {
+        .pin   = LD2_PIN,
+        .mode  = GPIO_MODE_OUTPUT,
+        .otype = GPIO_OTYPE_PUSHPULL,
+        .speed = GPIO_SPEED_LOW,
+        .pull  = GPIO_PULL_NONE,
+        .af    = 0U
+    };
+    (void)GPIO_ConfigPin(GPIOA, &led_cfg);
 
-    /* No pull-up / pull-down (Bits 11:10 = 00) */
-    GPIOA->PUPDR &= ~(0x3UL << (5 * 2));
+    /* 5. Configure PC13 (B1 User Button) explicitly as Digital Input (MODER = 00).
+     *    CRITICAL: STM32G4 resets GPIOC->MODER to 0xFFFFFFFF (Analog 11).
+     *    UM2505: NUCLEO-G474RE B1 has an external pull-down and is ACTIVE-HIGH! */
+    const gpio_pin_config_t btn_cfg = {
+        .pin   = B1_PIN,
+        .mode  = GPIO_MODE_INPUT,
+        .otype = GPIO_OTYPE_PUSHPULL,
+        .speed = GPIO_SPEED_LOW,
+        .pull  = GPIO_PULL_NONE,
+        .af    = 0U
+    };
+    (void)GPIO_ConfigPin(GPIOC, &btn_cfg);
 
-    /* -------------------------------------------------------------
-     * 3. Configure PC13 as Digital Input:
-     *    - GPIOC->MODER bits [27:26]:
-     *      00: Input mode
-     * ------------------------------------------------------------- */
-    GPIOC->MODER &= ~(0x3UL << (13 * 2)); // Bits 27:26 = 00 (Input)
-    GPIOC->PUPDR &= ~(0x3UL << (13 * 2)); // Floating (board has hardware pull-up)
+    /* Optional ring-buffer smoke initialization (demonstrates reusable driver linkage) */
+    static uint8_t rb_storage[32];
+    ring_buffer_t event_rb;
+    (void)rb_init(&event_rb, rb_storage, (uint32_t)sizeof(rb_storage));
 
-    /* -------------------------------------------------------------
-     * 4. Super Loop: Blink LED and check Button
-     * ------------------------------------------------------------- */
+    /* 6. Super Loop: Read Active-HIGH B1 (PC13) and toggle LD2 (PA5) atomically via BSRR */
     while (1) {
-        /* Check if User Button B1 (PC13) is pressed (Active LOW) */
-        uint32_t is_button_pressed = !(GPIOC->IDR & (1UL << 13));
+        /* Active-HIGH per UM2505: pressed when IDR bit 13 == 1 */
+        bool is_button_pressed = ((GPIOC->IDR & (1UL << B1_PIN)) != 0UL);
+        uint32_t half_period_ms = compute_blink_period_ms(is_button_pressed);
 
-        uint32_t blink_delay = is_button_pressed ? 100000UL : 500000UL;
+        (void)rb_push(&event_rb, is_button_pressed ? 1U : 0U);
+        if (rb_count(&event_rb) >= 16U) {
+            uint8_t sample = 0U;
+            (void)rb_pop(&event_rb, &sample);
+        }
 
-        /* Turn LED ON (Set PA5 via BSRR bit 5) */
-        GPIOA->BSRR = (1UL << 5);
-        delay(blink_delay);
+        /* Atomic LED ON via BSRR bit 5 */
+        GPIO_SetPin(GPIOA, LD2_PIN);
+        Clock_DelayMs(half_period_ms);
 
-        /* Turn LED OFF (Reset PA5 via BSRR bit 21 [5 + 16]) */
-        GPIOA->BSRR = (1UL << (5 + 16));
-        delay(blink_delay);
+        /* Atomic LED OFF via BSRR bit 21 (5 + 16) */
+        GPIO_ResetPin(GPIOA, LD2_PIN);
+        Clock_DelayMs(half_period_ms);
     }
 
     return 0;

@@ -1,0 +1,57 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Firmware (Debug)",
+            "type": "shell",
+            "command": "make BUILD_TYPE=debug",
+            "options": {
+                "cwd": "${workspaceFolder}/23-code-library/templates"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "Build Firmware (Release)",
+            "type": "shell",
+            "command": "make BUILD_TYPE=release",
+            "options": {
+                "cwd": "${workspaceFolder}/23-code-library/templates"
+            },
+            "group": "build",
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "Clean Firmware",
+            "type": "shell",
+            "command": "make clean",
+            "options": {
+                "cwd": "${workspaceFolder}/23-code-library/templates"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Flash via OpenOCD (STLINK-V3E)",
+            "type": "shell",
+            "command": "make flash-openocd",
+            "options": {
+                "cwd": "${workspaceFolder}/23-code-library/templates"
+            },
+            "dependsOn": ["Build Firmware (Debug)"],
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Host Unit Tests",
+            "type": "shell",
+            "command": "make test",
+            "options": {
+                "cwd": "${workspaceFolder}/tests"
+            },
+            "group": "test",
+            "problemMatcher": ["$gcc"]
+        }
+    ]
+}

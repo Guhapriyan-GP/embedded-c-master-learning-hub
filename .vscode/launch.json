@@ -1,0 +1,52 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug STM32G474RE (OpenOCD + STLINK-V3E)",
+            "cwd": "${workspaceFolder}/23-code-library/templates",
+            "executable": "${workspaceFolder}/23-code-library/templates/build/firmware.elf",
+            "request": "launch",
+            "type": "cortex-debug",
+            "runToEntryPoint": "main",
+            "servertype": "openocd",
+            "device": "STM32G474RE",
+            "interface": "swd",
+            "configFiles": [
+                "interface/stlink.cfg",
+                "target/stm32g4x.cfg"
+            ],
+            "svdFile": "${workspaceFolder}/23-code-library/Drivers/SVD/STM32G474.svd",
+            "preLaunchTask": "Build Firmware (Debug)",
+            "showDevDebugOutput": "parsed",
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 4
+            },
+            "swoConfig": {
+                "enabled": true,
+                "cpuFrequency": 170000000,
+                "swoFrequency": 2000000,
+                "source": "probe",
+                "decoders": [
+                    {
+                        "label": "ITM Port 0",
+                        "type": "console",
+                        "port": 0,
+                        "showOnStartup": true
+                    }
+                ]
+            },
+            "rttConfig": {
+                "enabled": false,
+                "address": "auto",
+                "decoders": [
+                    {
+                        "label": "RTT Ch0",
+                        "port": 0,
+                        "type": "console"
+                    }
+                ]
+            }
+        }
+    ]
+}

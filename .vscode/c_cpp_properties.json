@@ -1,0 +1,28 @@
+{
+    "configurations": [
+        {
+            "name": "STM32G474RE-GCC",
+            "includePath": [
+                "${workspaceFolder}/23-code-library/templates/Inc",
+                "${workspaceFolder}/23-code-library/Drivers",
+                "${workspaceFolder}/23-code-library/Drivers/CMSIS/Core/Include",
+                "${workspaceFolder}/23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include"
+            ],
+            "defines": [
+                "STM32G474xx",
+                "__FPU_PRESENT=1",
+                "__FPU_USED=1"
+            ],
+            "compilerPath": "arm-none-eabi-gcc",
+            "compilerArgs": [
+                "-mcpu=cortex-m4",
+                "-mthumb",
+                "-mfpu=fpv4-sp-d16",
+                "-mfloat-abi=hard"
+            ],
+            "cStandard": "c11",
+            "intelliSenseMode": "gcc-arm"
+        }
+    ],
+    "version": 4
+}

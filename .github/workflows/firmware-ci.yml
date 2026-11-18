@@ -1,0 +1,73 @@
+name: Firmware & Unit Test CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  firmware-build:
+    name: Build STM32G474RE Firmware (Debug & Release)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install ARM GNU Toolchain & Make
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make
+
+      - name: Verify toolchain version
+        run: arm-none-eabi-gcc --version
+
+      - name: Build Debug Profile (-Og -g3)
+        working-directory: 23-code-library/templates
+        run: |
+          make clean
+          make BUILD_TYPE=debug
+          arm-none-eabi-readelf -S build/firmware.elf
+          arm-none-eabi-size -A build/firmware.elf
+
+      - name: Verify .isr_vector is exactly 472 bytes and 512-byte aligned
+        working-directory: 23-code-library/templates
+        run: |
+          python3 -c '
+          import subprocess, re, sys
+          out = subprocess.check_output(["arm-none-eabi-readelf", "-SW", "build/firmware.elf"], text=True)
+          m = re.search(r"\.isr_vector\s+PROGBITS\s+([0-9a-f]+)\s+[0-9a-f]+\s+([0-9a-f]+)\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)", out)
+          assert m, f".isr_vector section not found:\n{out}"
+          addr, size, align = int(m.group(1), 16), int(m.group(2), 16), int(m.group(3))
+          print(f".isr_vector addr=0x{addr:08x} size={size} align={align}")
+          assert size == 472, f"Expected 472 bytes, got {size}"
+          assert align >= 512 and (addr % 512) == 0, f"Expected >=512 alignment, got align={align}, addr=0x{addr:x}"
+          '
+
+      - name: Build Release Profile (-O2 -g)
+        working-directory: 23-code-library/templates
+        run: |
+          make clean
+          make BUILD_TYPE=release
+          arm-none-eabi-size -A build/firmware.elf
+
+  host-unit-tests:
+    name: Host Unit Tests (C Foundations & Ring Buffer)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compile and execute host unit tests
+        working-directory: tests
+        run: make test
+
+  repo-validation:
+    name: Repository Validation Script
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run repository validator
+        run: python3 scripts/validate_repo.py
