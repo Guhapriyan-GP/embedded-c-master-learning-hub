@@ -80,3 +80,34 @@ Following Part 4 remediation, an independent adversarial audit ([`AUDIT/INDEPEND
 | **`LOW-01`** | **LOW** | `21-reference-library/industry-standards-misra-barr.md` L21, L59 | Misclassified MISRA C:2012/2023 Rule 11.4 as `Required` (official classification is **`Advisory`**). | Corrected L21 and L59 to **`Advisory`** (noting safety plans often elevate it via formal project policy). |
 | **`LOW-02`** | **LOW** | `20-technical-diagrams/registers/spi-i2c-register-map.md` L117–121 | `I2C1_ReadReg()` Phase 2 read loop omitted `I2C_ISR_NACKF` early exit. | Added `I2C_ISR_NACKF` check and `I2C_ICR_NACKCF` clear in Phase 2 read loop. |
 | **`LOW-03`** | **LOW** | `AUDIT/concepts_sot.json` & derived `AUDIT/*.md` | Machine-parsed `concept` and `explanation` strings retained raw quad-asterisk and numbered bold heading artifacts. | Stripped `100%` of raw Markdown noise across all `350` concepts (`0` remaining) and deterministically regenerated all dependent audit reports. |
+
+---
+
+## 4. Phase 5 Complete Remediation & Physical NUCLEO-G474RE Silicon Verification (`v3.0.0`)
+
+During Phase 5 Complete Remediation (Agents 1–10 on branch `feature/complete-remediation`), every software subsystem was expanded and **real physical hardware validation** was executed on **ST NUCLEO-G474RE (`MB1367 Rev C`, `STM32G474RET6` Rev X / ID `0x469`, STLINK-V3E `V3J17M11`, `COM8` `115200 8N1`, `VDD = 3.28–3.29 V`)**.
+
+### 4.1 Real-Silicon Defects Caught & Resolved by Physical Hardware Bring-Up (Agent 4)
+
+| Bug ID | Severity | File(s) | Authentic Real-Silicon Symptom & Root Cause | Ground-Truth Verified Fix & Proof |
+|---|---|---|---|---|
+| **`SILICON-01`** | **CRITICAL** | `19-projects/01-beginner-smart-instrument-panel/Src/main.c`, `02-intermediate-dma-data-logger/Src/main.c`, `03-advanced-freertos-digital-power-controller/Src/main.c` | Passed strict `-Wall -Wextra -Werror` compilation and flashed cleanly (`SCB->CFSR = 0x00000000`), yet **`COM8` output `0` bytes**! Root cause: `23-code-library/Drivers/gpio_g4.c` requires callers to invoke `GPIO_EnableClock(GPIOx)` before `GPIO_Config*()`, and all 3 capstones omitted `GPIO_EnableClock()`, leaving `RCC->AHB2ENR` port clocks disabled and `PA2` (`USART2_TX`) stuck in STM32G4 `11b` Analog reset mode. | Added explicit `GPIO_EnableClock()` calls (`GPIOA`/`GPIOB`/`GPIOC`) to all 3 capstones, rebuilt cleanly (`0` warnings / `0` errors), re-flashed, and verified live `COM8` telemetry & interactive UART RX across **3 / 3 capstones** ([`AUDIT/HARDWARE_VALIDATION_SUMMARY.md`](HARDWARE_VALIDATION_SUMMARY.md)). |
+| **`SILICON-02`** | **MEDIUM** | `HARDWARE_VALIDATION/onboard_selftest/Src/main.c` | Initial self-test passed Tests 1–8A and triggered `sdiv` divide-by-zero, entering `fault_handler.c`'s `HardFault_Handler_C()` (verified live via SWD `STM32_Programmer_CLI -r32 0x20002398`: `magic=0xFA017C0D, cfsr=0x02000000`) which intentionally halts in `while (1)` for GDB inspection. Root cause: GNU `ld --wrap=HardFault_Handler_C` only intercepts undefined symbol references, not intra-object weak definitions in `startup_stm32g474re.c`. | Overrode the weak `UsageFault_Handler` vector in `onboard_selftest/Src/main.c` with a naked MSP/PSP trampoline populating `fault_handler.c`'s `.noinit` `g_crash_log` and executing `NVIC_SystemReset()` (leaving `fault_handler.c` untouched!), yielding automated Phase 1 -> Reboot -> Phase 2 verification (`9/9 PASS`). |
+
+### 4.2 Quantitative Phase 5 Verification Summary (Agents 1–10)
+
+1. **180 `_Static_assert` Register-Map Audit & Dual Clock Verification (Agent 2 + Agent 4):**
+   - Agent 2 re-audited all **16** STM32G474RE peripheral register maps (`20-technical-diagrams/registers/*.md`) against vendored `stm32g474xx.h` / `core_cm4.h` via **180 compile-time `_Static_assert` offset/mask checks** and added complete compile-verified implementations for all 10 hardware/system previously-`MISSING` concepts plus dual **`170 MHz` and `160 MHz` Range 1 Boost** clock profiles (`RM0440 §6.1.5`).
+   - Agent 4 physically verified **BOTH** `160 MHz` (`DWT_10ms = 1,599,997` cyc, `-0.0002%`, `USART2_BRR = 1389`) and `170 MHz` (`DWT_10ms = 1,699,989` cyc, `-0.0006%`, `USART2_BRR = 1476`) with `PWR->CR5 = 0x00000000` (`R1MODE=0`) and `FLASH->ACR = 0x00040704` (`4 WS`) on real NUCLEO-G474RE silicon.
+2. **C11 & Embedded C Completion (Agent 1):**
+   - Resolved `C-LIB-001` (Newlib `_reent`, recursive `__malloc_lock`/`__malloc_unlock`, `strtok_r`) and `FW-DRV-003` (X-Macro/`static inline`/`_Generic` zero-overhead static dispatch vs vtable `-O2` disassembly), plus **18 / 18 compile-verified C11 examples** across `02-c-fundamentals/` and `03-embedded-c/` (`arm-none-eabi-gcc 14.3.1 -Werror`).
+3. **12-Driver Library & Official Pinned `FreeRTOS-Kernel V11.1.0` (Agents 5, 6 & 4):**
+   - Expanded `23-code-library/Drivers/` from 4 to **12 drivers** (`0` warnings debug/release & full no-GC link); **10 / 12 drivers** + `i2c_g4` `NACKF` physically verified live on silicon (`spi_g4` & `i2c_g4` external slave remain `EXTERNAL HARDWARE PENDING`).
+   - Vendored official `FreeRTOS-Kernel V11.1.0` (`SHA dbf70559b27d...`, `GCC/ARM_CM4F`, `heap_4.c`); verified `SVC`/`PendSV`/`SysTick` vector bindings via `arm-none-eabi-nm`/`objdump` AND passed **`6/6` live onboard tests** + 8 s telemetry on NUCLEO-G474RE (`fpu_err=0`, `heap=21104/21104`).
+4. **Expanded Host Testing, Real `gcov` Coverage & Static Analysis (Agent 7):**
+   - Expanded `tests/` from 113 to **574 passing host assertions** across 4 suites (`test_c_foundations` 116 + `test_ring_buffer` 104 + `test_drivers_math` 275 + `test_gpio_mock` 79), measuring **95.97%** aggregate `gcov -b` line coverage (**100%** of reachable lines; 9/10 drivers at 100%) and **98.06%** branch execution.
+   - Executed both host `gcc 15.2.0 -fanalyzer` and ARM `arm-none-eabi-gcc 14.3.1 -fanalyzer` locally with **0 warnings / 0 findings**; added `Doxyfile`, `.clang-tidy`, and 5-job CI pipeline.
+5. **Expanded Video Library & Learner Onboarding (Agents 8 & 10):**
+   - Expanded `22-video-library/video-database.csv` from 50 to **70 / 70 live HTTP 200 verified videos** (`playabilityStatus: OK`, **93.5%** / `29/31` domain parity); delivered `START_HERE.md` + 7 `LEARNERS/` handbooks.
+6. **Hardware Restoration & Honest Deferred Boundary:**
+   - Physical NUCLEO-G474RE was cleanly restored to the 170 MHz blinky template (`23-code-library/templates/build/firmware.elf`, `3.28 V`, `Rev X`, zero option-byte changes); all deferred external hardware and 5 bench-instrument `NEEDS_VERIFICATION` measurements are archived in [`HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md`](../HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md).

@@ -318,3 +318,244 @@ Before Part 4 / `FINAL_COMPLETENESS_REPORT.md` can be honestly signed off, the f
 8. **[MEDIUM]** Fix `clock_g4.c`/`clock_g4.h` (`PLLPEN`/`PLLQEN` + DWT guard), `05-toolchain-and-debugging/README.md` prototypes, RM0440 Ch. 28/37 citations, `RNG` error-recovery & RCC readbacks, and off-by-one stage numbers / stale `KNOWN_LIMITATIONS.md` L57 — **[MED-01..06]**.
 9. **[LOW]** Fix MISRA Rule 11.4 (`Advisory`), `I2C1_ReadReg()` Phase 2 `NACKF`, and Markdown noise in `concepts_sot.json` — **[LOW-01..03]**.
 10. **[CI GATE]** Extend `scripts/validate_repo.py` to (a) compile-test all C blocks in `20-technical-diagrams/registers/*.md` and `18-practical-laboratory/lab-01..14,16..19`, and (b) assert `0` DAG cycles AND `0` inverted difficulty-level prerequisite edges in `AUDIT/concepts_sot.json`.
+
+
+---
+---
+
+# Part II: Phase 5 Complete Remediation Independent Red-Team Audit (Agent 11 — 2026-11-18)
+
+> **Historical Preservation Notice:** Part I above (Lines 1–320) is preserved verbatim as the historical Part 4 Agent 10 audit baseline. Part II below is an independent, adversarial Phase 8 verification of all Phase 5 Complete Remediation deliverables (Agents 0–10 & Worker S).
+
+**Auditor Role:** Agent 11 — Independent Technical Red-Team Auditor (Phase 8 Adversarial Gate)  
+**Audit Date:** `2026-11-18`  
+**Target Repository:** `D:\General_ant\embedded-c-master-learning-hub` (`feature/complete-remediation`)  
+**Immutable Backup Verified:** `D:\General_ant\embedded-c-master-learning-hub-backup` (`565` files, `5,734,859` bytes)  
+**Primary Ground-Truth Authorities Used:**
+- Vendored ST CMSIS `23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g474xx.h` & ARM CMSIS `core_cm4.h`
+- ST RM0440 (STM32G4 Reference Manual), DS12288 (STM32G474 Datasheet), UM2505 (NUCLEO-G474RE User Manual), ES0430 (STM32G474 Errata), PM0214 (Cortex-M4 Programming Manual), NXP UM10204 (I2C-bus Spec), ISO C11, LCOV 2.0 documentation
+- Empirical local execution: `arm-none-eabi-gcc 14.3.1` (`27` CMSIS `_Static_assert` checks, `24` newly added stage C11 blocks, `-fanalyzer` across all 12 drivers + starter template, full `make clean all` across `templates`, `freertos`, and Capstones `01`–`03`), `gcc 15.2.0` (`574/574` host assertions + `-fanalyzer`), `python scripts/validate_repo.py` (`16 PASS`), independent SHA-256 backup verification, full secret/PII scan, and programmatic `concepts_sot.json` v2.0.0 DAG + hardware-evidence audit.
+
+---
+
+## II.1 Executive Verdict
+
+**PHASE 8 RED-TEAM VERDICT: CONDITIONAL HOLD — 0 CRITICAL, 4 HIGH, 5 MEDIUM, 3 LOW.**
+
+### What Genuinely Improved & Passed Adversarial Verification
+1. **All Part 4 CRITICAL & Compile-Error Defects Are Confirmed Fixed:**
+   - `[CRIT-01]` (`fault_handler.c` + `startup_stm32g474re.c`): `MemManage_Handler`, `BusFault_Handler`, `UsageFault_Handler` now alias `Fault_Trampoline`; `stacked_frame` is bounds-checked against SRAM1+SRAM2 (`0x20000000..0x20017FE0`) and CCM-SRAM (`0x10000000..0x10007FE0`); `Default_Handler` checks `CoreDebug->DHCSR.C_DEBUGEN` before `bkpt #0`.
+   - `[CRIT-02]` (`opamp-comp-vrefbuf-register-map.md`): Fixed `OPAMP_CSR_PGGAIN_Pos`/`OPAMP_CSR_OPAMPINTEN`/`OPAMP_CSR_OPAMPxEN` and `COMP_CSR_BLANKING[21:19]` — now compiles cleanly with `0` warnings.
+   - `[HIGH-01..04]` (`09-timers/README.md` `TIM1_AF1_BKCMP1E`, `lab-19` `SCnSCB->ACTLR`, `lab-12` `0x70811021` + `PA15`/`PB7`, `concepts_sot.json` DAG `0` cycles / `0` unknown prereqs / `0` inverted-level edges): all independently verified FIXED.
+2. **Real Physical NUCLEO-G474RE Hardware Validation Honesty (`PASS` on External-Hardware Boundaries):**
+   - ZERO external-hardware experiments (`Lab 07`, `09`, `11`, `12`, `14` `JP6` ammeter, `16` external scope, external OLED/pot/power-stage) are falsely claimed as physically verified.
+   - ZERO destructive or Flash option-byte (`OPTR`/RDP/WRP/PCROP/SEC/BOOT0) modifications were executed.
+   - Real silicon bring-up authentically caught and fixed missing `GPIO_EnableClock()` calls across all 3 Capstones (`19-projects/01..03/Src/main.c`).
+3. **12 Previously `MISSING` Concepts Resolved & Compile-Verified (`PASS`):**
+   - All `12` sections (`C-LIB-001`, `FW-DRV-003`, `GPIO-FMP-001`, `TIM-DMA-001`, `COMM-LP-001`, `COMM-CAN-002`, `COMM-USB-002`, `MEM-OB-001`, `SEC-BOOT-002`, `TOOL-LD-004`, `TOOL-DBG-004`, `HWSW-ANA-001`) contain substantive theory and `24/24` tested C11 code blocks compile cleanly with `arm-none-eabi-gcc 14.3.1 -std=c11 -O2 -Wall -Wextra -Werror`.
+4. **Local Backup Integrity (`100% VERIFIED — UNMODIFIED`), Secret Scan (`0 SECRETS / 0 PII`), and Git Artifact Hygiene (`0 UNTRACKED ARTIFACTS`).**
+
+### Why Conditional Hold Is Issued (4 Mandatory HIGH Fixes Before Final Commit & Push)
+
+| Severity | Count | Summary of Verified Phase 8 Defects |
+|---|---:|---|
+| **CRITICAL** | **0** | None. (Both Part 4 CRITICAL traps are confirmed resolved.) |
+| **HIGH** | **4** | (1) **Guaranteed GitHub Actions CI failures** in `.github/workflows/firmware-ci.yml`: `clang-format --dry-run --Werror` violates `.clang-format` on **317** aligned `=`, **102** lines >100 cols, and **12** single-line `case` statements; plus `lcov --rc lcov_branch_coverage=1` breaks under LCOV 2.0 on `ubuntu-latest` (Ubuntu 24.04). (2) **Capstone Project 03 `POWER_SIM_MODE=0` safety/correctness trap**: `vControlLoopTask` still runs the fake software `buck_sim_step(&plant)` open-loop with zero ADC feedback even when compiled as `"EXTERNAL HARDWARE POWER STAGE"`. (3) **`i2c_g4.h` `TIMINGR` overclocking & `PB8-BOOT0` doc regression**: `170MHz_400kHz` (`0x30B21F3B` -> `437 kHz` max / `412 kHz` typ, `t_SCLDEL=282 ns < 400 ns`), `160MHz_400kHz` (`0x30B21D38` -> `435 kHz` max), and `16MHz_100kHz` (`0x00423F4F` -> `107 kHz` max, `t_SCLDEL=312.5 ns` leaving only `62.5 ns` rise-time margin!) violate NXP UM10204 & RM0440 §39.4.9, contradicting Lab 12's spec-compliant `0x70811021`/`0x70710F1F`; and L16–18 contradicts the `PB8-BOOT0` pull-up warning. (4) **`ONBOARD_HARDWARE_TESTED` & `COMPLETE` over-promotion in `AUDIT/concepts_sot.json` v2.0.0**: **~16–20 concepts** marked `ONBOARD_HARDWARE_TESTED` (out of `140`) were never executed or measured on silicon (`0` hits in all 6 flashed images for `WFI`/`WFE`, `TIM6`/`TIM7`, `HSE`/`CSS`/`LSE`/`MCO`, `ITM`/`TPIU` SWO, `nPRIV`/security, `USART` ORE/FE/NE/PE error injection; plus unexercised `MPU` violation, `B1` debouncing, `BDTR`/`PWM`/`DAC`/`COMP` measurements); and `PROF-SA-002`/`PROF-DOC-001` were promoted to `COMPLETE` despite never being executed locally and `.clang-format` failing. |
+| **MEDIUM** | **5** | (1) `gpio_g4.c` L137 `GPIO_LockPin()` returns false-positive `true` when attempting to lock a 2nd pin on an already-locked port. (2) Five subtle driver edge-case / RM0440 compliance bugs (`tim_g4.c` L57 `0xFFFFFFFF` 32-bit ARR wrap to `0%`, `usart_g4.c`/`i2c_g4.c` ignoring `RCC->CCIPR`, `adc_g4.c` L70 shared `CCR` write & L102 uncleaned `DMAEN`, `i2c_g4.c` L81 missing `TXDR` flush on NACK, `spi_g4.c` L15 integer floor-division SCK overshoot). (3) `onboard_selftest/Src/main.c` Test 8A arms MPU Region 7 but never triggers an actual MPU `MemManage` fault, and overrides `UsageFault_Handler` (bypassing `fault_handler.c` in the final 9/9 run). (4) Cross-document drift (`lab-19` L308 still says `Queued for Physical Execution`; `freertos/Src/main.c` L229 uses `rc_w0` RMW `TIM2->SR &= ~TIM_SR_UIF`; `rtos_bsp.c` L132 leaves `RCC_CSR_RMVF` set). (5) `19-projects/03/Inc/power_ctrl.h` L123/L137 implementation-defined signed right-shift on negative `int32_t`. |
+| **LOW** | **3** | (1) `.gitignore` omits `*.gcda`, `*.gcno`, `*.gcov`, `*.info`. (2) `startup_stm32g474re.c` L393 has unguarded `bkpt #0` if `main()` returns standalone. (3) Local workspace path `D:\General_ant\...` appears in learner-facing `LEARNERS/BEGINNER_SETUP_WINDOWS11.md` (and 6 internal audit/backup docs; zero PII/username). |
+
+---
+
+## II.2 Independent Primary-Source Verification Matrix (22 Deep Phase 8 Checks)
+
+| # | Target File & Lines | Technical Claim / Artifact Independently Verified | Primary Ground Truth / Tool | Result |
+|---:|---|---|---|---|
+| **01** | `23-code-library/Drivers/clock_g4.c` L27–253 | `Clock_Init_160MHz()` (`N=80`), `Clock_Init_170MHz()` (`N=85`), `HSE24` (`M=6`), `PWR->CR5`, `FLASH->ACR` 4 WS, `HPRE=/2 -> >=1 us -> /1`, `PLLPEN`/`PLLQEN`, auto-DWT guard, `SystemCoreClockUpdate()` (`HSE_VALUE=24 MHz`) | RM0440 §6.1.5, Table 9, `stm32g474xx.h`, `system_stm32g4xx.c` L81 | **PASS** |
+| **02** | `23-code-library/Drivers/exti_g4.c` L9–155 | `SYSCFG->EXTICR[pin/4]` nibble shift, `SYSCFGEN` readback, `EXTI->PR1 = mask; __DSB();` (ES0430 §2.1.3), `EXTI_DispatchRange()` | RM0440 Ch. 10 & 15, ES0430 §2.1.3, `stm32g474xx.h` | **PASS** |
+| **03** | `23-code-library/Drivers/tim_g4.c` L9–258 | `TIM2/3/6/7` APB1 `TIMCLK` math, `ARPE`/`OCxPE`, `EGR=UG`, `SR = ~UIF` (`rc_w0`), `tim_calc_pwm_ccr()` 32-bit `arr == 0xFFFFFFFFU` wraparound | RM0440 §7.2.8 & Ch. 29, `stm32g474xx.h` (`TIM_CCMR1_OC1M == 0x00010070`) | **FAIL (MEDIUM)** |
+| **04** | `23-code-library/Drivers/usart_g4.c` L8–219 | `USART1/2` & `LPUART1` (`256*fclk/baud`, `[0x300..0xFFFFF]`) BRR math, `ICR` error clears, SPSC RX IRQ handler; ignores `RCC->CCIPR` kernel clock mux | RM0440 Ch. 38, `stm32g474xx.h` | **FAIL (MEDIUM)** |
+| **05** | `23-code-library/Drivers/spi_g4.c` L8–159 | `SPI1/2/3`, `SSM|SSI`, `DS=7` (8-bit) + `FRXTH=1`, 8-bit `*(__IO uint8_t *)&spi->DR`, `FTLVL|BSY` idle wait; `spi_calc_br_div()` floor-division overshoot | RM0440 §42.5.9, `stm32g474xx.h` | **FAIL (MEDIUM)** |
+| **06** | `23-code-library/Drivers/i2c_g4.h` L16–18, L67–72 & `i2c_g4.c` L40–332 | All 6 `I2C_TIMINGR` constants (`170/160/16 MHz` × `100/400 kHz`), `PB8-BOOT0` note, `RELOAD` >255 B, `NACKF`/`BERR`/`ARLO` + `TXDR` flush, 9-clock recovery | NXP UM10204, RM0440 §39.4.9 & §39.7.7, UM2505 `R36` | **FAIL (HIGH)** |
+| **07** | `23-code-library/Drivers/adc_g4.c` L14–211 & `adc_g4.h` L36–47 | `CKMODE=11b` (`42.5/40 MHz <= 60 MHz`), `DEEPPWD->ADVREGEN->25us->ADCAL->ADRDY->ADEN`, `TS_CAL1`/`TS_CAL2`/`VREFINT_CAL` (`0x1FFF75A8`/`CA`/`AA`, 30/130 °C @ 3.0 V); shared `CCR` write & uncleaned `DMAEN` | DS12288 §3.14 & §5.3.19, RM0440 §21.4.6 & §21.7.17 | **FAIL (MEDIUM)** |
+| **08** | `23-code-library/Drivers/dma_g4.c` L9–243 | Explicit `DMA1/2_Channel1..8` pointer tables (0x14 stride safe), `DMAMUX1EN` + readback, individual `CTCIF`/`CHTIF`/`CTEIF` (never `CGIF`), alignment check, `__DSB()` | ES0430 §2.3.1, RM0440 Ch. 11–12, `stm32g474xx.h` (`_Static_assert`) | **PASS** |
+| **09** | `23-code-library/Drivers/iwdg_g4.c` L9–99 | `DBGMCU->APB1FZR1.DBG_IWDG_STOP`, `LSION`/`LSIRDY`, `0xCCCC`/`0x5555`/`PVU|RVU`/`0xAAAA`, `RCC_CSR_RMVF` clear | RM0440 Ch. 35, `stm32g474xx.h` | **PASS** |
+| **10** | `23-code-library/Drivers/gpio_g4.c` L9–138 | `GPIO_EnableClock` A–G readback, `MODER` written last, `GPIO_LockPin()` 4-step `LCKR` sequence false-positive on 2nd pin | RM0440 §9.4.8, `stm32g474xx.h` | **FAIL (MEDIUM)** |
+| **11** | `23-code-library/Drivers/fault_handler.c` + `ring_buffer.c` + `startup_stm32g474re.c` | Part 4 `[CRIT-01]` & `[MED-02]` fixes: `Fault_Trampoline` for all 4 fault vectors, SRAM/CCM SP bounds check, C11 `<stdatomic.h>` acquire/release, `Default_Handler` `C_DEBUGEN` check; unguarded `bkpt #0` at L393 | `core_cm4.h`, PM0214, ISO C11 §7.17, `arm-none-eabi-gcc -fanalyzer` | **PASS (1 LOW nit)** |
+| **12** | `23-code-library/freertos/` (`Inc/FreeRTOSConfig.h`, `Src/rtos_bsp.c`, `Src/main.c`, `FreeRTOS-Kernel/VERSION.txt`) | Pinned `V11.1.0` (`dbf70559`), `PRIGROUP=0`, `MAX_SYSCALL=5` (`0x50`), `TIM2=6`/`EXTI13=7`, static stacks (`192..512` words), real debug/release build; `TIM2->SR &= ~UIF` RMW (`main.c` L229) & `RMVF` (`rtos_bsp.c` L132) | `core_cm4.h`, FreeRTOS `ARM_CM4F` port, RM0440, `make clean all` | **FAIL (MEDIUM nit)** |
+| **13** | `19-projects/01-beginner-smart-instrument-panel/Src/main.c` | `GPIO_EnableClock(GPIOA/C)` fix, `PA0`/`PA1` conflict-free, Active-HIGH `PC13`, SPSC RX IRQ, `IWDG`, `170`/`160 MHz` compile | `stm32g474xx.h`, UM2505, `make clean all` | **PASS** |
+| **14** | `19-projects/02-intermediate-dma-data-logger/Src/main.c` | `GPIO_EnableClock(GPIOA/B)` fix, `TIM3` 100 Hz TRGO (`MMS=010`), `ADC1` `EXTSEL=4`, `DMA1_Ch1` `DMAMUX=5`, ES0430 flag clears, HW `CRC-32`, read-only `OPTR.DBANK`, `PA15`/`PB7` OLED probe | RM0440 Table 163, ES0430 §2.3.1, `make clean all` | **PASS** |
+| **15** | `19-projects/03-advanced-freertos-digital-power-controller/Src/main.c` & `Inc/power_ctrl.h` | `GPIO_EnableClock(A/B/C)` fix, `TIM1` 50 kHz center-aligned (`ARR=1700`, `DTG=85` = 500 ns), `DAC1` `HFSEL=10b` + `COMP1` -> `TIM1_AF1_BKCMP1E`, `AOE=0`, `POWER_SIM_MODE=0` control loop behavior | RM0440 Ch. 22, 24, 28, `stm32g474xx.h`, `make POWER_SIM_MODE=0` | **FAIL (HIGH)** |
+| **16** | `HARDWARE_VALIDATION/onboard_selftest/Src/main.c` L1–981 | All 9 onboard tests (`MCU ID`, `GPIO`, `160`/`170 MHz`, `TIM2`/`EXTI13`, `DMA`/`ADC1`, `CORDIC`/`FMAC`, `FDCAN1`/`CRC-32`, `MPU`/`DIV0` `.noinit`, `IWDG`); Test 8A never triggers real MPU violation | `stm32g474xx.h`, `core_cm4.h`, RM0440 | **FAIL (MEDIUM)** |
+| **17** | All 12 Newly Resolved Concept Sections (`C-LIB-001` .. `HWSW-ANA-001`) | `27` CMSIS `_Static_assert`s (`DCR=0x3DC`, `DMAR=0x3E0`, `TDCR=0x48`, `SYSCFG_CFGR1_*_FMP`, `DMAMUX TIM1_UP=46`, `FDCAN TXEF=+0x260`, `USB` 16-bit PMA) + direct compile of all `24` C11 code blocks | `stm32g474xx.h`, `core_cm4.h`, RM0440 Table 91, `arm-none-eabi-gcc 14.3.1 -Werror` | **PASS (24/24)** |
+| **18** | `AUDIT/HARDWARE_VALIDATION_SUMMARY.md`, `PENDING_EXTERNAL_CONNECTIONS.md`, `PRACTICAL_IMPLEMENTATION_COVERAGE.md` | External hardware honesty (`Labs 07, 09, 11, 12, 14, 16`, OLED/pot/power-stage) & zero option-byte mutations; minor drift vs `lab-19/README.md` L308 | Cross-file audit against source & logs | **PASS (1 MED drift)** |
+| **19** | `AUDIT/concepts_sot.json` v2.0.0 (`350` concepts, `267 COMPLETE`, `140 ONBOARD_HARDWARE_TESTED`) | Programmatic DAG check (`0` cycles, `0` unknown, `0` inverted-level edges) + grep audit of all `140` `ONBOARD_HARDWARE_TESTED` & `70` promotions against actual 6 flashed binaries | Independent Python AST/DAG/grep verification | **FAIL (HIGH)** |
+| **20** | `D:\General_ant\embedded-c-master-learning-hub-backup` vs `BACKUP/BACKUP_MANIFEST.md` | File count (`565`), total size (`5,734,859` B), aggregate SHA-256 (`84aa5ef4...015cb5`), `git rev-parse HEAD` (`585dc4fa...`), clean `git status` | Independent Python walk & SHA-256 recomputation | **PASS (100% MATCH)** |
+| **21** | Full Working Repo Secret & PII Scan (excl. `.git/`) | Scan for `ghp_`, `github_pat_`, `gho_`, `ghs_`, `AKIA`, `sk-`, PEM keys, passwords, `C:\Users\Guhapriyan`, `D:\General_ant` | Independent Python full-tree regex scan | **PASS (0 secrets/PII; 1 LOW path)** |
+| **22** | `.github/workflows/firmware-ci.yml`, `.clang-format`, `.clang-tidy`, `Doxyfile`, `.gitignore`, `git status` | Local execution (`validate_repo.py` 16/16, `make -C tests test/analyze` 574/574, ARM `-fanalyzer` 0 warn, 5 firmware builds PASS) vs Ubuntu CI (`clang-format --dry-run --Werror`, `lcov 2.0`, `cppcheck`) | Direct CLI execution + `.clang-format` static violation audit + LCOV 2.0 docs | **FAIL (HIGH)** |
+
+---
+
+## II.3 Detailed Adversarial Findings & Concrete Remediation Actions
+
+### HIGH FINDINGS (Mandatory Before Final Commit & Push)
+
+#### [P8-HIGH-01] Guaranteed GitHub Actions CI Failure (`clang-format --dry-run --Werror` & `lcov 2.0` on `ubuntu-latest`)
+- **Files & Lines:**
+  - `.github/workflows/firmware-ci.yml` L51–52, L153–171, L190–199
+  - `.clang-format` L8, L14–15
+  - `23-code-library/Drivers/*.c`, `23-code-library/Drivers/*.h`, `23-code-library/templates/Src/main.c`, `23-code-library/templates/Src/startup_stm32g474re.c`
+- **Verified Evidence:**
+  1. `clang-format`, `clang-tidy`, `cppcheck`, and `doxygen` are not installed on the local workstation (`AUDIT/TEST_COVERAGE_REPORT.md` L116–119), so the `static-analysis-and-format` and `doxygen-docs` CI jobs were never executed locally.
+  2. `.clang-format` enforces `ColumnLimit: 100`, `AlignConsecutiveAssignments: false`, `AlignConsecutiveDeclarations: false`, and `BasedOnStyle: LLVM` (where `AllowShortCaseLabelsOnASingleLine` defaults to `false`). Independent static inspection of just `23-code-library/Drivers/*.{c,h}` and `23-code-library/templates/Src/{main,startup_stm32g474re}.c` measured:
+     - **317** multi-space aligned `=` assignments (e.g., `exti_g4.c` L13–14, L61–63; `clock_g4.c` L239–241; `adc_g4.c` L33–37; `dma_g4.c` L25–32),
+     - **102** code lines exceeding `100` columns (e.g., `startup_stm32g474re.c` L127–228),
+     - **12** single-line `case X: stmt` statements (e.g., `exti_g4.c` L50–55, `tim_g4.c` L175–179, `dma_g4.c` L77–80).
+     Therefore, `.github/workflows/firmware-ci.yml` L192 (`clang-format --dry-run --Werror`) is **100% guaranteed to fail** on the first GitHub Actions run!
+  3. `.github/workflows/firmware-ci.yml` L51–52 passes `--rc lcov_branch_coverage=1` to `lcov`. On `ubuntu-latest` (Ubuntu 24.04), `apt-get install lcov` installs **LCOV 2.0+**, where `lcov_branch_coverage` is deprecated/errored (replaced by `--rc branch_coverage=1`) and GCC 13/14 branch data triggers fatal consistency errors unless `--ignore-errors inconsistent,inconsistent` (or `--ignore-errors unused,inconsistent`) is supplied.
+  4. `.github/workflows/firmware-ci.yml` L153 runs `cppcheck --enable=warning,style,performance,portability --error-exitcode=1` on `tim_g4.c` — whose lines 18–44 and 63 were already proven mathematically unreachable in `AUDIT/TEST_COVERAGE_REPORT.md` L61–69 (prime trigger for `cppcheck` `knownConditionTrueFalse` style errors with `--error-exitcode=1`).
+- **Concrete Remediation:**
+  1. Either run `clang-format -i` across every file listed in `firmware-ci.yml` L193–199 (or align `.clang-format` rules AND remove `--Werror` / set `continue-on-error: true` on untested local tools until verified on an actual Ubuntu runner!).
+  2. Update `firmware-ci.yml` L51–52 from `--rc lcov_branch_coverage=1` to `--rc branch_coverage=1 --ignore-errors inconsistent` (or guard for LCOV 1 vs 2).
+  3. Update `firmware-ci.yml` L153 `cppcheck` to restrict `--error-exitcode=1` to `--enable=warning,portability` (or remove the unreachable dead clamps in `tim_g4.c` L18–44 / L63) and verify the first GitHub Actions run passes green.
+
+---
+
+#### [P8-HIGH-02] Capstone Project 03 `POWER_SIM_MODE=0` ("EXTERNAL HARDWARE POWER STAGE") Runs Open-Loop Against Software Plant
+- **Files & Lines:**
+  - `19-projects/03-advanced-freertos-digital-power-controller/Src/main.c` L193–200, L212–216, L355–414, L553–557
+  - `AUDIT/CAPSTONE_IMPLEMENTATION_REPORT.md` L16
+  - `HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md` L35
+- **Verified Defect:**
+  1. `19-projects/03/Src/main.c` L556 prints `"Mode : EXTERNAL HARDWARE POWER STAGE"` when built with `POWER_SIM_MODE=0`, and `PENDING_EXTERNAL_CONNECTIONS.md` L35 instructs learners to rebuild with `make POWER_SIM_MODE=0` to bring up a physical `<= 24 V` buck/boost power stage.
+  2. However, `POWER_SIM_MODE` is ONLY checked in `pwr_dac1_comp1_init()` (L193, L212) and the boot banner (L553). Inside `vControlLoopTask()` (L355–414), there is **zero `#if (POWER_SIM_MODE != 0U)` check and zero ADC initialization/sampling** — L383–391 unconditionally compute `err_mv = v_ref - plant.v_out_mv` and advance `buck_sim_step(&plant, duty_pm, !faulted)`!
+  3. Consequently, connecting a physical power stage under `POWER_SIM_MODE=0` drives `TIM1->CCR1` completely **open-loop against an internal software simulation** while ignoring real output voltage feedback — an unacceptable control/safety hazard for power electronics firmware.
+- **Concrete Remediation:**
+  1. In `19-projects/03/Src/main.c`, implement a real `#else` ADC voltage-sense feedback path for `POWER_SIM_MODE == 0` (using `adc_g4.h` `adc_init_single_ended(ADC1)` + `adc_read_channel()` scaled by external resistor-divider ratio, with over-voltage trip guard) **OR** fail compilation at `#if (POWER_SIM_MODE == 0U)` with `#error "External ADC feedback channel & voltage-divider scaling must be wired and configured before energizing a physical power stage"` and document that explicitly in `CAPSTONE_IMPLEMENTATION_REPORT.md` L16 and `PENDING_EXTERNAL_CONNECTIONS.md` L35.
+
+---
+
+#### [P8-HIGH-03] `i2c_g4.h` `TIMINGR` Constants Overclock I2C Bus & Violate `t_SCLDEL` + Contradict `PB8-BOOT0` Safety Fix
+- **Files & Lines:**
+  - `23-code-library/Drivers/i2c_g4.h` L16–18, L62–72
+  - `AUDIT/DRIVER_LIBRARY_VERIFICATION.md` L45–48
+  - Compare against correctly derived `18-practical-laboratory/lab-12-i2c-master-ssd1306-oled/README.md` L56–81
+- **Verified Defect (Exact RM0440 §39.4.9 + NXP UM10204 Math):**
+  Using RM0440 §39.4.9 ($t_{\text{PRESC}} = (\text{PRESC}+1)t_{\text{I2CCLK}}$, $t_{\text{SCL}} = t_{\text{SCLL}} + t_{\text{SCLH}} + t_{\text{SYNC1}} + t_{\text{SYNC2}}$, $t_{\text{SYNC1+2(min)}} \ge 4 t_{\text{I2CCLK}} + 2 t_{\text{AF(min)}}$ with $t_{\text{AF(min)}} = 50\text{ ns}$):
+
+  | Macro in `i2c_g4.h` | Value | $t_{\text{SCLL}}$ / $t_{\text{SCLH}}$ | $t_{\text{SCLDEL}}$ | $f_{\text{SCL(max)}}$ (fast edges) | Spec Violation |
+  |---|---|---|---|---|---|
+  | `I2C_TIMINGR_170MHZ_400KHZ` | `0x30B21F3B` | `1412` / `753 ns` | `282.4 ns` | **`437.0 kHz`** (typ `411.8 kHz`) | **Exceeds `400 kHz` FM max**; `t_SCLDEL < 400 ns` (`t_r(max)+t_SU;DAT`) |
+  | `I2C_TIMINGR_160MHZ_400KHZ` | `0x30B21D38` | `1425` / `750 ns` | `300.0 ns` | **`434.8 kHz`** (typ `409.8 kHz`) | **Exceeds `400 kHz` FM max**; `t_SCLDEL < 400 ns` |
+  | `I2C_TIMINGR_16MHZ_100KHZ` | `0x00423F4F` | `5000` / `4000 ns` | **`312.5 ns`** | **`107.0 kHz`** (typ `103.4 kHz`) | **Exceeds `100 kHz` SM max**; `t_SCLDEL` leaves only **`62.5 ns`** max $t_r$ (`< 250 ns` typ / `1000 ns` UM10204 max!) |
+  | `I2C_TIMINGR_170MHZ_100KHZ` | `0x70C45D6C` | `5129` / `4424 ns` | `611.8 ns` | `103.3 kHz` (typ `100.0 kHz`) | Marginally > `100 kHz` on low-C bus (`t_r` max `362 ns` vs `1000 ns` UM10204) |
+
+  Furthermore, `i2c_g4.h` L16–18 notes `PB8` is `PB8-BOOT0` with `R36 = 10 kΩ` and immediately states `"Always use external 2.2..4.7 kOhm pull-ups on SCL/SDA (or route I2C1 to PA15/PB7)"` — omitting the critical warning from `Lab 12` L40 that placing a permanent `2.2 kΩ` pull-up on `PB8` drives `2.705 V` at reset and locks the board into ST System ROM Bootloader unless `nSWBOOT0 = 0`!
+- **Concrete Remediation:**
+  1. Replace `I2C_TIMINGR_170MHZ_400KHZ` with Lab 12's verified **`0x70811021UL`** (`f_max = 396.3 kHz <= 400 kHz`, `t_SCLDEL = 423.5 ns >= 400 ns`) and `I2C_TIMINGR_160MHZ_400KHZ` with **`0x70710F1FUL`** (`f_max = 396.0 kHz <= 400 kHz`, `t_SCLDEL = 400.0 ns`).
+  2. Replace `I2C_TIMINGR_16MHZ_100KHZ` with e.g. `PRESC=3` (`t_PRESC=250 ns`), `SCLDEL=4` (`t_SCLDEL=1250 ns >= 1250 ns` full UM10204 worst-case!), `SDADEL=2` (`500 ns`), `SCLH=0x13` (`5000 ns`), `SCLL=0x17` (`6000 ns`, `f_max = 88.1 kHz <= 100 kHz`) = **`0x30421317UL`** (or `SCLH=0x10`, `SCLL=0x15` -> `f_max = 98.5 kHz`, **`0x30421015UL`**); and bump `170MHz_100kHz` / `160MHz_100kHz` `PRESC`/`SCLL`/`SCLH` slightly so `f_max <= 100.0 kHz` even on low-capacitance buses.
+  3. Update `tests/unit/test_drivers_math.c` to assert BOTH $f_{\text{SCL(max)}} \le f_{\text{target}}$ AND $t_{\text{SCLDEL}} \ge t_{r(\max)} + t_{\text{SU;DAT}}$, and fix `i2c_g4.h` L16–18 to warn explicitly against permanent pull-ups on `PB8-BOOT0` unless `nSWBOOT0 = 0`.
+
+---
+
+#### [P8-HIGH-04] `ONBOARD_HARDWARE_TESTED` (`140`) & `COMPLETE` (`267`) Over-Promotion in `AUDIT/concepts_sot.json` v2.0.0
+- **Files & Lines:**
+  - `AUDIT/concepts_sot.json` (`v2.0.0`)
+  - `AUDIT/UPDATED_CONCEPT_COVERAGE_MATRIX.md` L25, L36
+  - `AUDIT/PARTIAL_CONCEPT_COMPLETION_REPORT.md` L42, L65, L75, L77
+- **Verified Evidence (Direct Grep Across All 6 Flashed Firmware Binaries):**
+  While `concepts_sot.json` v2.0.0 fixed all DAG defects (`0` cycles, `0` unknown prereqs, `0` inverted-level edges) and kept external labs honestly `EXTERNAL_HARDWARE_PENDING`, **at least 16–20 concepts marked `ONBOARD_HARDWARE_TESTED` were never physically exercised or measured on silicon**:
+  1. **Zero code occurrences (`0` hits) across all 6 flashed images** (`onboard_selftest`, `freertos`, `Project 01..03`, `templates`):
+     - `ARM-PWR-001` (`WFI`, `WFE`, `SEV`, `SLEEPONEXIT`, `SLEEPDEEP`) — `0` hits; `Lab 14` is `EXTERNAL_HARDWARE_PENDING`!
+     - `PERIPH-TIM-001` (`Basic Timers TIM6, TIM7`) — `0` hits!
+     - `STM32-RCC-003` (`CSS HSE/LSE, MCO, CCIPR, Reset Flags`) — `0` hits for `HSEON`/`CSSON`/`LSEON`/`MCOSEL` (`CLK-MCO-001` is `EXTERNAL_HARDWARE_PENDING`)!
+     - `TOOL-DBG-003` (`SWO/ITM`) — `0` hits for `ITM->`/`TPI->` (only `DWT->CYCCNT` was tested)!
+     - `ARM-SEC-001` (`Cortex-M4 & STM32G474RE Security Architecture`) — `0` hits for `nPRIV`/RDP/PCROP/SEC!
+     - `PERIPH-UART-004` (`USART Error Flags ORE/FE/NE/PE`) — `0` error-flag fault injections executed on silicon (only normal TX/RX ran)!
+  2. **Unexercised / Unmeasured on Hardware:**
+     - `ARM-MPU-001`: `onboard_selftest` Test 8A arms Region 7 (`g_mpu_guard_zone`) but performs only a benign read outside it (`g_mpu_valid_var`) and triggers `DIV0` `UsageFault`, never an actual MPU `MemManage` violation!
+     - `ARM-MEM-002` (Bit-banding is physically absent on STM32G474RE — should be `CROSS_COMPILED` or `NOT_APPLICABLE`, not `ONBOARD_HARDWARE_TESTED`).
+     - `STM32-BOOT-001` (`PB8-BOOT0`, `nSWBOOT0`/`nBOOT0` — boot modes and option bytes were strictly never altered or tested).
+     - `PERIPH-GPIO-004` (Switch debouncing — `B1 Presses: 0` in Project 01 and `btn=0` in FreeRTOS; `B1` was never physically pressed during unattended automation).
+     - `PERIPH-BDTR-001`, `PERIPH-PWM-001`, `G4-COMP-001`, `PERIPH-DAC-001` — initialized in registers (`Project 01`/`03`), yet NO PWM/dead-time waveform (`PA1`/`PA8`/`PB13`), DAC analog voltage (`PA4`), or COMP1 overcurrent trip (`brk:0` in Project 03!) was ever triggered or measured (inconsistent with `PERIPH-BDTR-002`, `PERIPH-PWM-002`, `Lab 07`, `Lab 16` being `EXTERNAL_HARDWARE_PENDING`).
+     - `HWSW-ANA-001` (Analog PCB ferrite bead / MLCC ESR-ESL / return-path design — reading `VREFINT = 3288 mV` on ST's factory Nucleo PCB verifies `ADC1`/`VREFINT`, not custom analog PCB design).
+  3. **Premature `COMPLETE` Promotions on Untested CI Tools:**
+     - `PROF-SA-002` (`.clang-tidy` & `.clang-format`) and `PROF-DOC-001` (`Doxyfile`) were promoted `PARTIAL -> COMPLETE` even though neither `clang-format`, `clang-tidy`, nor `doxygen` was executed locally, and `.clang-format` fails with >430 formatting diffs (`[P8-HIGH-01]`).
+- **Concrete Remediation:**
+  1. Reclassify the ~16–20 unexercised concepts listed above from `ONBOARD_HARDWARE_TESTED` to their honest `hardware_status` (`CROSS_COMPILED`, `EXTERNAL_HARDWARE_PENDING`, or `NEEDS_BENCH_INSTRUMENT`), bringing `ONBOARD_HARDWARE_TESTED` to an airtight **`~120–124`**.
+  2. Hold `PROF-SA-002` and `PROF-DOC-001` at `PARTIAL` until GitHub Actions CI passes green (or locally verify them), and regenerate `AUDIT/UPDATED_CONCEPT_COVERAGE_MATRIX.md`, `AUDIT/PARTIAL_CONCEPT_COMPLETION_REPORT.md`, and `AUDIT/FINAL_COMPLETENESS_REPORT.md` deterministically from `concepts_sot.json`.
+
+---
+
+### MEDIUM FINDINGS
+
+#### [P8-MED-01] `GPIO_LockPin()` Returns False-Positive `true` on Second Pin Lock
+- **File & Lines:** `23-code-library/Drivers/gpio_g4.c` L124–138
+- **Verified Defect:** Per RM0440 §9.4.8, once `LCKK` (`bit 16`) is latched `1` on a port, all subsequent writes to `LCKR` are ignored until reset while `LCKK` continues to read `1`. Checking only `(port->LCKR & GPIO_LCKR_LCKK) != 0U` causes a second call `GPIO_LockPin(GPIOA, 6)` (after `GPIO_LockPin(GPIOA, 5)`) to return **`true`** even though `LCK6` remains `0` (unlocked)!
+- **Concrete Remediation:** Change L137 to `return ((port->LCKR & (GPIO_LCKR_LCKK | mask)) == (GPIO_LCKR_LCKK | mask));` and add `GPIO_LockPins(GPIO_TypeDef *port, uint16_t pin_mask)` so multiple pins on a port can be locked atomically in one sequence.
+
+#### [P8-MED-02] Subtle Edge-Case & RM0440 Compliance Gaps Across 5 New Drivers
+- **Files & Lines:**
+  - `23-code-library/Drivers/tim_g4.c` L57: `return (arr == 0xFFFFU) ? 0xFFFFU : (arr + 1U);` wraps `uint32_t` to **`0U` (0% duty)** when `arr == 0xFFFFFFFFU` on 32-bit `TIM2` (fix: `if ((arr == 0xFFFFU) || (arr == 0xFFFFFFFFU)) return arr;`).
+  - `23-code-library/Drivers/usart_g4.c` L35–45 & `i2c_g4.c` L40–43: Query only `PCLK1`/`PCLK2` without checking `RCC->CCIPR` (`USART1SEL`/`USART2SEL`/`LPUART1SEL`/`I2C1..3SEL`), silently producing wrong `BRR`/`TIMINGR` if the caller selected `HSI16`/`SYSCLK`/`LSE`.
+  - `23-code-library/Drivers/adc_g4.c` L70–71 & L102: Modifies shared `ADC12_COMMON->CCR.CKMODE` during `adc_init_single_ended(ADC2, ...)` without checking `ADC1->CR.ADEN == 0` (RM0440 §21.7.17 requires both ADCs disabled to write `CKMODE`), and L102 does not clear `ADC_CFGR_DMAEN | ADC_CFGR_DMACFG` on re-init.
+  - `23-code-library/Drivers/i2c_g4.c` L81–90: On `NACKF`, clears `NACKCF`/`STOPCF` without setting `i2c->ISR = I2C_ISR_TXE` (RM0440 §39.7.7) to flush any unshifted byte remaining in `TXDR`.
+  - `23-code-library/Drivers/spi_g4.c` L15: Floor division `(pclk_hz / div) <= max_sck_hz` can exceed `max_sck_hz` slightly when `pclk_hz % div != 0` (fix: `(uint64_t)pclk_hz <= (uint64_t)max_sck_hz * div`).
+
+#### [P8-MED-03] `onboard_selftest` Test 8A Never Triggers an Actual MPU Violation & Overrides `UsageFault_Handler`
+- **File & Lines:** `HARDWARE_VALIDATION/onboard_selftest/Src/main.c` L161–231, L810–857
+- **Verified Defect:** Test 8A configures MPU Region 7 (`g_mpu_guard_zone[32]`, `AP=0`, `XN=1`) and verifies a benign read of `g_mpu_valid_var` outside the guard zone, then triggers `sdiv 42/0` (`UsageFault`). It never accesses `g_mpu_guard_zone[0]` to prove an actual `MemManage` (`DACCVIOL | MMARVALID`) MPU trap on silicon. Also, overriding `UsageFault_Handler` with `Selftest_UsageFault_C()` bypassed `startup_stm32g474re.c`'s `Fault_Trampoline` and `fault_handler.c`'s `HardFault_Handler_C()` during the final 9/9 automated run (though `HardFault_Handler_C()` was verified separately via SWD SRAM readback during initial bring-up).
+- **Concrete Remediation:** Document this boundary clearly in `HARDWARE_VALIDATION_SUMMARY.md` (or add a Phase-1B `MemManage` write to `g_mpu_guard_zone[0]` verifying `CFSR & 0x82 == 0x82` and `MMFAR == &g_mpu_guard_zone[0]`).
+
+#### [P8-MED-04] Cross-Document Lab Status Drift & `rc_w0` RMW Anti-Pattern in FreeRTOS Reference Firmware
+- **Files & Lines:**
+  - `18-practical-laboratory/lab-19-hardfault-mpu-and-crash-diagnostics/README.md` L308 (vs `AUDIT/PRACTICAL_IMPLEMENTATION_COVERAGE.md` L49)
+  - `23-code-library/freertos/Src/main.c` L229 (`TIM2->SR &= ~TIM_SR_UIF;`)
+  - `23-code-library/freertos/Src/rtos_bsp.c` L132 (`RCC->CSR |= RCC_CSR_RMVF;`)
+- **Verified Defect:** Individual lab READMEs (e.g., `lab-19` L308) still read `CROSS-COMPILED (Queued for Physical Execution)` while `PRACTICAL_IMPLEMENTATION_COVERAGE.md` marks them `ONBOARD HARDWARE TESTED (via onboard_selftest)`; `freertos/Src/main.c` L229 uses RMW `&= ~` on an `rc_w0` timer status register (contradicting `EMB-REG-003` — fix to `TIM2->SR = ~TIM_SR_UIF;`); and `rtos_bsp.c` L132 omits clearing `RMVF` back to `0` after readback.
+
+#### [P8-MED-05] Implementation-Defined Signed Right-Shift in Project 03 Q15 PI Controller
+- **File & Lines:** `19-projects/03-advanced-freertos-digital-power-controller/Inc/power_ctrl.h` L123, L137
+- **Verified Defect:** `(pi->kp_q15 * err_scaled) >> Q15_SHIFT` and `cand_integ >> Q15_SHIFT` right-shift potentially negative `int32_t` values (ISO C11 §6.5.7/5 implementation-defined; MISRA C:2012 Rule 10.1). Replace with `/ Q15_ONE` (which GCC optimizes cleanly or documents explicit arithmetic-shift assumption).
+
+---
+
+### LOW FINDINGS
+
+- **`[P8-LOW-01]` `.gitignore` Missing Coverage Artifact Patterns (`.gitignore` L1–18):** Add `*.gcda`, `*.gcno`, `*.gcov`, `*.info` so manual `gcov` runs outside `build/` never pollute `git status`.
+- **`[P8-LOW-02]` Unguarded `bkpt #0` After `main()` Return (`23-code-library/templates/Src/startup_stm32g474re.c` L393):** Guard with `COREDEBUG_DHCSR_ADDR & COREDEBUG_DHCSR_DEBUGEN` (matching `Default_Handler` L62) or call `Default_Handler()`.
+- **`[P8-LOW-03]` Local Workspace Path in Learner Setup Guide (`LEARNERS/BEGINNER_SETUP_WINDOWS11.md` + 6 internal audit/backup docs):** Zero PII/usernames (`0` hits for `Guhapriyan`), zero secrets; replace `D:\General_ant\...` in `LEARNERS/BEGINNER_SETUP_WINDOWS11.md` with a generic path placeholder (e.g., `C:\workspace\embedded-c-master-learning-hub`).
+
+---
+
+## II.4 Backup Integrity Proof, Secret Scan Proof & Build/CI Hygiene Proof
+
+### 1. Local Baseline Backup Integrity (`D:\General_ant\embedded-c-master-learning-hub-backup`) — **VERIFIED IMMUTABLE (PASS)**
+Independent recursive walk and SHA-256 recomputation against `BACKUP/BACKUP_MANIFEST.md`:
+- **Total Files:** `565` (Expected: `565` — **EXACT MATCH**)
+- **Total Bytes:** `5,734,859` bytes (Expected: `5,734,859` — **EXACT MATCH**)
+- **Aggregate Manifest SHA-256** (`<sha256>  <win_relpath>\r\n`, sorted):  
+  `84aa5ef482853df5f0af1e4c401bd6a3104fca9fe9e182def4ca6530ab015cb5` (**EXACT MATCH**)
+- **Backup `git rev-parse HEAD`:** `585dc4fa081cf7f27e5e437254e814f13f4b46cd` (**EXACT MATCH**)
+- **Backup `git status --short`:** Empty (`0` modified / `0` untracked — **NEVER MODIFIED OR OVERWRITTEN**)
+
+### 2. Full-Repository Secret & Sensitive Information Scan — **CLEAN (PASS)**
+Scanned all non-binary files in `D:\General_ant\embedded-c-master-learning-hub` (excluding `.git/`):
+- GitHub PATs (`ghp_*`, `github_pat_*`, `gho_*`, `ghs_*`): **`0` matches**
+- Cloud/API keys (`AKIA*`, `sk-*`) & Private Keys (`-----BEGIN ... PRIVATE KEY-----`): **`0` matches**
+- Hardcoded credential assignments (`password=`, `api_key=`, `secret_key=`, `access_token=`): **`0` matches**
+- Private OS username paths (`C:\Users\Guhapriyan...` / `Guhapriyan` substring): **`0` matches**
+- Generic non-PII local drive path (`General_ant`): `7` Markdown files (`6` internal audit/backup/tracker docs + `LEARNERS/BEGINNER_SETUP_WINDOWS11.md` — flagged as `[P8-LOW-03]`).
+
+### 3. Build & Git Artifact Hygiene — **CLEAN WORKING TREE (PASS) / CI GATES NEED FIXES (`[P8-HIGH-01]`)**
+- `git status --short -uall`: **`0` untracked build artifacts** (`*.elf`, `*.o`, `*.obj`, `*.exe`, `*.gcda`, `*.gcno`, `*.gcov`, `*.bin`, `*.hex`, `*.map`, `*.d`, `*.su`, `*.info`). All 7 `build/` directories on disk are cleanly excluded by `.gitignore`.
+- Local builds empirically verified `PASS` (`0` warnings / `0` errors): `scripts/validate_repo.py --skip-builds` (`16/16 PASS`), `make -C tests test` (`574/574 PASS`), `make -C tests analyze` (`0` warnings), `arm-none-eabi-gcc -fanalyzer` (`0` warnings), `23-code-library/templates` (`debug` & `release`), `23-code-library/freertos` (`debug`), and `19-projects/01..03` (`debug`, including `POWER_SIM_MODE=0` & `1`).
+
+---
+
+## II.5 Mandatory Pre-Commit Sign-Off Checklist (Phase 8 Gate)
+
+Resolve the **4 HIGH** items below before final commit and push to GitHub:
+1. **`[P8-HIGH-01]`** Fix `.github/workflows/firmware-ci.yml` (`lcov --rc branch_coverage=1 --ignore-errors inconsistent`, `cppcheck` style-vs-error gate, and reconcile `.clang-format` / formatting across targeted `.c`/`.h` files so CI passes green on first push).
+2. **`[P8-HIGH-02]`** Guard or implement real ADC feedback for `POWER_SIM_MODE == 0` in `19-projects/03-advanced-freertos-digital-power-controller/Src/main.c` L383–391 (never run open-loop software plant while reporting `EXTERNAL HARDWARE POWER STAGE`).
+3. **`[P8-HIGH-03]`** Fix `23-code-library/Drivers/i2c_g4.h` `I2C_TIMINGR_*` constants (`0x70811021`, `0x70710F1F`, `0x30421015`, etc.), add max-frequency & `t_SCLDEL` assertions to `tests/unit/test_drivers_math.c`, and correct the `PB8-BOOT0` pull-up warning in `i2c_g4.h` L16–18.
+4. **`[P8-HIGH-04]`** Recalibrate the ~16–20 over-promoted `ONBOARD_HARDWARE_TESTED` concepts and `PROF-SA-002`/`PROF-DOC-001` `COMPLETE` flags in `AUDIT/concepts_sot.json` v2.0.0 and regenerate dependent summary tables.
