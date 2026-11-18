@@ -35,15 +35,15 @@ $$R_{p,\min} = \frac{V_{\text{DD}} - V_{\text{OL},\max}}{I_{\text{OL}}}, \qquad 
 
 ## 2. Main PLL Clocks — 170 MHz & 160 MHz Boost Mode (`STM32-RCC-*`, `CLK-PLL-001`)
 
-$$f_{\text{PLL\_IN}} = \frac{f_{\text{SRC}}}{M}, \qquad f_{\text{VCO}} = f_{\text{PLL\_IN}} \times N, \qquad f_{\text{SYSCLK}} = f_{\text{PLL\_R}} = \frac{f_{\text{VCO}}}{R}$$
-$$f_{\text{PLL\_Q}} = \frac{f_{\text{VCO}}}{Q}, \qquad f_{\text{PLL\_P}} = \frac{f_{\text{VCO}}}{P}$$
+$$f_{\text{PLL-IN}} = \frac{f_{\text{SRC}}}{M}, \qquad f_{\text{VCO}} = f_{\text{PLL-IN}} \times N, \qquad f_{\text{SYSCLK}} = f_{\text{PLL-R}} = \frac{f_{\text{VCO}}}{R}$$
+$$f_{\text{PLL-Q}} = \frac{f_{\text{VCO}}}{Q}, \qquad f_{\text{PLL-P}} = \frac{f_{\text{VCO}}}{P}$$
 
 **Mandatory DS12288 / RM0440 Operating Bounds:**
-- $f_{\text{PLL\_IN}} \in [2.66,\ 16.0]\text{ MHz}$ ($M = \text{PLLM} + 1 \in [1..16]$)
+- $f_{\text{PLL-IN}} \in [2.66,\ 16.0]\text{ MHz}$ ($M = \text{PLLM} + 1 \in [1..16]$)
 - $f_{\text{VCO}} \in [96,\ 344]\text{ MHz}$ (Range 1) with $N \in [8..127]$
 - **$f_{\text{SYSCLK}} > 150\text{ MHz}$ (both 160 MHz and 170 MHz):** MUST set `PWR->CR5.R1MODE = 0` (Range 1 Boost), `FLASH->ACR.LATENCY = 4WS`, and step `HPRE = /2` for $\ge 1\ \mu\text{s}$ (`RM0440 §6.1.5`)!
 
-| Target `SYSCLK` | Source ($f_{\text{SRC}}$) | $M$ (`PLLM`) | $f_{\text{PLL\_IN}}$ | $N$ (`PLLN`) | $f_{\text{VCO}}$ | $R$ (`PLLR`) | `PWR_CR5` / `FLASH` | Useful `PLL_Q` & `PLL_P` |
+| Target `SYSCLK` | Source ($f_{\text{SRC}}$) | $M$ (`PLLM`) | $f_{\text{PLL-IN}}$ | $N$ (`PLLN`) | $f_{\text{VCO}}$ | $R$ (`PLLR`) | `PWR_CR5` / `FLASH` | Useful `PLL_Q` & `PLL_P` |
 |---|---|---:|---:|---:|---:|---:|---|---|
 | **170 MHz** | HSI16 (16 MHz) | `4` (`3`) | `4 MHz` | `85` | `340 MHz` | `2` (`0`) | Boost (`R1MODE=0`), `4WS`, `HPRE=/2` ramp | `Q=/8` (`42.5 MHz`), `P=/6` (`56.67 MHz`) |
 | **170 MHz** | HSE X3 (24 MHz) | `6` (`5`) | `4 MHz` | `85` | `340 MHz` | `2` (`0`) | Boost (`R1MODE=0`), `4WS`, `HPRE=/2` ramp | `Q=/8` (`42.5 MHz`), `P=/6` (`56.67 MHz`) |
@@ -56,15 +56,15 @@ $$f_{\text{PLL\_Q}} = \frac{f_{\text{VCO}}}{Q}, \qquad f_{\text{PLL\_P}} = \frac
 ## 3. Timers, PWM & `BDTR.DTG` 4-Range Dead-Time (`PERIPH-TIM-*`, `PERIPH-BDTR-001`)
 
 ### Timer Clock Rule
-$$f_{\text{TIM\_CLK}} = \begin{cases} f_{\text{PCLK}x} & \text{if } \text{PPRE}x = /1 \\ 2 \times f_{\text{PCLK}x} & \text{if } \text{PPRE}x > /1 \end{cases}$$
+$$f_{\text{TIM-CLK}} = \begin{cases} f_{\text{PCLK}x} & \text{if } \text{PPRE}x = /1 \\ 2 \times f_{\text{PCLK}x} & \text{if } \text{PPRE}x > /1 \end{cases}$$
 
 ### Update Frequency, Edge-Aligned PWM & Center-Aligned PWM
-$$f_{\text{update}} = f_{\text{PWM,edge}} = \frac{f_{\text{TIM\_CLK}}}{(\text{PSC} + 1) \cdot (\text{ARR} + 1)}, \qquad f_{\text{PWM,center}} = \frac{f_{\text{TIM\_CLK}}}{2 \cdot (\text{PSC} + 1) \cdot \text{ARR}}$$
+$$f_{\text{update}} = f_{\text{PWM,edge}} = \frac{f_{\text{TIM-CLK}}}{(\text{PSC} + 1) \cdot (\text{ARR} + 1)}, \qquad f_{\text{PWM,center}} = \frac{f_{\text{TIM-CLK}}}{2 \cdot (\text{PSC} + 1) \cdot \text{ARR}}$$
 $$\text{Duty Cycle (\%)} = \frac{\text{CCR}x}{\text{ARR} + 1} \times 100\%, \qquad \text{PWM Resolution (bits)} = \log_2(\text{ARR} + 1)$$
 - **Example (25 kHz edge-aligned PWM @ 170 MHz, `PSC = 0`):** $\text{ARR} = \frac{170{,}000{,}000}{25{,}000} - 1 = 6{,}799$ ($\approx 12.7\text{ bits}$ resolution).
 
 ### Advanced Timer Dead-Time (`TIMx->BDTR.DTG[7:0]`, RM0440 §28.6.20)
-Let $t_{\text{DTS}} = \frac{2^{\text{CKD}}}{f_{\text{TIM\_CLK}}}$ (when `CR1.CKD = 00b` at $170\text{ MHz}$, $t_{\text{DTS}} = 5.882\text{ ns}$):
+Let $t_{\text{DTS}} = \frac{2^{\text{CKD}}}{f_{\text{TIM-CLK}}}$ (when `CR1.CKD = 00b` at $170\text{ MHz}$, $t_{\text{DTS}} = 5.882\text{ ns}$):
 
 | `DTG[7:5]` Bit Pattern | Decimal `DTG` | Formula for Dead-Time $T_{\text{DT}}$ | Step @ 170 MHz | Range @ 170 MHz |
 |---|---|---|---|---|
@@ -84,15 +84,17 @@ $$\text{BRR} = \text{round}\!\left(\frac{f_{\text{KER}} / \text{PRESC}}{\text{Ba
 - At $16\text{ MHz}$ HSI16, `115200 bps`: $\text{BRR} = \text{round}(16{,}000{,}000 / 115{,}200) = \mathbf{139}$ (`0x008B`, $-0.08\%$ error).
 
 ### LPUART1 (20-Bit Fractional `BRR`)
-Valid when $3 \cdot \text{Baud} \le f_{\text{KER\_PRESC}} \le 4096 \cdot \text{Baud}$:
-$$\text{BRR}_{\text{LPUART}} = \text{round}\!\left(\frac{256 \times f_{\text{KER\_PRESC}}}{\text{Baud}}\right)$$
+Valid when $3 \cdot \text{Baud} \le f_{\text{KER,presc}} \le 4096 \cdot \text{Baud}$:
+$$\text{BRR}_{\text{LPUART}} = \text{round}\!\left(\frac{256 \times f_{\text{KER,presc}}}{\text{Baud}}\right)$$
 
 ### I2C `TIMINGR` Timing Equations (RM0440 §39.4.9)
 $$t_{\text{PRESC}} = (\text{PRESC} + 1) \cdot t_{\text{I2CCLK}}$$
 $$t_{\text{SCLL}} = (\text{SCLL} + 1) \cdot t_{\text{PRESC}}, \qquad t_{\text{SCLH}} = (\text{SCLH} + 1) \cdot t_{\text{PRESC}}$$
 $$t_{\text{SCLDEL}} = (\text{SCLDEL} + 1) \cdot t_{\text{PRESC}}, \qquad t_{\text{SDADEL}} = \text{SDADEL} \cdot t_{\text{PRESC}}$$
 $$f_{\text{SCL}} \approx \frac{1}{t_{\text{SCLL}} + t_{\text{SCLH}} + t_{\text{SYNC1}} + t_{\text{SYNC2}}}$$
-- **Verified `Lab 12` 400 kHz Fast Mode @ $f_{\text{I2CCLK}} = 170\text{ MHz}$:** `TIMINGR = 0x30612144` (`PRESC=3`, `SCLDEL=6`, `SDADEL=1`, `SCLH=0x21`, `SCLL=0x44`).
+- **Verified `Lab 12` & `i2c_g4.h` 400 kHz Fast Mode @ $f_{\text{I2CCLK}} = 170\text{ MHz}$:** `TIMINGR = 0x70811021` (`PRESC=7`, `SCLDEL=8`, `SDADEL=1`, `SCLH=0x10`, `SCLL=0x21` $\implies$ $f_{\text{SCL(max)}} = 396.3\text{ kHz} \le 400\text{ kHz}$, $t_{\text{SCLDEL}} = 423.5\text{ ns} \ge 400\text{ ns}$).
+- **Verified `i2c_g4.h` 400 kHz Fast Mode @ $f_{\text{I2CCLK}} = 160\text{ MHz}$:** `TIMINGR = 0x70710F1F` (`PRESC=7`, `SCLDEL=7`, `SDADEL=1`, `SCLH=0x0F`, `SCLL=0x1F` $\implies$ $f_{\text{SCL(max)}} = 396.0\text{ kHz} \le 400\text{ kHz}$, $t_{\text{SCLDEL}} = 400.0\text{ ns}$).
+- **Verified `i2c_g4.h` 100 kHz Standard Mode @ $f_{\text{I2CCLK}} = 16\text{ MHz}$ (HSI16, RM0440 Table 384):** `TIMINGR = 0x30420F13` (`PRESC=3`, `SCLDEL=4`, `SDADEL=2`, `SCLH=0x0F`, `SCLL=0x13`).
 
 ---
 
@@ -106,8 +108,8 @@ $$f_{\text{ADC}} \le 60\text{ MHz}\text{ (single)},\quad \le 52\text{ MHz}\text{
 Factory calibration constants in STM32G474RE System ROM (measured at $V_{\text{DDA}} = 3.0\text{ V}$):
 - **`VREFINT_CAL`** (`uint16_t` @ `0x1FFF75AA`), **`TS_CAL1`** (30 °C @ `0x1FFF75A8`), **`TS_CAL2`** (130 °C @ `0x1FFF75CA`)
 
-$$V_{\text{DDA}} = 3.0\text{ V} \times \frac{\text{VREFINT\_CAL}}{\text{ADC}_{\text{VREFINT}}}, \qquad V_{\text{IN}} = V_{\text{DDA}} \times \frac{\text{ADC}_{\text{RAW}}}{4095}$$
-$$T_{\text{die}}(^\circ\text{C}) = \frac{130 - 30}{\text{TS\_CAL2} - \text{TS\_CAL1}} \times \left(\text{ADC}_{\text{TEMP}} \cdot \frac{V_{\text{DDA}}}{3.0\text{ V}} - \text{TS\_CAL1}\right) + 30$$
+$$V_{\text{DDA}} = 3.0\text{ V} \times \frac{\text{VREFINT-CAL}}{\text{ADC}_{\text{VREFINT}}}, \qquad V_{\text{IN}} = V_{\text{DDA}} \times \frac{\text{ADC}_{\text{RAW}}}{4095}$$
+$$T_{\text{die}}(^\circ\text{C}) = \frac{130 - 30}{\text{TS-CAL2} - \text{TS-CAL1}} \times \left(\text{ADC}_{\text{TEMP}} \cdot \frac{V_{\text{DDA}}}{3.0\text{ V}} - \text{TS-CAL1}\right) + 30$$
 
 ### 12-Bit DAC Output Voltage
 $$V_{\text{OUT}} = V_{\text{REF+}} \times \frac{\text{DOR}}{4096} \quad (\text{or } \approx V_{\text{REF+}} \cdot \frac{\text{DHR12R}}{4095}\text{ full-scale code } 4095)$$
@@ -130,7 +132,7 @@ $$T_{\text{WWDG,max}} = \frac{4096 \times 2^{\text{WDGTB}} \times (T[5:0] + 1)}{
 
 ### ARM Cortex-M4 Bit-Band Alias Address Formula (`ARM DDI 0403E.e`)
 Valid **only** for SRAM `0x20000000–0x200FFFFF` (alias `0x22000000`) and Peripheral `0x40000000–0x400FFFFF` (alias `0x42000000`):
-$$\text{alias\_addr} = \text{alias\_base} + (\text{byte\_offset} \times 32) + (\text{bit\_num} \times 4)$$
+$$\text{alias addr} = \text{alias base} + (\text{byte offset} \times 32) + (\text{bit num} \times 4)$$
 > **STM32G474RE Warning:** `GPIOA–G` (`0x48000000`) and `ADC`/`DAC` (`0x50000000`) are **OUTSIDE** the `0x40000000–0x400FFFFF` bit-band region! Always use `GPIOx->BSRR` / `BRR` for atomic GPIO operations.
 
 ### Rate Monotonic Scheduling (RMS) Utilization Bound (Liu & Layland)

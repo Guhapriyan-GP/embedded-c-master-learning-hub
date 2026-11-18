@@ -1,5 +1,9 @@
 # Stage 03: Embedded C, Concurrency Primitives & Production Firmware Architecture
 
+> **Sequential Navigation (Step 3 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 02 — C Language Foundations (`02-c-fundamentals/`)](../02-c-fundamentals/README.md) | **Next:** [Stage 04 — ARM Cortex-M4F Core (`04-arm-cortex-m/`)](../04-arm-cortex-m/README.md)  
+> **Prerequisites:** [Stage 01b (`DIG-ELEC-*`)](../01b-digital-electronics-and-hw-integration/README.md), [Stage 02 (`C-*`)](../02-c-fundamentals/README.md)
+
 > **Curriculum Track:** Level 1–3 Bare-Metal Systems & Firmware Architecture (`EMB-*`, `FW-*`)  
 > **Target Platform:** STM32G474RET6 (ARM Cortex-M4F, CMSIS-Core V5.x, `stm32g474xx.h`, `__NVIC_PRIO_BITS = 4U`)  
 > **Code Verification Policy:** All C11 implementation blocks in Section 8 are **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -O2 -Wall -Wextra -Werror -Wdouble-promotion -Wvla`)** against vendored `stm32g474xx.h`, `core_cm4.h`, and `cmsis_gcc.h` (**Not Tested on Physical Hardware**).
@@ -108,7 +112,7 @@ Never blindly use `|=` or `&=` on hardware registers! Always check the access co
 
 1. **Reentrant `PRIMASK` & Selective Cortex-M4 `BASEPRI` Critical Sections (`EMB-ATOM-001`):**
    - Never pair bare `__disable_irq()` with bare `__enable_irq()` inside utility functions — nested calls prematurely re-enable interrupts on inner exit! Always **save and restore `PRIMASK`** with compiler memory barriers (`crit_enter_primask` / `crit_exit_primask` in Section 8.1).
-   - On STM32G474RE (`__NVIC_PRIO_BITS = 4U`, priority encoded in top bits `[7:4]`), `PRIMASK` masks *every* interrupt (adding jitter to 100 kHz digital power fault ISRs!). Instead, **`__set_BASEPRI_MAX(min_masked_prio << 4U)`** masks only IRQs with numeric priority $\ge \text{min\_masked\_prio}$ while **never weakening** a stricter outer `BASEPRI` threshold (hardware ignores any write with a numerically larger non-zero priority). Priority `0..(min_masked_prio - 1)` ISRs execute with **zero added latency** (the exact mechanism behind FreeRTOS `configMAX_SYSCALL_INTERRUPT_PRIORITY`; Section 8.1).
+   - On STM32G474RE (`__NVIC_PRIO_BITS = 4U`, priority encoded in top bits `[7:4]`), `PRIMASK` masks *every* interrupt (adding jitter to 100 kHz digital power fault ISRs!). Instead, **`__set_BASEPRI_MAX(min_masked_prio << 4U)`** masks only IRQs with numeric priority $\ge p_{\text{mask}}$ (`min_masked_prio`) while **never weakening** a stricter outer `BASEPRI` threshold (hardware ignores any write with a numerically larger non-zero priority). Priority `0..(min_masked_prio - 1)` ISRs execute with **zero added latency** (the exact mechanism behind FreeRTOS `configMAX_SYSCALL_INTERRUPT_PRIORITY`; Section 8.1).
 2. **Exclusive Load/Store (`__LDREXW`/`__STREXW`/`__CLREX`) & C11 `<stdatomic.h>` (`EMB-ATOM-002`):**
    - Cortex-M4 provides a **local exclusive monitor** accessed via `LDREX` / `STREX` (exposed via `cmsis_gcc.h` `__LDREXW`/`__STREXW`/`__CLREX`, `stm32g4xx.h` `ATOMIC_SET_BIT`/`ATOMIC_CLEAR_BIT`/`ATOMIC_MODIFY_REG`, and ISO C11 `<stdatomic.h>`).
    - **Why It Is ISR-Safe Without Masking Interrupts:** `__LDREXW(addr)` loads `*addr` and tags the local monitor *Exclusive*. If an ISR preempts before `__STREXW(new_val, addr)`, exception entry/return (`ERET`) automatically clears the local monitor to *Open*, causing `__STREXW` to abort the write and return `1` so the `do { ... } while` loop cleanly retries with fresh data! Always issue `__CLREX()` on early loop exit (Section 8.2).
@@ -254,15 +258,16 @@ Verified directly against `stm32g474xx.h`, `core_cm4.h`, and `cmsis_gcc.h`:
 ## 6. Relevant Formulas & Calculations
 
 ### 6.1 Wraparound-Safe Cooperative Scheduler Condition
-$$\left(\text{uint32\_t}\right)\left(t_{\text{now}} - t_{\text{last}}\right) \ge T_{\text{period}}$$
+$$\left(t_{\text{now}} - t_{\text{last}}\right) \bmod 2^{32} \ge T_{\text{period}}$$
 
 ### 6.2 SPSC Power-of-Two Ring Buffer Indexing & Occupancy
 With capacity $N = 2^k$ and free-running unsigned `uint32_t head, tail`:
-$$\text{count} = \left(\text{uint32\_t}\right)(\text{head} - \text{tail}), \qquad \text{index}(i) = i \mathbin{\&} (N - 1)$$
-$$\text{is\_empty} \iff (\text{head} == \text{tail}), \qquad \text{is\_full} \iff \left(\text{uint32\_t}\right)(\text{head} - \text{tail}) == N$$
+$$\text{count} = (\text{head} - \text{tail}) \bmod 2^{32}, \qquad \text{index}(i) = i \mathbin{\&} (N - 1)$$
+$$\text{empty} \iff (\text{head} == \text{tail}), \qquad \text{full} \iff \left((\text{head} - \text{tail}) \bmod 2^{32}\right) == N$$
 
 ### 6.3 Cortex-M4 `BASEPRI` Register Encoding on STM32G474RE
-$$\text{BASEPRI\_REG} = \text{priority\_level} \ll (8 - \text{\_\_NVIC\_PRIO\_BITS}) = \text{priority\_level} \ll 4$$
+With $N_{\text{prio}} = 4$ (`__NVIC_PRIO_BITS`) and numeric priority level $p \in [0..15]$:
+$$\text{BASEPRI} = p \ll (8 - N_{\text{prio}}) = p \ll 4$$
 
 ---
 
@@ -877,3 +882,8 @@ int cli_dispatch(int argc, const char *const argv[])
 - [ ] **Concurrency Primitives Verified:** Nested `PRIMASK`/`BASEPRI` critical sections, `__LDREXW`/`__STREXW`/`__CLREX`, 64-bit double-read / Seqlock, and lock-free SPSC ring buffer with `__DMB()` verified via disassembly and host boundary tests.
 - [ ] **Static vs Dynamic HAL & Design Patterns Applied:** Quantify static-inline/X-Macro/`_Generic` dispatch vs runtime vtables via `objdump -d`, implement a decoupled Hardware Proxy + Async Driver + HSM + $O(1)$ Fixed-Block Pool, and replace blocking `delay()` loops with a race-free `WFI` + TTC architecture.
 - [ ] **Standards Fluency:** Correctly classify MISRA Mandatory/Required/Advisory rules, author a valid Rule 11.4 Deviation Record, and apply SEI CERT C bounds/overflow checks.
+
+---
+
+> **Sequential Navigation (Step 3 of 17):**  
+> **Prev:** [Stage 02 — C Language Foundations (`02-c-fundamentals/`)](../02-c-fundamentals/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 04 — ARM Cortex-M4F Core (`04-arm-cortex-m/`)](../04-arm-cortex-m/README.md)

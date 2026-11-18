@@ -5,8 +5,11 @@
   - *Document ID:* ARM DDI 0403E.e
   - *Description:* Definitive hardware architecture reference specifying the ARMv7-M profile, 16/32-bit Thumb-2 instruction set encoding, processor operating states, exception models, memory barrier instructions (`DMB`, `DSB`, `ISB`), and debug architecture.
 - **ARM Cortex-M4 Technical Reference Manual:**
-  - *Document ID:* ARM DDI 0439F
+  - *Document ID:* ARM DDI 0439D (`r0p1` matching STM32G474RE `__CM4_REV = 0x0001U`; see also `DDI 0439F` documentation update)
   - *Description:* Microarchitecture specifications detailing the 3-stage pipeline, branch speculation, memory interfaces, Floating Point Unit (FPU), and DSP extension registers.
+- **ARM Application Note 321 (AN321) — ARM Cortex-M Programming Guide to Memory Barrier Instructions:**
+  - *Document ID:* ARM DAI 0321A
+  - *Description:* Authoritative guidance on `DMB`, `DSB`, and `ISB` usage across Cortex-M processors — including peripheral interrupt-flag clear synchronization (status-register readback + `__DSB()` before ISR exit to drain buffered AHB/APB bridges), `VTOR`/`MPU`/`FPCCR` updates, and `PRIMASK`/`BASEPRI` barriers.
 - **Procedure Call Standard for the ARM Architecture (AAPCS):**
   - *Description:* Defines how functions pass parameters (registers R0-R3, stack), return values (R0-R1), and which registers must be preserved across calls (callee-saved: R4-R11) versus volatile caller-saved registers (R0-R3, R12, LR, PC, PSR).
 

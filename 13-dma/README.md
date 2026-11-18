@@ -1,5 +1,9 @@
 # Stage 12: Direct Memory Access (`DMA1`/`DMA2`) & `DMAMUX1` Architecture
 
+> **Sequential Navigation (Step 13 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 12 (10) — Mixed-Signal Analog (`12-adc-dac-analog/`)](../12-adc-dac-analog/README.md) | **Next:** [Stage 14 (12) — Dual-Bank Flash, ECC & Bootloaders (`14-memory-and-storage/`)](../14-memory-and-storage/README.md)  
+> **Prerequisites:** [`06-stm32-fundamentals/` (`STM32-SRAM-001`)](../06-stm32-fundamentals/README.md), [`10-interrupts/`](../10-interrupts/README.md), [`11-communication/`](../11-communication/README.md), [`12-adc-dac-analog/`](../12-adc-dac-analog/README.md)
+
 > **Directory:** `13-dma/` | **Target Platform:** STM32G474RET6 (`DMA1` 8 Ch + `DMA2` 8 Ch + `DMAMUX1` 16 Ch + 4 Request Generators)  
 > **Code Verification Notice:** All bare-metal C snippets in this module are **Statically Reviewed against `stm32g474xx.h`, RM0440, and ES0430 (Not Tested on Physical Hardware)**.
 
@@ -106,7 +110,7 @@ Verified directly against `stm32g474xx.h` and RM0440 Table 91:
 
 ### 6.1 Ping-Pong Double-Buffer Real-Time Deadline Constraint
 For a circular buffer of $2N$ samples fed at aggregate sample rate $f_s$:
-$$t_{\text{half}} = \frac{N}{f_s}, \qquad \text{Requirement: } \text{WCET}_{\text{process}}(N) + t_{\text{ISR\_overhead}} < t_{\text{half}}$$
+$$t_{\text{half}} = \frac{N}{f_s}, \qquad \text{Requirement: } \text{WCET}_{\text{process}}(N) + t_{\text{ISR ovh}} < t_{\text{half}}$$
 **Worked Example:** `ADC1` scanning 2 channels at $20\text{ kHz}$ ($f_s = 40\text{ kS/s}$), buffer `2 * N = 128` samples ($N = 64$):
 $$t_{\text{half}} = \frac{64}{40{,}000} = \mathbf{1.600\text{ ms}} \quad (272{,}000\text{ CPU cycles @ 170 MHz})$$
 
@@ -251,3 +255,8 @@ void DMA1_Channel1_IRQHandler(void)
 | `PERIPH-DMA-002` | Stream 20 kHz `ADC1` into 128-sample circular `volatile` ping-pong buffer with 0 torn samples and 0 overruns over 1M samples | Logic Analyzer + GDB |
 | `PERIPH-DMA-003` | Execute EXTI-triggered `DMAMUX1` Request Generator burst in `__WFI()` sleep with `DMAMUX1_ChannelStatus->CSR == 0` | Logic Analyzer + GDB |
 | `STM32-SRAM-001` | Verify DMA fails (`TEIF`) at `0x10000000`, succeeds at `0x20018000`, and achieves 0-contention when CPU executes from CCM while DMA uses SRAM1 | GDB + `DWT->CYCCNT` |
+
+---
+
+> **Sequential Navigation (Step 13 of 17):**  
+> **Prev:** [Stage 12 (10) — Mixed-Signal Analog (`12-adc-dac-analog/`)](../12-adc-dac-analog/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 14 (12) — Dual-Bank Flash, ECC & Bootloaders (`14-memory-and-storage/`)](../14-memory-and-storage/README.md)

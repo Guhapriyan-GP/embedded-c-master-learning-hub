@@ -12,7 +12,7 @@ No claims regarding peripheral configuration are made based on generic internet 
 ## 2. Mathematical Validation Protocols
 All operational formulas included in the curriculum must be stated with full unit dimensional analysis and worked examples:
 - **Timer Frequency Equation:**
-  $$\text{Update Frequency } (f_{\text{UEV}}) = \frac{f_{\text{TIM\_CLK}}}{(\text{PSC} + 1) \times (\text{ARR} + 1)}$$
+  $$\text{Update Frequency } (f_{\text{UEV}}) = \frac{f_{\text{TIM-CLK}}}{(\text{PSC} + 1) \times (\text{ARR} + 1)}$$
 - **UART Baud Rate Divisor Equation:**
   $$\text{USARTDIV} = \frac{f_{\text{CK}}}{\text{Baud Rate}}$$
   (with oversampling by 16 or 8 properly accounted for in the BRR register formatting).

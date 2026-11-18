@@ -19,7 +19,7 @@
 | `RCC_PLLCFGR` | `0x00C` | `0x00001000` | RW | Main PLL configuration register (`PLLSRC`, `PLLM`, `PLLN`, `PLLP`/`PLLPDIV`, `PLLQ`, `PLLR`) |
 | `RCC_CIER` | `0x018` | `0x00000000` | RW | Clock interrupt enable register |
 | `RCC_CIFR` | `0x01C` | `0x00000000` | RO | Clock interrupt flag register (`CSSF`, `LSECSSF`, `PLLRDYF`, `HSERDYF`, `HSIRDYF`, `HSI48RDYF`) |
-| `RCC_CICR` | `0x020` | `0x00000000` | WO | Clock interrupt clear register (write `1` to clear flags) |
+| `RCC_CICR` | `0x020` | `0x00000000` | **WO** | Clock interrupt clear register (Direct `RCC->CICR = mask;` write `1` to clear — NEVER `|=`; follow with `(void)RCC->CIFR; __DSB();` in `RCC_IRQHandler`) |
 | `RCC_AHB1RSTR` | `0x028` | `0x00000000` | RW | AHB1 peripheral reset register |
 | `RCC_AHB2RSTR` | `0x02C` | `0x00000000` | RW | AHB2 peripheral reset register |
 | `RCC_AHB3RSTR` | `0x030` | `0x00000000` | RW | AHB3 peripheral reset register |
@@ -72,8 +72,8 @@
 
 #### C. `RCC_PLLCFGR` (PLL Configuration Register) — Offset `0x00C`
 Per **DS12288**, valid STM32G474RE PLL limits are:
-- PLL input frequency: $f_{\text{PLL\_IN}} = \frac{f_{\text{SRC}}}{M} \in [2.66,\ 16.0]\ \text{MHz}$
-- VCO output frequency: $f_{\text{VCO}} = f_{\text{PLL\_IN}} \times N \in [96,\ 344]\ \text{MHz}$ (Range 1) or $[96,\ 128]\ \text{MHz}$ (Range 2)
+- PLL input frequency: $f_{\text{PLL in}} = \frac{f_{\text{SRC}}}{M} \in [2.66,\ 16.0]\ \text{MHz}$
+- VCO output frequency: $f_{\text{VCO}} = f_{\text{PLL in}} \times N \in [96,\ 344]\ \text{MHz}$ (Range 1) or $[96,\ 128]\ \text{MHz}$ (Range 2)
 
 - **Bits [1:0] (`PLLSRC`):** `00` = No clock, `10` = HSI16, `11` = HSE.
 - **Bits [7:4] (`PLLM`):** Input divider $M = \text{PLLM} + 1$ (`0000` = `/1` to `1111` = `/16`).

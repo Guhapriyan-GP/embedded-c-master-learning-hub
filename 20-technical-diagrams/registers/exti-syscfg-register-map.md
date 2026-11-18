@@ -43,13 +43,13 @@
 | `EXTI_RTSR1` | `0x008` | `0x00000000` | RW | Rising trigger selection register 1 (Lines 0–31) |
 | `EXTI_FTSR1` | `0x00C` | `0x00000000` | RW | Falling trigger selection register 1 (Lines 0–31) |
 | `EXTI_SWIER1` | `0x010` | `0x00000000` | RW | Software interrupt event register 1 (`1` = trigger pending latch in software) |
-| `EXTI_PR1` | `0x014` | `0x00000000` | **rc_w1** | Pending register 1 (**Direct write `EXTI->PR1 = mask;` — NEVER `|=`!**) |
+| `EXTI_PR1` | `0x014` | `0x00000000` | **rc_w1** | Pending register 1 (**Direct write `EXTI->PR1 = mask;` — NEVER `|=`!** Follow with `(void)EXTI->PR1; __DSB();` in ISRs per ARM AN321 §4.9 & ES0430 §2.1.3) |
 | `EXTI_IMR2` | `0x020` | `0x00000187` | RW | Interrupt mask register 2 (Lines 32–43) |
 | `EXTI_EMR2` | `0x024` | `0x00000000` | RW | Event mask register 2 (Lines 32–43) |
 | `EXTI_RTSR2` | `0x028` | `0x00000000` | RW | Rising trigger selection register 2 (Lines 32–43) |
 | `EXTI_FTSR2` | `0x02C` | `0x00000000` | RW | Falling trigger selection register 2 (Lines 32–43) |
 | `EXTI_SWIER2` | `0x030` | `0x00000000` | RW | Software interrupt event register 2 (Lines 32–43) |
-| `EXTI_PR2` | `0x034` | `0x00000000` | **rc_w1** | Pending register 2 (Lines 32–43; write `1` to clear) |
+| `EXTI_PR2` | `0x034` | `0x00000000` | **rc_w1** | Pending register 2 (Lines 32–43; direct write `EXTI->PR2 = mask;` — NEVER `|=`!) |
 
 **NVIC IRQ Mapping (`stm32g474xx.h`):** `EXTI0_IRQn = 6`, `EXTI1_IRQn = 7`, `EXTI2_IRQn = 8`, `EXTI3_IRQn = 9`, `EXTI4_IRQn = 10`, `EXTI9_5_IRQn = 23`, `EXTI15_10_IRQn = 40`.
 
@@ -58,7 +58,7 @@
 ### 4. CMSIS Code Example: NUCLEO-G474RE User Button B1 (`PC13`) Rising-Edge Interrupt
 
 > **UM2505 Hardware Polarity Verification:** On NUCLEO-G474RE (MB1367), User Button B1 (`PC13`) has an **external pull-down** and connects to `VDD` when pressed (**Active-HIGH → Rising Edge `RTSR1`**). Do **not** enable an internal pull-up (it fights the external pull-down).  
-> **Status:** Statically Reviewed (Not Tested on Physical Hardware).
+> **Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`; Not Tested on Physical Hardware).
 
 ```c
 #include "stm32g474xx.h"
@@ -101,7 +101,9 @@ void EXTI15_10_IRQHandler(void) {
         } else {
             GPIOA->BSRR = GPIO_BSRR_BS5;
         }
-        /* ES0430 §2.1.3 / ARM erratum 838869: drain write buffer before ISR exit */
+        /* 1. Dummy readback guarantees APB2 clear reaches EXTI slave (ARM AN321 §4.9).
+         * 2. __DSB() drains core write buffer & mitigates ARM Erratum 838869 (ES0430 §2.1.3). */
+        (void)EXTI->PR1;
         __DSB();
     }
 }

@@ -1,5 +1,9 @@
 # Stage 01b: Digital Electronics, NUCLEO-G474RE Hardware Integration & Lab Equipment Mastery
 
+> **Sequential Navigation (Step 1 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [`START_HERE.md`](../START_HERE.md) *(Entry Point)* | **Next:** [Stage 02 — C Language Foundations (`02-c-fundamentals/`)](../02-c-fundamentals/README.md)  
+> **Prerequisites:** None *(Beginner Entry Point — read [`START_HERE.md`](../START_HERE.md) first)*
+
 > **Curriculum Track:** Level 1 — Essential Hardware Bridge (Prerequisite before Stage 06–08 Hardware Labs)  
 > **Target Silicon:** STMicroelectronics **STM32G474RET6** (LQFP64, ARM Cortex-M4F @ 170 MHz)  
 > **Target Board:** **NUCLEO-G474RE** (PCB **MB1367**, ST User Manual **UM2505**)  
@@ -472,3 +476,8 @@ To pass Stage 01b, you must satisfy all six criteria:
 - [ ] **Pin-Conflict Matrix Built:** Produce a conflict-free LQFP64 pin assignment table validated against DS12288 Table 12/13 (respecting `FT` vs `TT_a` voltage limits).
 - [ ] **Safe Lab Bring-Up Demonstrated:** Execute the 4-step DMM continuity + CC/CV bench PSU current-limited bring-up checklist and compensate a 10x oscilloscope probe before powering external circuits.
 - [ ] **Logic Analyzer & Scope Rules Applied:** Correctly specify $\ge 4\times\text{--}10\times$ logic analyzer sample rate, 3.3 V CMOS threshold, and $f_{BW} \ge 0.35 / t_r$ scope bandwidth for a target SPI/I2C/PWM waveform.
+
+---
+
+> **Sequential Navigation (Step 1 of 17):**  
+> **Prev:** [`START_HERE.md`](../START_HERE.md) *(Entry Point)* | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 02 — C Language Foundations (`02-c-fundamentals/`)](../02-c-fundamentals/README.md)

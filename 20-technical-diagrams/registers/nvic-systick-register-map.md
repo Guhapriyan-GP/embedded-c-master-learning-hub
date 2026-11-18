@@ -32,7 +32,8 @@
 | `NVIC->IP[0..239]` | `0x300` | RW | Interrupt Priority byte array (maps 60 × 32-bit hardware `IPR[0..59]`; on STM32G474RE bits `[7:4]` active, `[3:0]` tied 0) |
 | `NVIC->STIR` | `0xE00` | WO | Software Trigger Interrupt Register (Base `0xE000EF00`; write IRQ number `0..101`) |
 
-> **FreeRTOS Requirement:** Always call `NVIC_SetPriorityGrouping(0U)` (or `3U` — all 4 bits preemption, 0 bits subpriority) before `vTaskStartScheduler()`, and keep `BASEPRI` (`configMAX_SYSCALL_INTERRUPT_PRIORITY`) aligned to bits `[7:4]`.
+> **FreeRTOS Requirement:** Always call `NVIC_SetPriorityGrouping(0U)` (or `3U` — all 4 bits preemption, 0 bits subpriority) before `vTaskStartScheduler()`, and keep `BASEPRI` (`configMAX_SYSCALL_INTERRUPT_PRIORITY`) aligned to bits `[7:4]`.  
+> **Barrier & Errata Rules (ARM AN321 & ST ES0430 §2.1.3):** After `NVIC_DisableIRQ()`, execute `__DSB(); __ISB();` if subsequent code must not be preempted (`ARM AN321 §4.6`). Inside peripheral ISRs, clear the flag early, read the peripheral register back (`(void)REG;`) to stall until the clear commits across the AHB-to-APB bridge (`ARM AN321 §4.9`), and execute `__DSB();` before return to mitigate **ARM Erratum 838869 / ST ES0430 §2.1.3** (*store immediate overlapping exception return might vector to incorrect interrupt*).
 
 ---
 
@@ -48,8 +49,8 @@
 | `SCB->CCR` | `0x014` | RW | `UNALIGN_TRP` (b3), `DIV_0_TRP` (b4), `STKALIGN` (b9 = 1 default) |
 | `SCB->SHP[0..11]` | `0x018` | RW | System Handler Priorities (MemManage, BusFault, UsageFault, SVCall, PendSV `[10]`, SysTick `[11]`) |
 | **`SCB->SHCSR`** | `0x024` | RW | **`MEMFAULTENA` (b16), `BUSFAULTENA` (b17), `USGFAULTENA` (b18)** — enable configurable faults so they don't escalate to HardFault! |
-| **`SCB->CFSR`** | `0x028` | rc_w1 | Combined Configurable Fault Status: **`MMFSR[7:0]`** (`IACCVIOL`, `DACCVIOL`, `MMARVALID` b7), **`BFSR[15:8]`** (`IBUSERR`, `PRECISERR`, `IMPRECISERR`, `BFARVALID` b15), **`UFSR[31:16]`** (`UNDEFINSTR`, `INVSTATE`, `NOCP`, `UNALIGNED`, `DIVBYZERO`) |
-| **`SCB->HFSR`** | `0x02C` | rc_w1 | HardFault Status: `VECTTBL` (b1), **`FORCED` (b30** = escalated configurable fault), `DEBUGEVT` (b31) |
+| **`SCB->CFSR`** | `0x028` | **rc_w1** | Combined Configurable Fault Status (`=` direct write, NEVER `|=`): **`MMFSR[7:0]`** (`IACCVIOL`, `DACCVIOL`, `MMARVALID` b7), **`BFSR[15:8]`** (`IBUSERR`, `PRECISERR`, `IMPRECISERR`, `BFARVALID` b15), **`UFSR[31:16]`** (`UNDEFINSTR`, `INVSTATE`, `NOCP`, `UNALIGNED`, `DIVBYZERO`) |
+| **`SCB->HFSR`** | `0x02C` | **rc_w1** | HardFault Status (`=` direct write, NEVER `|=`): `VECTTBL` (b1), **`FORCED` (b30** = escalated configurable fault), `DEBUGEVT` (b31) |
 | **`SCB->MMFAR`** | `0x034` | RW | MemManage Fault Address (valid **only** when `CFSR.MMARVALID == 1`) |
 | **`SCB->BFAR`** | `0x038` | RW | BusFault Address (valid **only** when `CFSR.BFARVALID == 1`) |
 | **`SCB->CPACR`** | `0x088` | RW | Coprocessor Access Control: set **`CP10`/`CP11 = 0b11` (`0x00F00000UL`) + `__DSB(); __ISB();`** to enable FPv4-SP FPU! |

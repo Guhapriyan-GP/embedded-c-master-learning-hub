@@ -1,5 +1,9 @@
 # Stage 06: Power, Reset & Clock Control (RCC) Engine
 
+> **Sequential Navigation (Step 8 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 07 (06A) — Basic GPIO on 16 MHz HSI16 (`08-gpio/`)](../08-gpio/README.md) | **Next:** [Stage 09 (07) — Interrupts, SysTick, NVIC & EXTI (`10-interrupts/`, *before 09-timers!*)](../10-interrupts/README.md)  
+> **Prerequisites:** [Stage 06 (`STM32-ARCH-*`)](../06-stm32-fundamentals/README.md), [Stage 07/06A (`08-gpio/`, `PERIPH-GPIO-001`)](../08-gpio/README.md)
+
 > **Directory:** `07-rcc-and-clocks/` | **Target Platform:** STM32G474RET6 (LQFP64) on NUCLEO-G474RE (MB1367) | **Core:** ARM Cortex-M4F @ up to 170 MHz  
 > **Code Verification Notice:** All bare-metal C snippets in this module are **Statically Reviewed against `stm32g474xx.h`, RM0440, DS12288, and UM2505 (Not Tested on Physical Hardware)**.
 
@@ -54,7 +58,7 @@ The Main PLL takes **HSI16** (`PLLSRC = 10b`) or **HSE** (`PLLSRC = 11b`), divid
 - **`PLL_P` (`PLLPEN=1`, $P \in [2, 31]$ via `PLLPDIV`, or `7`/`17` via `PLLP` bit):** Drives asynchronous `ADC1–5` kernel clocks ($\le 60\text{ MHz}$ single / $\le 52\text{ MHz}$ multi-ADC).
 
 **Strict DS12288 Operating Limits (NEVER violate!):**
-- **PLL VCO Input Frequency ($f_{\text{PLL\_IN}} = f_{\text{IN}} / M$):** **$2.66\text{ MHz} \le f_{\text{PLL\_IN}} \le 16.0\text{ MHz}$** (note: `2.66 MHz`, NOT 4 MHz).
+- **PLL VCO Input Frequency ($f_{\text{PLL-IN}} = f_{\text{IN}} / M$):** **$2.66\text{ MHz} \le f_{\text{PLL-IN}} \le 16.0\text{ MHz}$** (note: `2.66 MHz`, NOT 4 MHz).
 - **PLL VCO Output Frequency ($f_{\text{VCO}}$):**
   - Range 1 (Normal or Boost): **$96\text{ MHz} \le f_{\text{VCO}} \le 344\text{ MHz}$** (note: `96 MHz` minimum, NOT 64 MHz!).
   - Range 2: **$96\text{ MHz} \le f_{\text{VCO}} \le 128\text{ MHz}$**.
@@ -168,26 +172,26 @@ All addresses, offsets, and bit positions below are verified directly against `s
 ## 6. Engineering Mathematics & Worked Formulas
 
 ### 6.1 Main PLL Frequency Synthesis Equations
-$$f_{\text{PLL\_IN}} = \frac{f_{\text{IN}}}{M}, \quad f_{\text{PLL\_IN}} \in [2.66,\ 16.0]\text{ MHz}$$
-$$f_{\text{VCO}} = f_{\text{PLL\_IN}} \times N = f_{\text{IN}} \times \frac{N}{M}, \quad f_{\text{VCO}} \in [96.0,\ 344.0]\text{ MHz}\text{ (Range 1)}$$
-$$f_{\text{PLL\_R}}\ (\text{SYSCLK}) = \frac{f_{\text{VCO}}}{R}, \quad f_{\text{PLL\_Q}} = \frac{f_{\text{VCO}}}{Q}, \quad f_{\text{PLL\_P}} = \frac{f_{\text{VCO}}}{P}$$
+$$f_{\text{PLL-IN}} = \frac{f_{\text{IN}}}{M}, \quad f_{\text{PLL-IN}} \in [2.66,\ 16.0]\text{ MHz}$$
+$$f_{\text{VCO}} = f_{\text{PLL-IN}} \times N = f_{\text{IN}} \times \frac{N}{M}, \quad f_{\text{VCO}} \in [96.0,\ 344.0]\text{ MHz}\text{ (Range 1)}$$
+$$f_{\text{PLL-R}}\ (\text{SYSCLK}) = \frac{f_{\text{VCO}}}{R}, \quad f_{\text{PLL-Q}} = \frac{f_{\text{VCO}}}{Q}, \quad f_{\text{PLL-P}} = \frac{f_{\text{VCO}}}{P}$$
 
 ### 6.2 Worked Example A: Exact 170 MHz from NUCLEO-G474RE 24 MHz HSE Crystal (`X3`)
 - Given $f_{\text{IN}} = 24\text{ MHz}$ (`HSE`), choose $M = 6$ (`PLLM = 5`):
-  $$f_{\text{PLL\_IN}} = \frac{24\text{ MHz}}{6} = 4.0\text{ MHz} \in [2.66,\ 16.0]\text{ MHz} \quad \checkmark$$
+  $$f_{\text{PLL-IN}} = \frac{24\text{ MHz}}{6} = 4.0\text{ MHz} \in [2.66,\ 16.0]\text{ MHz} \quad \checkmark$$
 - Choose $N = 85$ (`PLLN = 85`):
   $$f_{\text{VCO}} = 4.0\text{ MHz} \times 85 = 340.0\text{ MHz} \in [96.0,\ 344.0]\text{ MHz} \quad \checkmark$$
 - Choose $R = 2$ (`PLLR = 00b`):
   $$f_{\text{SYSCLK}} = \frac{340.0\text{ MHz}}{2} = \mathbf{170.0\text{ MHz}} \quad \checkmark$$
-- Optional `PLL_P` for ADC (`PLLPDIV = 6` $\to P = 6$): $f_{\text{PLL\_P}} = 340 / 6 = 56.67\text{ MHz} \le 60\text{ MHz}$ (single ADC) or `PLLPDIV = 7` $\to 48.57\text{ MHz} \le 52\text{ MHz}$ (multi-ADC).
+- Optional `PLL_P` for ADC (`PLLPDIV = 6` $\to P = 6$): $f_{\text{PLL-P}} = 340 / 6 = 56.67\text{ MHz} \le 60\text{ MHz}$ (single ADC) or `PLLPDIV = 7` $\to 48.57\text{ MHz} \le 52\text{ MHz}$ (multi-ADC).
 - Note on USB/RNG 48 MHz: Since $340\text{ MHz}$ is not evenly divisible by $48\text{ MHz}$, use **`HSI48` + `CRS`** (`CLK48SEL = 00b`) whenever running SYSCLK at 170 MHz!
 
 ### 6.3 Worked Example B: Exact 170 MHz from Internal 16 MHz `HSI16`
-- Choose $M = 4$ (`PLLM = 3`) $\to f_{\text{PLL\_IN}} = 16 / 4 = 4.0\text{ MHz} \in [2.66,\ 16.0]\text{ MHz}$ $\checkmark$.
+- Choose $M = 4$ (`PLLM = 3`) $\to f_{\text{PLL-IN}} = 16 / 4 = 4.0\text{ MHz} \in [2.66,\ 16.0]\text{ MHz}$ $\checkmark$.
 - Choose $N = 85$ $\to f_{\text{VCO}} = 340.0\text{ MHz}$ $\checkmark$; $R = 2$ $\to f_{\text{SYSCLK}} = 170.0\text{ MHz}$ $\checkmark$.
 
 ### 6.4 Worked Example C: Clean Integer 160 MHz Profile (HSE 24 MHz & HSI16 — Still Range 1 Boost + 4 WS!)
-- **From HSE 24 MHz (`X3`):** Choose $M = 3$ (`PLLM = 2`) $\to f_{\text{PLL\_IN}} = 24 / 3 = 8.0\text{ MHz} \in [2.66, 16.0]\text{ MHz}$ $\checkmark$, $N = 40$ $\to f_{\text{VCO}} = 320.0\text{ MHz} \in [96, 344]\text{ MHz}$ $\checkmark$, $R = 2$ $\to f_{\text{SYSCLK}} = \mathbf{160.0\text{ MHz}}$ $\checkmark$ *(equivalently $M=6, N=80, R=2$ with $f_{\text{PLL\_IN}} = 4.0\text{ MHz}$)*.
+- **From HSE 24 MHz (`X3`):** Choose $M = 3$ (`PLLM = 2`) $\to f_{\text{PLL-IN}} = 24 / 3 = 8.0\text{ MHz} \in [2.66, 16.0]\text{ MHz}$ $\checkmark$, $N = 40$ $\to f_{\text{VCO}} = 320.0\text{ MHz} \in [96, 344]\text{ MHz}$ $\checkmark$, $R = 2$ $\to f_{\text{SYSCLK}} = \mathbf{160.0\text{ MHz}}$ $\checkmark$ *(equivalently $M=6, N=80, R=2$ with $f_{\text{PLL-IN}} = 4.0\text{ MHz}$)*.
 - **From HSI16 (16 MHz):** Choose $M = 4$ (`PLLM = 3`) $\to 4.0\text{ MHz}$, $N = 80$ $\to f_{\text{VCO}} = 320.0\text{ MHz}$, $R = 2$ $\to f_{\text{SYSCLK}} = \mathbf{160.0\text{ MHz}}$ $\checkmark$.
 - **Coupled Peripheral Math @ 160 MHz:**
   - `ADC CKMODE = 11b` (`HCLK/4`): $160 / 4 = \mathbf{40.000\text{ MHz}}$ (exact integer MHz $\le 52\text{ MHz}$ multi-ADC spec!).
@@ -463,7 +467,7 @@ uint32_t RCC_ReadAndClearResetFlags(void)
 1. **Q:** Why must `FLASH->ACR.LATENCY` be increased *before* switching `SYSCLK` to 170 MHz, but decreased *after* switching back to 16 MHz?  
    *Hint:* What happens to instruction fetches if the CPU clocks faster than Flash access time even for a single cycle?
 2. **Q:** Given 24 MHz HSE, is `M = 12, N = 170, R = 2` legal on STM32G474RE?  
-   *Answer Check:* **NO!** $f_{\text{PLL\_IN}} = 24 / 12 = 2.0\text{ MHz} < 2.66\text{ MHz}$ minimum (and $N = 170 > 127$ max!).
+   *Answer Check:* **NO!** $f_{\text{PLL-IN}} = 24 / 12 = 2.0\text{ MHz} < 2.66\text{ MHz}$ minimum (and $N = 170 > 127$ max!).
 3. **Q:** If `SYSCLK = 170 MHz`, `HPRE = /1`, and `PPRE1 = /4`, what are `HCLK`, `PCLK1`, and `TIM2CLK`?  
    *Answer Check:* `HCLK = 170 MHz`, `PCLK1 = 42.5 MHz`, `TIM2CLK = 2 * PCLK1 = 85.0 MHz`.
 4. **Q:** Why cannot `PLL_Q` generate an exact 48 MHz USB clock when `SYSCLK = 170 MHz` ($f_{\text{VCO}} = 340\text{ MHz}$), and what STM32G4 hardware solves this?  
@@ -483,3 +487,8 @@ uint32_t RCC_ReadAndClearResetFlags(void)
 | `STM32-RCC-002` | Execute full RM0440 §6.1.5 170 MHz sequence (`VOSF==0`, `R1MODE=0`, `4 WS`, `HPRE=/2` + $\ge 1\ \mu\text{s}$ + `HPRE=/1`); measure `PA8` = $10.625\text{ MHz} \pm 0.01\%$ | Oscilloscope + GDB (`x/4wx 0x40021000`) |
 | `STM32-RCC-003` | Decode `RCC->CSR` flags after Pin Reset vs Software Reset (`NVIC_SystemReset()`) vs IWDG Reset, and clear via `RMVF` | GDB / UART boot log |
 | `STM32-PWR-001` / `STM32-FLASH-001` | Confirm `PWR->CR5.R1MODE == 0`, `PWR->SR2.VOSF == 0`, `FLASH->ACR.LATENCY == 4`, and `ART` enabled; zero unbounded `while` polls | Static review + GDB |
+
+---
+
+> **Sequential Navigation (Step 8 of 17):**  
+> **Prev:** [Stage 07 (06A) — Basic GPIO on 16 MHz HSI16 (`08-gpio/`)](../08-gpio/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 09 (07) — Interrupts, SysTick, NVIC & EXTI (`10-interrupts/`, *before 09-timers!*)](../10-interrupts/README.md)

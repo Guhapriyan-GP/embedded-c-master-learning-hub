@@ -27,7 +27,7 @@ This library catalogues the authoritative STMicroelectronics primary documentati
   - **Ch 26:** **QUADSPI** (`0xA0001000`, XIP `0x90000000`)
   - **Ch 27:** High-resolution timer (**HRTIM1** — 184 ps DLL, Master + TIMA–TIMF)
   - **Ch 28–32:** Timers — **Ch 28** Adv `TIM1/8/20`, **Ch 29** GP `TIM2–5`, **Ch 30** GP `TIM15–17`, **Ch 31** Basic `TIM6/7`, **Ch 32** `LPTIM1`
-  - **Ch 33 / 34 / 35 / 36 / 38:** **RNG** (Ch 33), **RTC** (Ch 34), **IWDG** (Ch 35), **WWDG** (Ch 36), **TAMP** (Ch 38 — 32 Backup Registers)
+  - **Ch 33 / 35 / 36 / 37 / 38:** **RNG** (Ch 33), **IWDG** (Ch 35), **WWDG** (Ch 36), **RTC** (Ch 37), **TAMP** (Ch 38 — 32 Backup Registers)
   - **Ch 37–42 (Rev 8 vs. Rev 9):** **USART/UART** (Rev 8 Ch 37 / Rev 9 Ch 40), **LPUART** (Rev 8 Ch 38 / Rev 9 Ch 41), **I2C** (Rev 8 Ch 39 / Rev 9 Ch 41–42), **SPI/I2S** (Rev 8 Ch 40 / Rev 9 Ch 42), **SAI1** (Ch 41)
   - **Ch 43 / 44 / 45 / 47:** **USB FS** (Ch 43), **FDCAN1–3** (Ch 44), **UCPD1** (Ch 45), **DBGMCU** (Ch 47)
 
@@ -40,13 +40,13 @@ This library catalogues the authoritative STMicroelectronics primary documentati
   - **Table 13:** ***Alternate function mapping*** (`AF0–AF15` for `GPIOx->AFR[0..1]`)
   - **Table 14:** ***Voltage characteristics*** ($V_{\text{DD}}$, $V_{\text{DDA}}$, absolute max ratings)
   - **Table 15:** ***Current characteristics*** (I/O pin current limit $\pm 20\ \text{mA}$, total $I_{\text{VDD}}/I_{\text{VSS}} \le 160\ \text{mA}$)
-  - **§5.3.5 / §5.3.9–5.3.10 / §5.3.19:** Supply currents ($I_{DD}$), PLL limits ($f_{\text{PLL\_IN}} \in [2.66, 16]\ \text{MHz}$, $f_{\text{VCO}} \in [96, 344]\ \text{MHz}$), Sleep wakeup (`t_WUSLEEP` = 11–12 cycles), ADC max clock (**60 MHz** single / **52 MHz** multi-ADC, temp sensor $t_S \ge 5\ \mu\text{s}$).
+  - **§5.3.5 / §5.3.9–5.3.10 / §5.3.19:** Supply currents ($I_{DD}$), PLL limits ($f_{\text{PLL-IN}} \in [2.66, 16]\ \text{MHz}$, $f_{\text{VCO}} \in [96, 344]\ \text{MHz}$), Sleep wakeup (`t_WUSLEEP` = 11–12 cycles), ADC max clock (**60 MHz** single / **52 MHz** multi-ADC, temp sensor $t_S \ge 5\ \mu\text{s}$).
 
 #### C. STM32G474xx Silicon Errata Sheet (`ES0430`) — MANDATORY
 - **Document Number:** **ES0430**
 - **Title:** *STM32G471xx/473xx/474xx/483xx/484xx device errata*
 - **Critical Workarounds Every Bare-Metal Engineer Must Apply:**
-  - **§2.1.2 / §2.1.3 (Cortex-M4 Core / ARM 838869):** Execute `__DSB()` before returning from an ISR after clearing a peripheral interrupt flag; avoid 1–2 instruction ISRs interrupting `VDIV`/`VSQRT`.
+  - **§2.1.2 / §2.1.3 (Cortex-M4 Core / ARM 838869 & ARM AN321):** Perform a dummy readback of the cleared peripheral status register (`(void)EXTI->PR1;`) followed by `__DSB()` before returning from an ISR to drain both the processor write buffer and downstream AHB/APB bus bridges; avoid 1–2 instruction ISRs interrupting `VDIV`/`VSQRT`.
   - **§2.2.1 (Debug):** Always use **SWD** (`PA13`/`PA14`), not full JTAG without `NJTRST`.
   - **§2.2.2–2.2.3 (Flash):** Flush DCache (`FLASH_ACR.DCRST`) after Flash writes during RWW.
   - **§2.3.1 (DMA — CRITICAL):** **NEVER clear global `DMA_IFCR.CGIFx`**; always clear individual `CTCIFx`/`CHTIFx`/`CTEIFx` bits to prevent transfer-error lockup.

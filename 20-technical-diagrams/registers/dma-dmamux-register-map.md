@@ -14,7 +14,7 @@
 | Register | Offset | Reset Value | Access | Description |
 |---|---|---|---|---|
 | `DMA_ISR` | `0x000` | `0x00000000` | RO | Interrupt status (`GIFx`, `TCIFx`, `HTIFx`, `TEIFx` for channels `x = 1..8`) |
-| `DMA_IFCR` | `0x004` | `0x00000000` | **WO** | Interrupt flag clear (**ES0430 §2.3.1: Clear individual `CTCIFx`/`CHTIFx`/`CTEIFx` — NEVER `CGIFx`!**) |
+| `DMA_IFCR` | `0x004` | `0x00000000` | **WO** | Interrupt flag clear (Direct `=` write, NEVER `|=`! **ES0430 §2.3.1: Clear individual `CTCIFx`/`CHTIFx`/`CTEIFx` — NEVER `CGIFx`!**) |
 | `DMA_CCRx` | `0x008 + 0x14*(x-1)` | `0x00000000` | RW | Channel `x` config (`EN`, `TCIE`, `HTIE`, `TEIE`, `DIR`, `CIRC`, `PINC`, `MINC`, `PSIZE`, `MSIZE`, `PL`, `MEM2MEM`) |
 | `DMA_CNDTRx` | `0x00C + 0x14*(x-1)` | `0x00000000` | RW | Remaining transfer count (16-bit: `0..65535`; write only when `EN = 0`) |
 | `DMA_CPARx` | `0x010 + 0x14*(x-1)` | `0x00000000` | RW | Peripheral 32-bit address register |
@@ -112,6 +112,8 @@ void DMA1_Channel1_IRQHandler(void) {
     if (isr & DMA_ISR_TEIF1) {
         DMA1->IFCR = DMA_IFCR_CTEIF1; /* Handle transfer error */
     }
+    /* Dummy readback confirms flag clear on AHB1 (ARM AN321 §4.9); __DSB() guards ES0430 §2.1.3 / ARM 838869 */
+    (void)DMA1->ISR;
     __DSB();
 }
 ```

@@ -13,7 +13,7 @@
 
 | Register | Offset | Reset Value | Access | Description |
 |---|---|---|---|---|
-| `ADC_ISR` | `0x000` | `0x00000000` | **rc_w1** | Status (`ADRDY`, `EOSMP`, `EOC`, `EOS`, `OVR`, `JEOC`, `JEOS`, `AWD1–3`). **Write `=` directly — NEVER `|=`!** |
+| `ADC_ISR` | `0x000` | `0x00000000` | **rc_w1** | Status (`ADRDY`, `EOSMP`, `EOC`, `EOS`, `OVR`, `JEOC`, `JEOS`, `AWD1–3`). **Write `=` directly — NEVER `|=`!** In ISRs follow with `(void)ADCx->ISR; __DSB();` (ARM AN321 §4.9 & ES0430 §2.1.3) |
 | `ADC_IER` | `0x004` | `0x00000000` | RW | Interrupt enable (`ADRDYIE`, `EOCIE`, `EOSIE`, `OVRIE`, `AWD1IE–3IE`) |
 | **`ADC_CR`** | `0x008` | **`0x20000000`** | RW | Control (**`DEEPPWD = 1` at bit 29 on reset!** `ADVREGEN` b28, `ADCALDIF` b30, `ADCAL` b31, `ADEN` b0, `ADSTART` b2) |
 | `ADC_CFGR` | `0x00C` | `0x80000000` | RW | Config (`DMAEN`, `DMACFG`, `RES[4:3]`, `EXTSEL`, `EXTEN`, `OVRMOD`, `CONT`, `AUTDLY`) |
@@ -53,7 +53,7 @@ Per **DS12288 §5.3.19**, maximum STM32G474RE $f_{\text{ADC}}$ is **60 MHz** (si
 | `DAC_DHR12R2` | `0x014` | `0x00000000` | RW | Channel 2 12-bit right-aligned data holding register |
 | `DAC_DHR12RD` | `0x020` | `0x00000000` | RW | Dual-channel simultaneous 12-bit right-aligned data holding register |
 | `DAC_DOR1/2` | `0x02C/0x030` | `0x00000000` | RO | Current DAC output data registers |
-| `DAC_SR` | `0x034` | `0x00000000` | RO/rc_w1 | Status (`DAC1RDY`, `DORSTAT1`, `DMAUDR1`, `CAL_FLAG1`, `BWST1`) |
+| `DAC_SR` | `0x034` | `0x00000000` | RO/**rc_w1** | Status (`DAC1RDY`, `DORSTAT1`, `DMAUDR1/2` [`rc_w1`: direct `DACx->SR = DAC_SR_DMAUDR1;`, NEVER `|=`; follow with `(void)DACx->SR; __DSB();` in ISRs], `CAL_FLAG1`, `BWST1`) |
 | `DAC_CCR` | `0x038` | `0x00000000` | RW | Buffer offset calibration control (`OTRIM1[4:0]`, `OTRIM2[20:16]`) |
 | **`DAC_MCR`** | `0x03C` | `0x00000000` | RW | Mode control (`MODE1[2:0]`, **`HFSEL[15:14]`**: `00` ≤80 MHz, `01` >80 MHz, **`10` >160 MHz**, `MODE2[18:16]`) |
 | `DAC_STR1/2` | `0x058/0x05C` | `0x00000000` | RW | Hardware Sawtooth wave reset value & step increment (for digital power slope compensation!) |

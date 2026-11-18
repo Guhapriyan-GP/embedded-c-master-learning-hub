@@ -25,7 +25,7 @@
 | `ECR` | `0x040` | `0x00000000` | RO | Error counter (`TEC[7:0]` transmit error, `REC[14:8]` receive error, `RP` passive) |
 | `PSR` | `0x044` | `0x00000707` | RO | Protocol status (`LEC[2:0]`, `ACT[4:3]`, `EP` b5, `EW` b6, **`BO` b7** bus-off, `DLEC[10:8]`, **`TDCV[22:16]`** measured transceiver delay) |
 | `TDCR` | `0x048` | `0x00000000` | RW (`CCE=1`) | Transmitter delay compensation (`TDCF[6:0]` filter window, **`TDCO[14:8]`** SSP offset = `(DBRP+1)*(DTSEG1+2)`, requires `DBTP.TDC=1` & `DBRP<=1`) |
-| `IR` / `IE` | `0x050` / `0x054` | `0x00000000` | rc_w1 / RW | Interrupt flags & enables (`RF0N`, `RF0F`, `RF0L`, `TC`, `BO`, `EW`, `EP`, `PED`, `PEA`) |
+| `IR` / `IE` | `0x050` / `0x054` | `0x00000000` | **rc_w1** / RW | Interrupt flags (`IR`: direct `FDCANx->IR = mask;`, NEVER `|=`; in ISRs follow with `(void)FDCANx->IR; __DSB();` per ARM AN321 §4.9 & ES0430 §2.1.3) & enables (`RF0N`, `RF0F`, `RF0L`, `TC`, `BO`, `EW`, `EP`, `PED`, `PEA`) |
 | `ILS` / `ILE` | `0x058` / `0x05C` | `0x00000000` | RW | Interrupt line select (`0`=IT0, `1`=IT1) & line enables (`EINT0` b0, `EINT1` b1) |
 | `RXGFC` | `0x080` | `0x00000000` | RW (`CCE=1`) | Global filter config (`RRFE`, `RRFS`, `ANFE[3:2]`, `ANFS[5:4]`, `LSS[20:16]` std filter count, `LSE[27:24]` ext count) |
 | `XIDAM` | `0x084` | `0x1FFFFFFF` | RW (`CCE=1`) | Extended ID AND mask |
@@ -56,7 +56,7 @@ Unlike STM32H7 (where offsets are programmable), **STM32G4 fixes every Message R
 
 ### 3. Bit Timing Formula & CMSIS Internal Loopback Example
 
-$$f_{\text{bit}} = \frac{f_{\text{fdcan\_ker\_ck}} / \text{PDIV}}{(\text{BRP} + 1) \times (1 + (\text{TSEG1} + 1) + (\text{TSEG2} + 1))}$$
+$$f_{\text{bit}} = \frac{f_{\text{fdcan,ker}} / \text{PDIV}}{(\text{BRP} + 1) \times (1 + (\text{TSEG1} + 1) + (\text{TSEG2} + 1))}$$
 
 - **Example (HSE = 24 MHz, `PDIV = /1`, Target = 500 kbps nominal, 83.3% sample point):**
   - `NBRP = 2` (`/3` → $8\ \text{MHz}$ TQ), `1 + 12 + 3 = 16 TQ` (`NTSEG1 = 11`, `NTSEG2 = 2`, `NSJW = 2`) → $8\ \text{MHz} / 16 = 500.0\ \text{kbps}$ exact!

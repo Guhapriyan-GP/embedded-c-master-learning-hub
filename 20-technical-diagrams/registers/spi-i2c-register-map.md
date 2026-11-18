@@ -15,7 +15,7 @@
 |---|---|---|---|---|
 | `SPI_CR1` | `0x000` | `0x00000000` | RW | Control 1 (`CPHA`, `CPOL`, `MSTR`, `BR[5:3]`, `SPE`, `LSBFIRST`, `SSI`, `SSM`, `CRCEN`) |
 | `SPI_CR2` | `0x004` | `0x00000700` | RW | Control 2 (`RXDMAEN`, `TXDMAEN`, `SSOE`, `NSSP`, `DS[11:8]` 4–16 bit, **`FRXTH` bit 12**) |
-| `SPI_SR` | `0x008` | `0x00000002` | RO/rc_w0 | Status (`RXNE`, `TXE`, `CRCERR`, `MODF`, `OVR`, `BSY`, `FRLVL[10:9]`, `FTLVL[12:11]`) |
+| `SPI_SR` | `0x008` | `0x00000002` | RO/**rc_w0** | Status (`RXNE`, `TXE`, `CRCERR` [`rc_w0`: direct `SPIx->SR = ~SPI_SR_CRCERR;`, NEVER `&=`], `MODF`, `OVR`, `BSY`, `FRLVL[10:9]`, `FTLVL[12:11]`) |
 | `SPI_DR` | `0x00C` | `0x00000000` | RW | Data register (32-bit TX/RX FIFO interface; access width controls FIFO packing!) |
 | `SPI_CRCPR` | `0x010` | `0x00000007` | RW | Hardware CRC polynomial register |
 | `SPI_RXCRCR` | `0x014` | `0x00000000` | RO | Computed RX CRC register |
@@ -44,7 +44,7 @@ STM32G4 implements **32-bit TX/RX FIFOs** with FIFO packing:
 | `I2C_TIMINGR` | `0x010` | `0x00000000` | RW | Bus timing (`SCLL[7:0]`, `SCLH[15:8]`, `SDADEL[19:16]`, `SCLDEL[23:20]`, `PRESC[31:28]`) — configure only when `PE=0` |
 | `I2C_TIMEOUTR` | `0x014` | `0x00000000` | RW | Hardware SMBus/clock-stretching timeout register |
 | `I2C_ISR` | `0x018` | `0x00000001` | RO/RW | Status (`TXE`, `TXIS`, `RXNE`, `NACKF`, `STOPF`, `TC`, `TCR`, `BERR`, `ARLO`, `OVR`, `BUSY`) |
-| `I2C_ICR` | `0x01C` | `0x00000000` | WO | Interrupt clear (`ADDRCF`, `NACKCF`, `STOPCF`, `BERRCF`, `ARLOCF`, `OVRCF`) |
+| `I2C_ICR` | `0x01C` | `0x00000000` | **WO** | Interrupt clear (`ADDRCF`, `NACKCF`, `STOPCF`, `BERRCF`, `ARLOCF`, `OVRCF` — direct `I2Cx->ICR = mask;`, NEVER `|=`; in ISRs follow with `(void)I2Cx->ISR; __DSB();` per ARM AN321 §4.9 & ES0430 §2.1.3) |
 | `I2C_PECR` | `0x020` | `0x00000000` | RO | Hardware SMBus Packet Error Checking register |
 | `I2C_RXDR` | `0x024` | `0x00000000` | RO | Receive data register (Reading clears `RXNE`) |
 | `I2C_TXDR` | `0x028` | `0x00000000` | RW | Transmit data register (Writing clears `TXIS`) |

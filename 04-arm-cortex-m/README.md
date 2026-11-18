@@ -1,5 +1,6 @@
 # Stage 04: ARM Cortex-M4F (ARMv7E-M) Microarchitecture & Core Peripherals
 
+> **Navigation:** [← Stage 03: Embedded C](../03-embedded-c/README.md) | [Curriculum Map](../README.md) | [Stage 05: Toolchain & Debugging →](../05-toolchain-and-debugging/README.md)  
 > **Curriculum Track:** Level 1–3 Core Processor Architecture (`ARM-*`, all 26 concepts)  
 > **Architecture Layer Precision:** This module explicitly separates **Generic Cortex-M (ARMv6-M/v7-M)**, **Cortex-M4 Specific (ARMv7E-M)**, and **STM32G474RE Exact Silicon** (`__CM4_REV = 0x0001U` r0p1, `__MPU_PRESENT = 1U`, `__NVIC_PRIO_BITS = 4U`, `__FPU_PRESENT = 1U` verified in `stm32g474xx.h`).  
 > **Code Verification Policy:** All C and assembly snippets in Section 8 are **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror -Wconversion -Wdouble-promotion -Wvla`)** against `core_cm4.h`, `mpu_armv7.h`, `cmsis_gcc.h`, and `stm32g474xx.h` (Not Tested on Physical Hardware).
@@ -144,7 +145,8 @@ Upon completing Stage 04, you will master every ARM Cortex-M4 / ARMv7E-M archite
 
 ### 3.8 Exclusives, Barriers, MPU, FPU, DSP/SIMD, CoreSight, Low-Power & Security (`ARM-SYNC-*`, `ARM-MPU-001`, `ARM-FPU-001`, `ARM-DSP-001`, `ARM-DBG-001`, `ARM-PWR-001`, `ARM-SEC-001..002`)
 
-- **Exclusive Accesses (`ARM-SYNC-001`) & Barriers (`ARM-SYNC-002`):** ARMv7-M provides `LDREX`/`STREX`/`CLREX` with an internal local exclusive monitor automatically cleared on exception entry/return (absent on Cortex-M0/M0+). Use `DMB`, `DSB`, and `ISB` per ARM AN321.
+- **Exclusive Accesses (`ARM-SYNC-001`) & Barriers (`ARM-SYNC-002`):** ARMv7-M provides `LDREX`/`STREX`/`CLREX` with an internal local exclusive monitor automatically cleared on exception entry/return (absent on Cortex-M0/M0+). Use `DMB`, `DSB`, and `ISB` per **ARM AN321 (DAI0321A)**:
+  - **Peripheral ISR Flag-Clear Nuance (`ARM AN321 §4.9` & `ES0430 §2.1.3` / `ARM Erratum 838869`):** `__DSB()` drains the Cortex-M4 internal write buffer and mitigates Cortex-M4 r0p1 Erratum 838869 (*store immediate overlapping exception return might vector to incorrect interrupt*), **but** does not architecturally guarantee completion past a downstream STM32 AHB-to-APB bridge. Always clear flags early, perform a **dummy readback** `(void)REG;` to stall until the APB slave commits the clear, and execute `__DSB();` before exception return!
 - **8-Region ARMv7-M MPU (`ARM-MPU-001`, `mpu_armv7.h`):** STM32G474RE implements **8 unified regions** (`MPU->TYPE.DREGION = 8`), configured via `MPU->RNR`, `MPU->RBAR`, and `MPU->RASR` (`SIZE` = power of 2 $\ge 32\text{ B}$, naturally aligned; 8 subregions `SRD` for regions $\ge 256\text{ B}$; `AP[2:0]`, `XN`, `TEX/S/C/B`). Always enable `MPU_CTRL_PRIVDEFENA_Msk` (default background map for privileged code) and guard `MPU->CTRL` updates with `__DSB(); __ISB();`. Classic safety pattern: place a **32-byte `ARM_MPU_AP_NONE` / `XN=1` stack-guard region** at the bottom of `MSP` (and mark SRAM `XN=1`) so stack overflow traps deterministically into `MemManage_Handler`!
 - **FPv4-SP FPU (`ARM-FPU-001`):** Single-precision hardware IEEE-754 (`S0–S31`, `FPSCR`, `VMUL`/`VMLA`/`VFMA`/`VDIV`/`VSQRT`; `double` falls back to software!). Enable in `SystemInit()` via `SCB->CPACR |= (3UL << 20U) | (3UL << 22U); __DSB(); __ISB();` (else `NOCP` UsageFault). FPU cumulative exception IRQ routes to **`FPU_IRQn = 81`** on STM32G474RE.
 - **ARMv7E-M DSP & SIMD (`ARM-DSP-001`):** Single-cycle 32×32 MAC (`MLA`/`MLS`/`SMLAL`), dual 16-bit / quad 8-bit parallel SIMD (`SADD16`, `QADD16`, `SMLAD`, `SEL` with `APSR.GE[3:0]`), and hardware saturating clamps (`SSAT`, `USAT` setting `APSR.Q`). *(Distinct from STM32G474RE's external AHB1 `CORDIC`/`FMAC` peripherals!)*
@@ -205,18 +207,18 @@ Verified directly against `core_cm4.h` (`SCS_BASE = 0xE000E000UL`):
 ## 6. Relevant Formulas & Calculations
 
 ### 6.1 ARMv7-M Bit-Band Alias Address Formula (`ARM-MEM-002`)
-$$\text{alias\_addr} = \text{bit\_band\_base} + (\text{byte\_offset} \times 32) + (\text{bit\_number} \times 4)$$
+$$\text{alias addr} = \text{bit-band base} + (\text{byte offset} \times 32) + (\text{bit number} \times 4)$$
 
 **Worked Example (SRAM1 bit 5 at `0x20000100`):**
-$$\text{alias\_addr} = 0\text{x}22000000 + (0\text{x}0100 \times 32) + (5 \times 4) = 0\text{x}22002014$$
+$$\text{alias addr} = 0\text{x}22000000 + (0\text{x}0100 \times 32) + (5 \times 4) = 0\text{x}22002014$$
 Writing `1UL` to `*(volatile uint32_t *)0x22002014UL` atomically sets bit 5 of `0x20000100` in one CPU store! *(Remember: NEVER apply this formula to `0x48000000` AHB2 GPIO — outside the 1 MB window!)*
 
 ### 6.2 `SCB->VTOR` Minimum Alignment & SysTick Reload
-$$\text{VTOR\_align} = 2^{\lceil \log_2((16 + N_{\text{IRQ}}) \times 4) \rceil} = 2^{\lceil \log_2(118 \times 4) \rceil} = 2^{\lceil \log_2(472) \rceil} = 512\text{ bytes (0x200)}$$
-$$\text{SysTick\_LOAD} = \frac{f_{\text{HCLK}}}{f_{\text{tick}}} - 1 \implies \frac{170,000,000}{1000} - 1 = 169,999 \quad (1\text{ ms tick @ 170 MHz})$$
+$$\text{VTOR align} = 2^{\lceil \log_2((16 + N_{\text{IRQ}}) \times 4) \rceil} = 2^{\lceil \log_2(118 \times 4) \rceil} = 2^{\lceil \log_2(472) \rceil} = 512\text{ bytes (0x200)}$$
+$$\text{SysTick LOAD} = \frac{f_{\text{HCLK}}}{f_{\text{tick}}} - 1 \implies \frac{170,000,000}{1000} - 1 = 169,999 \quad (1\text{ ms tick @ 170 MHz; } 159,999\text{ @ 160 MHz})$$
 
 ### 6.3 Worst-Case Nested ISR Stack Budget (With FPU Lazy Stacking)
-$$S_{\text{MSP,max}} = \sum_{p=1}^{L_{\text{nest}}} \left( S_{\text{hw\_frame},p} + S_{\text{locals},p} \right), \qquad S_{\text{hw\_frame}} = \begin{cases} 32\text{ B} & \text{(no FPU active)} \\ 104\text{ B} & \text{(FPCA = 1)} \end{cases}$$
+$$S_{\text{MSP,max}} = \sum_{p=1}^{L_{\text{nest}}} \left( S_{\text{hw frame},p} + S_{\text{locals},p} \right), \qquad S_{\text{hw frame}} = \begin{cases} 32\text{ B} & \text{(no FPU active)} \\ 104\text{ B} & \text{(FPCA = 1)} \end{cases}$$
 
 ---
 
@@ -226,7 +228,8 @@ $$S_{\text{MSP,max}} = \sum_{p=1}^{L_{\text{nest}}} \left( S_{\text{hw\_frame},p
 - **ARM DDI 0439** — *ARM Cortex-M4 Technical Reference Manual* (Pipeline, 12-cycle latency, FPv4-SP FPU, 6 FPB, 4 DWT, ITM).
 - **ST PM0214** — *STM32 Cortex-M4 MCUs and MPUs Programming Manual*.
 - **ARM IHI 0042** — *Procedure Call Standard for the Arm Architecture (AAPCS)*.
-- **ARM AN298** (*Cortex-M4F Lazy Stacking*) & **ARM AN321** (*Memory Barrier Instructions*).
+- **ARM AN298** (*Cortex-M4F Lazy Stacking*) & **ARM AN321 (DAI0321A)** (*Memory Barrier Instructions* — §4.6 NVIC Disable, §4.9 Peripheral Interrupt Clearing/Readback, §4.11 `VTOR`, §4.14 Sleep, §4.16 `CONTROL`).
+- **ST ES0430 §2.1.3** (*ARM Cortex-M4 r0p1 Erratum 838869: Store immediate overlapping exception return might vector to incorrect interrupt — `__DSB()` workaround*).
 - **ST RM0440** (§2.2–2.3 Memory Map & Bit-Banding, §3.5 Flash Security, Ch. 47 `DBGMCU`) & **ST DS12288** ($t_{\text{WUSLEEP}}$ = 11–12 cycles).
 
 ---
@@ -373,7 +376,7 @@ bool atomic_cas_u32(volatile uint32_t *addr, uint32_t expected, uint32_t desired
 
 1. **Claiming `PC` has `bit[0] = 1`:** False — reading `R15` returns `current + 4` with `bit[0] = 0`; Thumb state lives in `EPSR.T` (bit 24).
 2. **Trying to bit-band STM32G474RE `GPIOA->ODR` (`0x48000014`):** AHB2 peripherals (`0x48000000`, `0x50000000`) are **outside** the 1 MB bit-band window (`0x40000000–0x400FFFFF`)!
-3. **Omitting `__DSB(); __ISB();` after `SCB->CPACR`, `SCB->VTOR`, `MPU->CTRL`, or `MSR CONTROL`:** Pipelined instructions can execute under stale permissions or trigger intermittent `NOCP` UsageFaults.
+3. **Omitting Barriers After Core Config or ISR Flag Clears:** Omitting `__DSB(); __ISB();` after `SCB->CPACR`, `SCB->VTOR`, `MPU->CTRL`, or `MSR CONTROL` lets pipelined instructions execute under stale permissions (e.g., intermittent `NOCP` UsageFaults). Similarly, inside fast peripheral ISRs, pair an early flag clear with a dummy readback `(void)REG;` (ARM AN321 §4.9 APB bridge sync) and `__DSB();` (ES0430 §2.1.3 / ARM Erratum 838869).
 4. **Assuming TrustZone-M (`SAU`/`MSPLIM`) exists on Cortex-M4:** TrustZone-M is ARMv8-M (Cortex-M23/M33) only!
 5. **Relocating `SCB->VTOR` to an address not 512-byte aligned:** Low bits `[8:0]` are truncated/ignored on STM32G474RE (118 vectors = 472 B), silently dispatching wrong IRQs.
 6. **Writing RDP Level 2 (`0xCC`) during experiments:** Permanently and **irreversibly** locks out SWD/JTAG and System ROM bootloader, bricking your NUCLEO-G474RE board!
@@ -406,3 +409,7 @@ bool atomic_cas_u32(volatile uint32_t *addr, uint32_t expected, uint32_t desired
 - [ ] **Live GDB Stack & Register Decoding:** Decode `SCB->CPUID` (`0x410FC241`), `xPSR` (`N,Z,C,V,Q,GE,IPSR,T`), all 6 `EXC_RETURN` codes, and both 32-byte and 104-byte exception frames in GDB.
 - [ ] **Fault Forensics Mastery:** Successfully capture and decode `CFSR` (`MMFSR`/`BFSR`/`UFSR`), `HFSR`, `MMFAR`/`BFAR`, and stacked `PC` from an injected fault.
 - [ ] **Hardware Primitives Verified:** Correctly configure an 8-region MPU stack guard, enable `FPv4-SP` with barriers, profile code with `DWT->CYCCNT`, and implement `LDREX`/`STREX` lock-free synchronization.
+
+---
+
+> **Navigation:** [← Stage 03: Embedded C](../03-embedded-c/README.md) | [Curriculum Map](../README.md) | [Stage 05: Toolchain & Debugging →](../05-toolchain-and-debugging/README.md)

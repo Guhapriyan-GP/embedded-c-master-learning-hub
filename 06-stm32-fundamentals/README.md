@@ -1,5 +1,9 @@
 # Stage 06: STM32 Platform Architecture, STM32G474RET6 Silicon & ES0430 Errata
 
+> **Sequential Navigation (Step 6 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 05 — GNU Toolchain & Debugging (`05-toolchain-and-debugging/`)](../05-toolchain-and-debugging/README.md) | **Next:** [Stage 07 (06A) — Basic GPIO on 16 MHz HSI16 (`08-gpio/`, *before 07-rcc!*)](../08-gpio/README.md)  
+> **Prerequisites:** [Stage 01b (`HWSW-*`)](../01b-digital-electronics-and-hw-integration/README.md), [Stage 04 (`ARM-*`)](../04-arm-cortex-m/README.md), [Stage 05 (`TOOL-*`)](../05-toolchain-and-debugging/README.md)
+
 > **Curriculum Track:** Level 1–2 Platform Silicon Architecture (`STM32-*`, `G4-*`)  
 > **Exact Silicon Verified:** **STM32G474RET6** (Category 3, **LQFP64** package, 512 KB Dual-Bank Flash, 128 KB SRAM, 170 MHz Cortex-M4F, `DEV_ID = 0x469`)  
 > **Primary Ground Truth:** `stm32g474xx.h`, **RM0440**, **DS12288**, **UM2505**, **ES0430**  
@@ -176,7 +180,7 @@ $$\text{SRAM}_{\text{total}} = \underbrace{80\text{ KB}}_{\text{SRAM1}} + \under
 $$\text{Flash Pages} = \begin{cases} 2 \text{ banks} \times 128 \text{ pages} \times 2\text{ KB} = 512\text{ KB} & (\texttt{DBANK} = 1) \\ 1 \text{ bank} \times 128 \text{ pages} \times 4\text{ KB} = 512\text{ KB} & (\texttt{DBANK} = 0) \end{cases}$$
 
 ### 6.2 APB Timer Clock Doubler Rule (RM0440 Ch. 7)
-$$f_{\text{TIMx\_CLK}} = \begin{cases} f_{\text{PCLKx}} & \text{if } \texttt{PPREx} = /1 \\ 2 \times f_{\text{PCLKx}} & \text{if } \texttt{PPREx} \in \{/2, /4, /8, /16\} \end{cases}$$
+$$f_{\text{TIMx-CLK}} = \begin{cases} f_{\text{PCLKx}} & \text{if } \texttt{PPREx} = /1 \\ 2 \times f_{\text{PCLKx}} & \text{if } \texttt{PPREx} \in \{/2, /4, /8, /16\} \end{cases}$$
 
 ---
 
@@ -288,3 +292,8 @@ void stm32g4_read_sysinfo_and_clear_reset(stm32g4_sysinfo_t *info)
 - [ ] **Live GDB Silicon Readout Complete:** Read and decode `DBGMCU->IDCODE` (`0x469` + `REV_ID`), `FLASHSIZE_BASE` (`512`), `UID_BASE`, `FLASH->OPTR`, and `RCC->CSR` reset flags in GDB.
 - [ ] **Platform Traps & Errata Mastered:** Apply `PWR_CR3_UCPD_DBDIS`, CCM-SRAM DMA alias rules, and all 7 ES0430 errata workarounds (including avoiding `DMA_IFCR.CGIFx` and placing `__DSB()` before ISR return).
 - [ ] **Official Manual Fluency:** Rapidly locate verified register offsets in RM0440, pin AF/electrical limits in DS12288, MB1367 schematics in UM2505, and workarounds in ES0430.
+
+---
+
+> **Sequential Navigation (Step 6 of 17):**  
+> **Prev:** [Stage 05 — GNU Toolchain & Debugging (`05-toolchain-and-debugging/`)](../05-toolchain-and-debugging/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 07 (06A) — Basic GPIO on 16 MHz HSI16 (`08-gpio/`, *before 07-rcc!*)](../08-gpio/README.md)

@@ -9,14 +9,14 @@
 ### Part A: Clock Boost, GPIO/EXTI & Timer Calculations (40 Points)
 
 1. **170 MHz PLL Synthesis & Safe RM0440 §6.1.5 Boost Sequence (15 Points):**
-   Using the NUCLEO-G474RE onboard **24 MHz HSE crystal (`X3`)**, select valid `(M, N, R, P)` parameters so that $f_{\text{PLL\_IN}} \in [2.66, 16]\ \text{MHz}$, $f_{\text{VCO}} \in [96, 344]\ \text{MHz}$, $f_{\text{SYSCLK}} = 170\ \text{MHz}$, and $f_{\text{PLL\_P}} \le 60\ \text{MHz}$ for ADC. List the exact 5 mandatory pre-switch & transition steps involving `PWR_CR5` (offset `0x80`), `PWR_SR2.VOSF`, `FLASH_ACR` (4 WS), and `RCC_CFGR.HPRE = /2`.
+   Using the NUCLEO-G474RE onboard **24 MHz HSE crystal (`X3`)**, select valid `(M, N, R, P)` parameters so that $f_{\text{PLL-IN}} \in [2.66, 16]\ \text{MHz}$, $f_{\text{VCO}} \in [96, 344]\ \text{MHz}$, $f_{\text{SYSCLK}} = 170\ \text{MHz}$, and $f_{\text{PLL-P}} \le 60\ \text{MHz}$ for ADC. List the exact 5 mandatory pre-switch & transition steps involving `PWR_CR5` (offset `0x80`), `PWR_SR2.VOSF`, `FLASH_ACR` (4 WS), and `RCC_CFGR.HPRE = /2`.
 
 2. **GPIO Reset State & NUCLEO-G474RE `B1` (`PC13`) EXTI Polarity (10 Points):**
    (a) What is the STM32G4 `GPIOx_MODER` reset default for non-debug pins, and why did ST choose it over Input mode?
    (b) Per **UM2505**, what is the hardware polarity of User Button `B1` (`PC13`) on NUCLEO-G474RE (MB1367)? Specify `PUPDR`, `EXTI` edge register (`RTSR1` vs `FTSR1`), and `EXTI->PR1` clear syntax.
 
 3. **Timer PWM & Complementary Dead-Time Calculation (15 Points):**
-   With $f_{\text{TIM\_CLK}} = 170\ \text{MHz}$ (`PSC = 0`):
+   With $f_{\text{TIM-CLK}} = 170\ \text{MHz}$ (`PSC = 0`):
    (a) Calculate `ARR` for an exact $32.0\ \text{kHz}$ edge-aligned PWM and state the resolution in counts.
    (b) For `TIM1` complementary outputs (`CH1`/`CH1N`), compute the exact `BDTR.DTG[7:0]` value for a $500\ \text{ns}$ dead-time ($t_{\text{DTS}} = 5.882\ \text{ns}$). What happens if `BDTR.MOE` is left `0`, and how does `COMP1` → `BKIN` protect an inverter bridge?
 

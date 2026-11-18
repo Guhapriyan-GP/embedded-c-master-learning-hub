@@ -1,5 +1,9 @@
 # Stage 10: Serial & Industrial Communication Protocols (USART, SPI, I2C, FDCAN, USB, UCPD, SAI, QUADSPI & Framing/CRC)
 
+> **Sequential Navigation (Step 11 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 10 (08) — Hardware Timers & PWM (`09-timers/`)](../09-timers/README.md) | **Next:** [Stage 12 (10) — Mixed-Signal Analog: ADC/DAC/OPAMP/COMP (`12-adc-dac-analog/`)](../12-adc-dac-analog/README.md)  
+> **Prerequisites:** [`08-gpio/`](../08-gpio/README.md), [`07-rcc-and-clocks/`](../07-rcc-and-clocks/README.md), [`10-interrupts/`](../10-interrupts/README.md), [`09-timers/`](../09-timers/README.md)
+
 > **Directory:** `11-communication/` | **Target Platform:** STM32G474RET6 (LQFP64) on NUCLEO-G474RE (MB1367)  
 > **Code Verification Notice:** All bare-metal C snippets in this module are **Statically Reviewed against `stm32g474xx.h`, RM0440, DS12288, and UM2505 (Not Tested on Physical Hardware)**.
 
@@ -479,3 +483,8 @@ void USB_EP_ToggleSwBufForBulkIn(uint8_t ep_num)
 | `PERIPH-CAN-002` / `COMM-CAN-002` | `FDCAN1` loopback transfers 64-byte CAN-FD frame (500k/5M BRS + `TDCR.TDCO`), decodes `TXEFS` timestamp/marker, and passes deterministic `PSR.BO` backoff recovery test | GDB + CAN Analyzer |
 | `COMM-USB-002` | Verify 16-bit halfword `USB_PMA_Write16`/`Read16` round-trip (odd & even lengths) and invariant-preserving `USB_EP_SetTxStatus`/`SW_BUF` toggle logic | Unit Test / GDB |
 | `PERIPH-CRC-001` | Hardware `CRC` produces exact `0xCBF43926` for ASCII `"123456789"` and rejects 100% of bit-flipped COBS/TLV frames | GDB / Unit Test |
+
+---
+
+> **Sequential Navigation (Step 11 of 17):**  
+> **Prev:** [Stage 10 (08) — Hardware Timers & PWM (`09-timers/`)](../09-timers/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 12 (10) — Mixed-Signal Analog: ADC/DAC/OPAMP/COMP (`12-adc-dac-analog/`)](../12-adc-dac-analog/README.md)

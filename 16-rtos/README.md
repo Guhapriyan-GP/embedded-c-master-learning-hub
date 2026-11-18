@@ -1,5 +1,9 @@
 # Stage 15: Real-Time Operating Systems (FreeRTOS on ARM Cortex-M4F) & Concurrency
 
+> **Sequential Navigation (Step 16 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 15 (13) — Watchdogs, RTC & Low-Power Modes (`15-power-management/`)](../15-power-management/README.md) | **Next:** [Stage 17 (15) — Advanced Firmware Engineering, MISRA & CI (`17-advanced-firmware-engineering/`)](../17-advanced-firmware-engineering/README.md)  
+> **Prerequisites:** [`03-embedded-c/` (`EMB-ATOM-*`)](../03-embedded-c/README.md), [`04-arm-cortex-m/` (`ARM-CORE-*`)](../04-arm-cortex-m/README.md), [`10-interrupts/` (`RT-IRQ-*`)](../10-interrupts/README.md), [`15-power-management/`](../15-power-management/README.md)
+
 > **Directory:** `16-rtos/` | **Target Platform:** STM32G474RET6 (ARM Cortex-M4F `ARM_CM4F` Port, `__NVIC_PRIO_BITS = 4`, 128 KB SRAM)  
 > **Code Verification Notice:** The companion standalone FreeRTOS `V11.1.0` firmware project in [`23-code-library/freertos/`](../23-code-library/freertos/README.md) is **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, 0 errors / 0 warnings on user code)** and **Ready for Physical NUCLEO-G474RE Onboard Hardware Test** (see [`AUDIT/FREERTOS_VERIFICATION_REPORT.md`](../AUDIT/FREERTOS_VERIFICATION_REPORT.md)). Inline illustrative snippets in this theory guide are **Statically Reviewed against `stm32g474xx.h`, `core_cm4.h`, and FreeRTOS `V11.1.0` `ARM_CM4F` Port Specifications**.
 
@@ -276,3 +280,8 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 | `RTOS-HAZ-001` / `002` | Capture L/M/H inversion fixed by Mutex PIP; break AB/BA deadlock via lock ordering | Logic Analyzer + GDB |
 | `RTOS-MEM-001` / `002` | Zero-heap `xTaskCreateStatic` app with `configCHECK_FOR_STACK_OVERFLOW = 2` catching intentional recursion and $\ge 30\%$ high-water margin | GDB |
 | `RTOS-THEORY-001` | Measure $C_i$ via `DWT->CYCCNT` and prove RMS utilization & exact RTA $R_i \le D_i$ with 0 missed `xTaskDelayUntil()` deadlines | `DWT->CYCCNT` + Calculation |
+
+---
+
+> **Sequential Navigation (Step 16 of 17):**  
+> **Prev:** [Stage 15 (13) — Watchdogs, RTC & Low-Power Modes (`15-power-management/`)](../15-power-management/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 17 (15) — Advanced Firmware Engineering, MISRA & CI (`17-advanced-firmware-engineering/`)](../17-advanced-firmware-engineering/README.md)

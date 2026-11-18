@@ -21,8 +21,8 @@ This document provides **complete, verified solutions** and **objective point-by
 | Q8 | 15 | $R = 200\ \Omega$ (std $220\ \Omega$) (7 pts), verifies $\le 20\ \text{mA}$ DS12288 limit (4 pts), $P = 7.2\ \text{mW}$ (4 pts) | −4 pts if omitting $V_f$ subtraction |
 
 ### Stage 01 Worked Solutions
-1. **`-42` (8-bit 2's complement):** $+42 = \texttt{0010\_1010}_2 \xrightarrow{\text{invert}} \texttt{1101\_0101}_2 \xrightarrow{+1} \mathbf{\texttt{1101\_0110}_2 = \texttt{0xD6}}$. Check: $-128+64+16+4+2 = -42$. Range of `int8_t`: **$-128$ to $+127$**.
-2. **Pointer arithmetic:** `ptr + 4` advances by $4 \times \texttt{sizeof(uint32\_t)} = 16\ (\texttt{0x10})$ bytes → **`0x20000010`**. Byte difference = **`16`**.
+1. **`-42` (8-bit 2's complement):** $+42 = \texttt{0010\,1010}_2 \xrightarrow{\text{invert}} \texttt{1101\,0101}_2 \xrightarrow{+1} \mathbf{\texttt{1101\,0110}}_2 = \mathbf{\texttt{0xD6}}$. Check: $-128+64+16+4+2 = -42$. Range of `int8_t`: **$-128$ to $+127$**.
+2. **Pointer arithmetic:** `ptr + 4` advances by `4 * sizeof(uint32_t)` $= 4 \times 4 = 16\ (\texttt{0x10})$ bytes → **`0x20000010`**. Byte difference = **`16`**.
 3. **Struct alignment:**
    - Original: `id` `@0` (1 B) → pad `@1..3` (3 B) → `timestamp` `@4..7` (4 B) → `raw_value` `@8..9` (2 B) → tail pad `@10..11` (2 B for 4-byte struct alignment) → **`sizeof = 12` bytes**.
    - Reordered (largest-to-smallest): `uint32_t timestamp` (`@0..3`), `uint16_t raw_value` (`@4..5`), `uint8_t id` (`@6`), 1 B tail pad (`@7`) → **`sizeof = 8` bytes**.

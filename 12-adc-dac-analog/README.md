@@ -1,5 +1,9 @@
 # Stage 11: Mixed-Signal Analog Subsystem (ADC1–5, DAC1–4, COMP1–7, OPAMP1–6, VREFBUF) & Hardware Math Accelerators (CORDIC & FMAC)
 
+> **Sequential Navigation (Step 12 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 11 (09) — Communication Protocols (`11-communication/`)](../11-communication/README.md) | **Next:** [Stage 13 (11) — DMA1/2, DMAMUX1 & Hardware Math (`13-dma/`)](../13-dma/README.md)  
+> **Prerequisites:** [`01b` (`DIG-ELEC-*`)](../01b-digital-electronics-and-hw-integration/README.md), [`08-gpio/`](../08-gpio/README.md), [`07-rcc-and-clocks/`](../07-rcc-and-clocks/README.md), [`10-interrupts/`](../10-interrupts/README.md)
+
 > **Directory:** `12-adc-dac-analog/` | **Target Platform:** STM32G474RET6 (5× 4 MSPS SAR ADCs, 4× DACs / 7 Ch, 7× COMP, 6× OPAMP, VREFBUF, CORDIC, FMAC)  
 > **Code Verification Notice:** All bare-metal C snippets in this module are **Statically Reviewed against `stm32g474xx.h`, RM0440, DS12288, AN2834, AN5305, AN5325, and ES0430 (Not Tested on Physical Hardware)**.
 
@@ -47,7 +51,7 @@ STM32G474RE packs **5 independent 12-bit SAR ADCs** on **AHB2**: `ADC1` (`0x5000
   1. Notice **`ADC->CR` resets to `0x20000000`** (`DEEPPWD = 1` at bit 29 — deep power-down is ON at reset!).
   2. Exit deep power-down: `ADC1->CR &= ~ADC_CR_DEEPPWD;`
   3. Enable internal voltage regulator: `ADC1->CR |= ADC_CR_ADVREGEN;`
-  4. **Wait $\ge 20\ \mu\text{s}$** ($t_{\text{ADCVREG\_STUP}}$ per DS12288) — skipping this corrupts calibration!
+  4. **Wait $\ge 20\ \mu\text{s}$** ($t_{\text{ADCVREG-STUP}}$ per DS12288) — skipping this corrupts calibration!
   5. Ensure ADC is disabled (`ADEN == 0`), select single-ended (`ADCALDIF = 0`) or differential (`ADCALDIF = 1`), launch calibration `ADC1->CR |= ADC_CR_ADCAL;`, and wait until `ADCAL == 0`.
   6. Clear `ADRDY` via **direct `rc_w1` write**: **`ADC1->ISR = ADC_ISR_ADRDY;`** (NEVER `|=`!).
   7. Enable ADC: `ADC1->CR |= ADC_CR_ADEN;` and wait until `ADC1->ISR & ADC_ISR_ADRDY`.
@@ -125,11 +129,11 @@ $$t_{\text{SMP,min}} = (10{,}000 + 1{,}000)\times 5\times 10^{-12}\times 9.011 =
 Select the next available `SMPR` encoding: **`24.5` cycles (`011b`)** or **`47.5` cycles (`100b`)** for safety margin!
 
 **Worked Example B (Internal Temp Sensor `ADC1_IN16` at $42.5\text{ MHz}$):**
-DS12288 mandates **$t_{S\_\text{temp}} \ge 5.0\ \mu\text{s}$** (plus **$120\ \mu\text{s}$** startup wait $t_{\text{START}}$ after setting `VSENSESEL`):
+DS12288 mandates **$t_{S,\text{temp}} \ge 5.0\ \mu\text{s}$** (plus **$120\ \mu\text{s}$** startup wait $t_{\text{START}}$ after setting `VSENSESEL`):
 $$\text{Cycles}_{\min} = 5.0\ \mu\text{s} \times 42.5\text{ MHz} = 212.5\text{ cycles} \implies \text{Select } \mathbf{247.5\text{ cycles}}\ (5.82\ \mu\text{s},\ \text{SMP16} = \texttt{110b})\text{ or } 640.5\text{ cycles!}$$
 
 ### 6.2 Calibrated $V_{\text{DDA}}$ & Die Temperature Equations (RM0440 §21.4.32)
-$$V_{\text{DDA}} = 3.0\text{ V} \times \frac{\text{VREFINT\_CAL}}{\text{ADC}_{\text{VREFINT}}}, \qquad T_{\text{die}}(^\circ\text{C}) = \frac{130 - 30}{\text{TS\_CAL2} - \text{TS\_CAL1}} \times \left(\text{ADC}_{\text{TEMP}} \cdot \frac{V_{\text{DDA}}}{3.0\text{ V}} - \text{TS\_CAL1}\right) + 30$$
+$$V_{\text{DDA}} = 3.0\text{ V} \times \frac{\text{VREFINT-CAL}}{\text{ADC}_{\text{VREFINT}}}, \qquad T_{\text{die}}(^\circ\text{C}) = \frac{130 - 30}{\text{TS-CAL2} - \text{TS-CAL1}} \times \left(\text{ADC}_{\text{TEMP}} \cdot \frac{V_{\text{DDA}}}{3.0\text{ V}} - \text{TS-CAL1}\right) + 30$$
 
 ---
 
@@ -138,7 +142,7 @@ $$V_{\text{DDA}} = 3.0\text{ V} \times \frac{\text{VREFINT\_CAL}}{\text{ADC}_{\t
 | Document | Exact Sections |
 |---|---|
 | **ST RM0440** | Ch. 17 (*CORDIC*), Ch. 18 (*FMAC*), Ch. 21 (*ADC*), Ch. 22 (*DAC*), Ch. 23 (*VREFBUF*), Ch. 24 (*COMP*), Ch. 25 (*OPAMP*) |
-| **ST DS12288** | §5.3.19 (*12-bit ADC: 60/52 MHz max, $t_{S\_\text{temp}} \ge 5\ \mu\text{s}$, $t_{\text{START}} = 120\ \mu\text{s}$*), §5.3.20–23 (*DAC/VREFBUF/COMP/OPAMP*) |
+| **ST DS12288** | §5.3.19 (*12-bit ADC: 60/52 MHz max, $t_{S,\text{temp}} \ge 5\ \mu\text{s}$, $t_{\text{START}} = 120\ \mu\text{s}$*), §5.3.20–23 (*DAC/VREFBUF/COMP/OPAMP*) |
 | **ST AN2834 / AN5305 / AN5306 / AN5325** | AN2834 (*ADC Accuracy*), AN5305 (*FMAC*), AN5306 (*OPAMP*), AN5325 (*CORDIC*) |
 
 ---
@@ -237,7 +241,7 @@ void CORDIC_CosSin_Q31(int32_t angle_rad_div_pi_q31, int32_t *cos_q31, int32_t *
 ## 10. Common Engineering Mistakes, Hardware Traps & Silicon Errata (ES0430)
 
 1. **Overclocking ADC at 170 MHz (`CKMODE = 01` or `10`):** Violates DS12288 60 MHz / 52 MHz spec by 2.83×! Always use `CKMODE = 11` (`HCLK/4 = 42.5 MHz`) or `PLL_P <= 52 MHz`.
-2. **Sampling Temp Sensor with Default 2.5 Cycles:** Violates DS12288 $t_{S\_\text{temp}} \ge 5\ \mu\text{s}$ by 85× and returns garbage temperature! Also wait $120\ \mu\text{s}$ after setting `VSENSESEL`.
+2. **Sampling Temp Sensor with Default 2.5 Cycles:** Violates DS12288 $t_{S,\text{temp}} \ge 5\ \mu\text{s}$ by 85× and returns garbage temperature! Also wait $120\ \mu\text{s}$ after setting `VSENSESEL`.
 3. **Writing `ADC1->CR &= ~ADC_CR_ADEN` or `ADC1->ISR |= ADC_ISR_ADRDY`:** `ADEN` can only be cleared via `ADDIS`; `ISR` is `rc_w1` so use direct `=`.
 4. **Forgetting `DACx->MCR.HFSEL = 10b` at 170 MHz:** Corrupts DAC register synchronization above 160 MHz!
 5. **Enabling `VREFBUF` at 2.048 V / 2.5 V While NUCLEO `VREF+` Bridge Is Closed:** Shorts `VREFBUF` output directly against the 3.3 V rail!
@@ -275,3 +279,8 @@ void CORDIC_CosSin_Q31(int32_t angle_rad_div_pi_q31, int32_t *cos_q31, int32_t *
 | `PERIPH-DAC-001` | 10 kHz sine wave on `PA4` (`DAC1_OUT1`, `HFSEL=10`) via `TIM6` + circular DMA; `DAC3` drives `COMP1` internally | Oscilloscope |
 | `PERIPH-COMP-001` / `OPAMP-001` | `OPAMP1` PGA $\times 8$ matches $1.600\text{ V} \pm 15\text{ mV}$; `COMP1` $\to$ `TIM1_BKIN` trips in `< 50 ns` | Oscilloscope |
 | `PERIPH-CORDIC-001` / `FMAC-001` | `CORDIC` $\le 12$ cycles/pair (err $< 10^{-5}$); `FMAC` 32-tap FIR matches `q1.15` golden ref within $\pm 1\text{ LSB}$ (`SR.SAT==0`) | `DWT->CYCCNT` + GDB |
+
+---
+
+> **Sequential Navigation (Step 12 of 17):**  
+> **Prev:** [Stage 11 (09) — Communication Protocols (`11-communication/`)](../11-communication/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 13 (11) — DMA1/2, DMAMUX1 & Hardware Math (`13-dma/`)](../13-dma/README.md)

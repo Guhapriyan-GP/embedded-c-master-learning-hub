@@ -1,5 +1,9 @@
 # Stage 02: C Language Foundations for Bare-Metal Embedded Systems
 
+> **Sequential Navigation (Step 2 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 01b — Digital Electronics & HW Integration (`01b-*`)](../01b-digital-electronics-and-hw-integration/README.md) | **Next:** [Stage 03 — Embedded C & MMIO (`03-embedded-c/`)](../03-embedded-c/README.md)  
+> **Prerequisites:** [Stage 01b (`DIG-ELEC-*`)](../01b-digital-electronics-and-hw-integration/README.md)
+
 > **Curriculum Track:** Level 1–3 Foundation (ISO C11 / `arm-none-eabi-gcc 14.3.1 -std=c11` on Cortex-M4F)  
 > **Companion Deep-Dive:** [Advanced C: Alignment, Strict Aliasing, Undefined Behavior, C11 Atomics, Fixed/Floating-Point Math & Newlib Reentrancy](./advanced-c-ub-memory-model.md)  
 > **Mandatory Verification Harness:** [tests/test_c_foundations.c](../tests/test_c_foundations.c)  
@@ -280,14 +284,14 @@ Verified directly against `core_cm4.h` and `stm32g474xx.h`:
 $$\text{Unsigned } N\text{-bit}: \left[0,\ 2^N - 1\right], \qquad \text{Signed Two's Complement } N\text{-bit}: \left[-2^{N-1},\ 2^{N-1} - 1\right]$$
 
 ### 6.2 Two's Complement Negation & Wraparound-Safe Elapsed Time
-$$-x \equiv (\sim x) + 1 \pmod{2^N}, \qquad \Delta t = \left(\text{uint32\_t}\right)(t_{\text{now}} - t_{\text{start}}) \pmod{2^{32}}$$
+$$-x \equiv (\sim x) + 1 \pmod{2^N}, \qquad \Delta t = \left(t_{\text{now}} - t_{\text{start}}\right) \bmod 2^{32}$$
 
 **Worked Example:** `t_start = 0xFFFFFFF0UL`, `t_now = 0x00000010UL`:
 $$\Delta t = (0\text{x}00000010 - 0\text{xFFFFFFF0}) \bmod 2^{32} = 0\text{x}00000020 = 32\text{ ticks (exact!)}$$
 
 ### 6.3 Struct Alignment & Padding Offset Formula
-For member $i$ with alignment requirement $A_i = \text{\_Alignof}(T_i)$:
-$$\text{offset}_i = \left\lceil \frac{\text{current\_offset}}{A_i} \right\rceil \cdot A_i, \qquad \text{sizeof}(S) = \left\lceil \frac{\text{end\_offset}}{\max_i A_i} \right\rceil \cdot \max_i A_i$$
+For member $i$ with alignment requirement $A_i = \text{alignof}(T_i)$ (`_Alignof(T_i)` in C11):
+$$\text{offset}_i = \left\lceil \frac{\text{offset}_{\text{curr}}}{A_i} \right\rceil \cdot A_i, \qquad \text{sizeof}(S) = \left\lceil \frac{\text{offset}_{\text{end}}}{\max_i A_i} \right\rceil \cdot \max_i A_i$$
 
 ---
 
@@ -699,3 +703,8 @@ uint32_t sum_6_args(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, 
 - [ ] **Zero Shift/Promotion/UB Bugs:** Accurately identify and repair integer promotion, signed overflow, shift UB, array decay, dangling-pointer, and macro double-evaluation defects.
 - [ ] **Memory, Stack & Section Mapping Verified:** Predict exact ELF sections (`.text`, `.rodata`, `.data`, `.bss`, stack), struct `sizeof`/`offsetof` layouts, and bounded `.su` stack frames via `arm-none-eabi-nm`, `arm-none-eabi-size`, and `-fstack-usage`.
 - [ ] **Companion Deep-Dive Completed:** Complete all concepts and assessments in [advanced-c-ub-memory-model.md](./advanced-c-ub-memory-model.md) (`C-ALIGN-*`, `C-UB-*`, `C-SEQ-*`, `C-ATOM-*`, `C-MATH-*`, `C-LIB-001`).
+
+---
+
+> **Sequential Navigation (Step 2 of 17):**  
+> **Prev:** [Stage 01b — Digital Electronics & HW Integration (`01b-*`)](../01b-digital-electronics-and-hw-integration/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 03 — Embedded C & MMIO (`03-embedded-c/`)](../03-embedded-c/README.md)

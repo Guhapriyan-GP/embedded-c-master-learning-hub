@@ -23,7 +23,7 @@
 | `TIMx_CCMR2` | `0x01C` | `0x00000000` | RW | Capture/Compare mode 2 (Channels 3 & 4) |
 | `TIMx_CCER` | `0x020` | `0x00000000` | RW | Capture/Compare enable (`CCxE`, `CCxP`, `CCxNE`, `CCxNP` complementary outputs) |
 | `TIMx_CNT` | `0x024` | `0x00000000` | RW | Counter register (32-bit on `TIM2`/`TIM5`, 16-bit on others) |
-| `TIMx_PSC` | `0x028` | `0x00000000` | RW | 16-bit prescaler (divides $f_{\text{TIM\_CLK}}$ by $\text{PSC} + 1$) |
+| `TIMx_PSC` | `0x028` | `0x00000000` | RW | 16-bit prescaler (divides $f_{\text{TIMCLK}}$ by $\text{PSC} + 1$) |
 | `TIMx_ARR` | `0x02C` | `0xFFFFFFFF` / `0xFFFF` | RW | Auto-reload period register |
 | `TIMx_RCR` | `0x030` | `0x00000000` | RW | Repetition counter (Adv TIM1/8/20, TIM15–17) |
 | `TIMx_CCR1..4` | `0x034..0x040` | `0x00000000` | RW | Capture/Compare registers 1–4 |
@@ -41,12 +41,12 @@
 
 ### 2. Timebase, PWM & Dead-Time Mathematics
 
-$$f_{\text{UEV}} = \frac{f_{\text{TIM\_CLK}}}{(\text{PSC} + 1) \times (\text{ARR} + 1)}, \qquad \text{Duty (\%)} = \frac{\text{CCR}x}{\text{ARR} + 1} \times 100\%$$
+$$f_{\text{UEV}} = \frac{f_{\text{TIMCLK}}}{(\text{PSC} + 1) \times (\text{ARR} + 1)}, \qquad \text{Duty (\%)} = \frac{\text{CCR}x}{\text{ARR} + 1} \times 100\%$$
 
-*(Clock multiplier rule: If `PPREx = /1`, $f_{\text{TIM\_CLK}} = f_{\text{PCLK}x}$; if `PPREx > /1`, hardware sets $f_{\text{TIM\_CLK}} = 2 \times f_{\text{PCLK}x}$.)*
+*(Clock multiplier rule: If `PPREx = /1`, $f_{\text{TIMCLK}} = f_{\text{PCLK}x}$; if `PPREx > /1`, hardware sets $f_{\text{TIMCLK}} = 2 \times f_{\text{PCLK}x}$.)*
 
 #### `TIMx_BDTR` (Break and Dead-Time Register) — Offset `0x044`
-- **Bits [7:0] (`DTG`):** Dead-time generator duration ($t_{\text{DTS}} = 1 / f_{\text{TIM\_CLK}}$ when `CR1.CKD = 00`; at 170 MHz, $t_{\text{DTS}} = 5.882\ \text{ns}$):
+- **Bits [7:0] (`DTG`):** Dead-time generator duration ($t_{\text{DTS}} = 1 / f_{\text{TIMCLK}}$ when `CR1.CKD = 00`; at 170 MHz, $t_{\text{DTS}} = 5.882\ \text{ns}$):
   - `DTG[7] = 0` (`0..127`): $T_{\text{DT}} = \text{DTG}[6:0] \times t_{\text{DTS}}$ (e.g., `DTG = 85` $\rightarrow 85 \times 5.882\ \text{ns} = 500\ \text{ns}$)
   - `DTG[7:6] = 10`: $T_{\text{DT}} = (64 + \text{DTG}[5:0]) \times 2\,t_{\text{DTS}}$
   - `DTG[7:5] = 110`: $T_{\text{DT}} = (32 + \text{DTG}[4:0]) \times 8\,t_{\text{DTS}}$
@@ -63,7 +63,7 @@ $$f_{\text{UEV}} = \frac{f_{\text{TIM\_CLK}}}{(\text{PSC} + 1) \times (\text{ARR
 ### 3. Critical Access Semantics (`EGR` & `SR`)
 
 1. **`TIMx->EGR` is Write-Only (WO):** Always write **`TIM2->EGR = TIM_EGR_UG;`** — NEVER `TIM2->EGR |= TIM_EGR_UG;` (reading a WO register is undefined / wastes an RMW cycle).
-2. **`TIMx->SR` is `rc_w0` (Read / Clear by Writing 0):** Writing `1` to a bit has NO effect; writing `0` clears that flag. Always clear an interrupt flag with **`TIM2->SR = ~TIM_SR_UIF;`** — NEVER `TIM2->SR &= ~TIM_SR_UIF;` (an RMW read-modify-write can accidentally clear another flag that asserted between the read and write!).
+2. **`TIMx->SR` is `rc_w0` (Read / Clear by Writing 0):** Writing `1` to a bit has NO effect; writing `0` clears that flag. Always clear an interrupt flag early with **`TIM2->SR = ~TIM_SR_UIF;`** — NEVER `TIM2->SR &= ~TIM_SR_UIF;` (an RMW read-modify-write can accidentally clear another flag that asserted between the read and write!). Follow with **`(void)TIM2->SR; __DSB();`** before ISR exit so the clear commits across the AHB-to-APB bridge (**ARM AN321 §4.9**) and mitigates **ARM Erratum 838869 / ST ES0430 §2.1.3**.
 
 ---
 
@@ -105,8 +105,9 @@ void TIM2_PWM_20kHz_Init(void) {
 
 void TIM2_IRQHandler(void) {
     if (TIM2->SR & TIM_SR_UIF) {
-        TIM2->SR = ~TIM_SR_UIF;     /* Atomic rc_w0 flag clear */
-        __DSB();                    /* ES0430 §2.1.3 / ARM 838869 */
+        TIM2->SR = ~TIM_SR_UIF;     /* Atomic rc_w0 flag clear (NEVER '&=') */
+        (void)TIM2->SR;             /* APB1 bridge sync readback (ARM AN321 §4.9) */
+        __DSB();                    /* Core write-buffer drain & ARM Erratum 838869 (ES0430 §2.1.3) */
     }
 }
 ```

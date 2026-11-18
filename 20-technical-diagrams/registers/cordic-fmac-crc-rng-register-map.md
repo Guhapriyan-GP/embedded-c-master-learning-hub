@@ -55,12 +55,12 @@ Dedicated `q1.15` DSP engine with **256 × 16-bit internal SRAM** partitioned in
 
 ### 4. RNG (True Random Number Generator) — `0x50060800` (`RNG_TypeDef`)
 
-Requires a **48 MHz kernel clock** via `RCC->CCIPR.CLK48SEL` (`00` = `HSI48`, `10` = `PLL48Q`) with $f_{\text{RNG\_CLK}} \ge f_{\text{HCLK}} / 16$ (48 MHz easily satisfies 170 MHz / 16 = 10.625 MHz).
+Requires a **48 MHz kernel clock** via `RCC->CCIPR.CLK48SEL` (`00` = `HSI48`, `10` = `PLL48Q`) with $f_{\text{RNG}} \ge f_{\text{HCLK}} / 16$ (48 MHz easily satisfies 170 MHz / 16 = 10.625 MHz).
 
 | Register | Offset | Reset Value | Access | Key Bitfields |
 |---|---|---|---|---|
 | `RNG_CR` | `0x000` | `0x00000000` | RW | `RNGEN` b2 (enable), `IE` b3 (`RNG_IRQn = 90`), `CED` b5 (`0` = clock error detector enabled) |
-| `RNG_SR` | `0x004` | `0x00000000` | RO/rc_w0 | `DRDY` b0 (32-bit word ready), `CECS` b1 (clock err status), `SECS` b2 (seed err status), `CEIS` b5 (`rc_w0`), `SEIS` b6 (`rc_w0`) |
+| `RNG_SR` | `0x004` | `0x00000000` | RO/**rc_w0** | `DRDY` b0 (32-bit word ready), `CECS` b1 (clock err status), `SECS` b2 (seed err status), `CEIS` b5 (`rc_w0`), `SEIS` b6 (`rc_w0` — direct `RNG->SR = ~flag;`, NEVER `&=`; in `RNG_IRQHandler` follow with `(void)RNG->SR; __DSB();`) |
 | `RNG_DR` | `0x008` | `0x00000000` | RO | 32-bit NIST SP800-90B true random output (discard if `0` or `SEIS/CEIS` asserted) |
 
 ---

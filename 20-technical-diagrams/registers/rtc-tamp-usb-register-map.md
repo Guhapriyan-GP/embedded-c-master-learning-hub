@@ -27,7 +27,7 @@ Runs in the Backup Domain (clocked by **32.768 kHz LSE crystal `X2`** on NUCLEO-
 | `RTC_WPR` | `0x024` | `0x00000000` | WO | Write protection unlock (**write `0xCA` then `0x53`**; any other byte re-locks!) |
 | `RTC_CALR` | `0x028` | `0x00000000` | RW | Smooth digital calibration (±488 ppm in 0.95 ppm steps) |
 | `RTC_ALRMAR/BR` | `0x040` / `0x048` | `0x00000000` | RW | Alarm A & B comparison registers (`ALRMASSR`/`ALRMBSSR` @ `0x044`/`0x04C`) |
-| `RTC_SR` / `RTC_SCR` | `0x050` / `0x05C` | `0x00000000` | RO / WO | Status (`ALRAF`, `ALRBF`, `WUTF`, `TSF`) & clear register |
+| `RTC_SR` / `RTC_SCR` | `0x050` / `0x05C` | `0x00000000` | RO / **WO** | Status (`ALRAF`, `ALRBF`, `WUTF`, `TSF`) & clear register (`RTC->SCR = mask;` direct write, NEVER `|=`; in ISRs follow with `(void)RTC->SR; __DSB();`) |
 
 ---
 
@@ -40,7 +40,7 @@ Runs in the Backup Domain (clocked by **32.768 kHz LSE crystal `X2`** on NUCLEO-
 | `TAMP_CR1` | `0x000` | RW | Enable external tampers (`TAMP1E` b0, `TAMP2E` b1, `TAMP3E` b2) & internal tampers (`ITAMP3E..6E`) |
 | `TAMP_CR2` | `0x004` | RW | Trigger edge (`TAMPxTRG`), no-erase mask (`TAMPxNOER`), mask bits |
 | `TAMP_FLTCR` | `0x00C` | RW | Sampling frequency, filter count (`TAMPFLT`), precharge duration |
-| `TAMP_IER` / `SR` / `SCR` | `0x02C` / `0x030` / `0x03C` | RW / RO / WO | Tamper interrupt enable, status flags (`TAMP1F..3F`), and clear register |
+| `TAMP_IER` / `SR` / `SCR` | `0x02C` / `0x030` / `0x03C` | RW / RO / **WO** | Tamper interrupt enable, status flags (`TAMP1F..3F`), and clear register (direct `TAMP->SCR = mask;`, NEVER `|=`) |
 | **`TAMP_BKP0R..BKP31R`** | `0x100..0x17C` | RW | **128 bytes of VBAT/Standby/Shutdown-retained registers** (requires `PWR_CR1.DBP = 1` to write) |
 
 ---
@@ -53,12 +53,12 @@ USB 2.0 FS (12 Mbps) Device-only controller using `PA11` (`USB_DM`) and `PA12` (
 |---|---|---|---|
 | `USB_EP0R..EP7R` | `0x000..0x01C` | RW/t/rc_w0 | Endpoint 0–7 config (`EA[3:0]`, `STAT_TX[5:4]` toggle, `DTOG_TX` toggle, `CTR_TX` rc_w0, `EP_TYPE[10:9]`, `STAT_RX[13:12]` toggle, `CTR_RX` rc_w0) |
 | `USB_CNTR` | `0x040` | RW | `FRES` b0 (force reset), `PDWN` b1 (power-down; clear & wait 1 µs!), `LPMODE`, `FSUSP`, `RESETM`, `CTRM` |
-| `USB_ISTR` | `0x044` | RO/rc_w0 | `EP_ID[3:0]`, `DIR` b4, `SOF`, `RESET`, `SUSP`, `WKUP`, `ERR`, `CTR` b15 |
+| `USB_ISTR` | `0x044` | RO/**rc_w0** | `EP_ID[3:0]`, `DIR` b4, `SOF`, `RESET`, `SUSP`, `WKUP`, `ERR`, `CTR` b15 (`rc_w0`: direct `USB->ISTR = ~USB_ISTR_SOF;`, NEVER `&=`; in `USB_LP_IRQHandler` follow with `(void)USB->ISTR; __DSB();` per ARM AN321 §4.9 & ES0430 §2.1.3) |
 | `USB_FNR` / `DADDR` / `BTABLE` | `0x048` / `0x04C` / `0x050` | RO / RW / RW | Frame number, USB device address (`ADD[6:0]`, `EF` b7), Buffer Descriptor Table offset in 1 KB `USB_PMAADDR` (`0x40006000`) |
 | `USB_BCDR` | `0x058` | RW | Battery charging detection & **`DPPU` (Bit 15 = internal 1.5 kΩ D+ pull-up to initiate enumeration!)** |
 | `CRS_CR` | `0x000` | RW | `SYNCOKIE`, `CEN` b5 (counter enable), **`AUTOTRIMEN` b6** (auto-trim HSI48), `TRIM[14:8]` |
 | `CRS_CFGR` | `0x004` | RW | `RELOAD[15:0]` (`47999` for 48 MHz / 1 kHz SOF), `FELIM[23:16]` (`34`), `SYNCSRC[29:28]` (`10` = USB SOF) |
-| `CRS_ISR` / `CRS_ICR` | `0x008` / `0x00C` | RO / WO | `SYNCOKF` b0 (HSI48 locked to USB SOF!), `SYNCWARNF`, `ERRF`, `ESYNCF` |
+| `CRS_ISR` / `CRS_ICR` | `0x008` / `0x00C` | RO / **WO** | `SYNCOKF` b0 (HSI48 locked to USB SOF!), `SYNCWARNF`, `ERRF`, `ESYNCF` (`CRS->ICR = mask;` direct write, NEVER `|=`) |
 
 > **CRITICAL STM32G4 USB PMA & `EPnR` Rules (`COMM-USB-002`, RM0440 Ch. 43):**
 > 1. **16-Bit Halfword PMA Access Only (`0x40006000`):** Unlike STM32F103's 32-bit-strided PMA, STM32G4 maps 1 KB PMA contiguously as 512 × 16-bit halfwords, **and hardware FORBIDS 8-bit byte writes (`STRB`)!** Calling `memcpy()` or byte-writing corrupts adjacent bytes — always use `volatile uint16_t *` halfword loops!

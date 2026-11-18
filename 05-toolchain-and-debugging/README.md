@@ -1,5 +1,9 @@
 # Stage 05: GNU ARM Toolchain, Linker Scripts, Startup Code & Hardware Debugging
 
+> **Sequential Navigation (Step 5 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 04 — ARM Cortex-M4F Core (`04-arm-cortex-m/`)](../04-arm-cortex-m/README.md) | **Next:** [Stage 06 — STM32G474RE Architecture (`06-stm32-fundamentals/`)](../06-stm32-fundamentals/README.md)  
+> **Prerequisites:** [Stage 02 (`C-*`)](../02-c-fundamentals/README.md), [Stage 03 (`EMB-*`)](../03-embedded-c/README.md), [Stage 04 (`ARM-*`)](../04-arm-cortex-m/README.md)
+
 > **Curriculum Track:** Level 1–3 Bare-Metal Build, Link & Debug Engineering (`TOOL-*`, all 32 concepts)  
 > **Verified Toolchain:** `arm-none-eabi-gcc 14.3.1` (GNU Tools for STM32), GNU Binutils, OpenOCD, GDB, VS Code Cortex-Debug  
 > **Target Probe & MCU:** Onboard **STLINK-V3E** on **NUCLEO-G474RE (MB1367, UM2505)** targeting **STM32G474RET6**  
@@ -165,7 +169,7 @@ Single Wire Output (**SWO**) streams real-time **ITM** `printf`/event packets an
    - `TPI->SPPR = 1` (`01b`): **Asynchronous Manchester Encoding** — self-clocking phase transitions (tolerates wider clock drift without exact baud match), but halves bit throughput and is **unsupported by many ST-LINK/OpenOCD setups**.
    - `TPI->SPPR = 2` (`10b`): **Asynchronous NRZ (UART 8N1) Encoding** — **Standard mode for STLINK-V3E, OpenOCD, and J-Link!** Transmits standard 1 start + 8 data + 1 stop bit frames at exact baud rate determined by `TPI->ACPR`.
 2. **`TPI->ACPR` Prescaler Formula (170 MHz & 160 MHz Profiles):**
-   $$\text{SWO\_Baud} = \frac{f_{\text{SYSCLK}}}{\text{TPI->ACPR} + 1} \iff \text{TPI->ACPR} = \frac{f_{\text{SYSCLK}}}{\text{SWO\_Baud}} - 1 \qquad (\text{13-bit: } 0\dots 8191)$$
+   $$f_{\text{SWO}} = \frac{f_{\text{SYSCLK}}}{\text{TPI->ACPR} + 1} \iff \text{TPI->ACPR} = \frac{f_{\text{SYSCLK}}}{f_{\text{SWO}}} - 1 \qquad (\text{13-bit: } 0\dots 8191)$$
 
    | STM32G474RE Clock Profile | Target NRZ SWO Baud | Exact `TPI->ACPR` Register Value | Actual Wire Baud & Error |
    |---|---|---|---|
@@ -227,12 +231,13 @@ Single Wire Output (**SWO**) streams real-time **ITM** `printf`/event packets an
 ## 6. Relevant Formulas & Calculations
 
 ### 6.1 Flash Image Utilization & `.bin` Size Verification
-$$\text{Flash Used} = \text{sizeof}(\text{.isr\_vector}) + \text{sizeof}(\text{.text}) + \text{sizeof}(\text{.rodata}) + \text{sizeof}(\text{.data}) + \text{sizeof}(\text{.ccmram})$$
-$$\text{SRAM1+2 Used} = \text{sizeof}(\text{.data}) + \text{sizeof}(\text{.bss}) + \text{sizeof}(\text{.\_user\_heap\_stack})$$
-*(Remember: `.bss` and `.noinit` occupy **0 bytes** in Flash / `.bin`!)*
+$$\text{Flash Used} = S_{\text{vectors}} + S_{\text{.text}} + S_{\text{.rodata}} + S_{\text{.data}} + S_{\text{.ccmram}}$$
+$$\text{SRAM1+2 Used} = S_{\text{.data}} + S_{\text{.bss}} + S_{\text{heap+stack}}$$
+*(Here $S_{\text{vectors}}$ is `.isr_vector`, $S_{\text{heap+stack}}$ is `._user_heap_stack`, and `.bss` / `.noinit` occupy **0 bytes** in Flash / `.bin`!)*
 
 ### 6.2 Worst-Case Static Stack Bound
-$$S_{\text{total}} = S_{\text{main\_call\_chain}} + \sum_{k=1}^{N_{\text{prio\_levels}}} \left( S_{\text{hw\_frame},k} + S_{\text{ISR\_max},k} \right) \le 0.75 \times \text{\_Min\_Stack\_Size}$$
+$$S_{\text{total}} = S_{\text{main}} + \sum_{k=1}^{N_{\text{prio}}} \left( S_{\text{hw},k} + S_{\text{ISR},k} \right) \le 0.75 \times S_{\text{stack budget}}$$
+*(Where $S_{\text{main}}$ is the worst-case main call chain, $N_{\text{prio}}$ is the count of distinct preempting priority levels, $S_{\text{hw},k}$ is the 32 B / 104 B hardware exception frame, and $S_{\text{stack budget}}$ is linker symbol `_Min_Stack_Size`.)*
 
 ---
 
@@ -494,3 +499,8 @@ void itm_send_char_nonblocking(uint8_t ch)
 - [ ] **Binutils Fluency Verified:** Map a raw `PC` to C line via `addr2line`, rank top Flash/RAM symbols via `nm --size-sort`, and verify `.map` `--print-memory-usage` output.
 - [ ] **CLI GDB & VS Code SVD Verified:** Connect via OpenOCD + STLINK-V3E, execute a `.gdbinit` flash+debug script, catch a bug with a DWT watchpoint, and inspect live registers via `STM32G474.svd`.
 - [ ] **Automated Build & QA Gate:** Build cleanly with portable Make (`-MMD -MP`) or CMake+Ninja, passing `cppcheck`, `-fanalyzer`, and `-fstack-usage` with zero errors.
+
+---
+
+> **Sequential Navigation (Step 5 of 17):**  
+> **Prev:** [Stage 04 — ARM Cortex-M4F Core (`04-arm-cortex-m/`)](../04-arm-cortex-m/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 06 — STM32G474RE Architecture (`06-stm32-fundamentals/`)](../06-stm32-fundamentals/README.md)

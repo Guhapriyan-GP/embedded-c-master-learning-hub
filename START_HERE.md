@@ -137,7 +137,7 @@ Track your progress stage-by-stage in **[`LEARNERS/LEARNER_PROGRESS_DASHBOARD.md
 | 5 | **Stage 05:** GNU Toolchain, Linker Scripts, 118-IRQ Startup & GDB | [`05-toolchain-and-debugging/`](05-toolchain-and-debugging/README.md) | Build `23-code-library/templates/` + [Stage 03 Exam](24-assessments/stage-03-arm-cortex-m-architecture-exam.md) | Level 1–2 |
 | 6 | **Stage 06:** STM32G474RE BusMatrix, LQFP64 Limits & Errata | [`06-stm32-fundamentals/`](06-stm32-fundamentals/README.md) | Inspect `stm32g474xx.h` & [`REGISTER_QUICK_REFERENCE.md`](LEARNERS/REGISTER_QUICK_REFERENCE.md) | Level 1 |
 | 7 | **Stage 07 (06A):** Basic GPIO on 16 MHz HSI16 *(before RCC!)* | [`08-gpio/`](08-gpio/README.md) | [Lab 01](18-practical-laboratory/lab-01-baremetal-gpio-led-blinky/README.md), [Lab 02](18-practical-laboratory/lab-02-gpio-pushbutton-debouncing/README.md) | Level 1 |
-| 8 | **Stage 08 (06B):** PWR Boost, Flash 4WS & 170 MHz RCC PLL | [`07-rcc-and-clocks/`](07-rcc-and-clocks/README.md) | [Lab 03](18-practical-laboratory/lab-03-rcc-pll-170mhz-clock-switch/README.md) | Level 2 |
+| 8 | **Stage 08 (06B):** PWR Boost, Flash 4WS & 170 / 160 MHz RCC PLL | [`07-rcc-and-clocks/`](07-rcc-and-clocks/README.md) | [Lab 03](18-practical-laboratory/lab-03-rcc-pll-170mhz-clock-switch/README.md) | Level 2 |
 | 9 | **Stage 09 (07):** SysTick, NVIC 4-Bit Grouping & EXTI *(before Timers!)* | [`10-interrupts/`](10-interrupts/README.md) | [Lab 04](18-practical-laboratory/lab-04-systick-accurate-delay-generator/README.md), [Lab 05](18-practical-laboratory/lab-05-exti-pushbutton-interrupt/README.md) | Level 2 |
 | 10 | **Stage 10 (08):** General-Purpose, Advanced Timers (`TIMx`) & `HRTIM1` | [`09-timers/`](09-timers/README.md) | [Lab 06](18-practical-laboratory/lab-06-general-purpose-timer-periodic-interrupt/README.md), [Lab 07](18-practical-laboratory/lab-07-timer-pwm-rgb-led-fading/README.md) | Level 2–3 |
 | 11 | **Stage 11 (09):** Serial Buses (`USART`, `SPI`, `I2C`, `FDCAN`, `USB`) | [`11-communication/`](11-communication/README.md) | [Lab 08](18-practical-laboratory/lab-08-usart-baremetal-driver-printf/README.md), [Lab 11](18-practical-laboratory/lab-11-spi-master-sensor-interfacing/README.md), [Lab 12](18-practical-laboratory/lab-12-i2c-master-ssd1306-oled/README.md), [Lab 18](18-practical-laboratory/lab-18-fdcan-loopback-and-crc/README.md) | Level 2–3 |
@@ -152,7 +152,7 @@ Track your progress stage-by-stage in **[`LEARNERS/LEARNER_PROGRESS_DASHBOARD.md
 
 ## 6. Learner Companion Toolkit (`LEARNERS/`)
 
-Keep these 7 practical handbooks bookmarked while studying:
+Keep these 8 practical handbooks bookmarked while studying:
 - **[`LEARNERS/BEGINNER_SETUP_WINDOWS11.md`](LEARNERS/BEGINNER_SETUP_WINDOWS11.md)** — Exact Windows 11 installation, `PATH`, ST-LINK COM port, VS Code extensions, and SVD setup.
 - **[`LEARNERS/LEARNER_PROGRESS_DASHBOARD.md`](LEARNERS/LEARNER_PROGRESS_DASHBOARD.md)** — Interactive checkbox tracker across Level 1, Level 2, and Level 3.
 - **[`LEARNERS/WORKED_EXAMPLES.md`](LEARNERS/WORKED_EXAMPLES.md)** — 6 full step-by-step worked examples (Demo → Explanation → Registers → GDB → Lab → Exercise) for the trickiest STM32G474RE topics.
@@ -160,3 +160,4 @@ Keep these 7 practical handbooks bookmarked while studying:
 - **[`LEARNERS/FORMULA_AND_CALCULATION_SHEET.md`](LEARNERS/FORMULA_AND_CALCULATION_SHEET.md)** — Verified math cheat sheet for electronics, 170/160 MHz PLLs, timers, dead-time, UART/I2C, ADC/DAC, watchdogs, bit-banding, and RTOS RMS.
 - **[`LEARNERS/REGISTER_QUICK_REFERENCE.md`](LEARNERS/REGISTER_QUICK_REFERENCE.md)** — Compact 1-page-per-subsystem STM32G474RE register desk reference verified against `stm32g474xx.h`.
 - **[`LEARNERS/REVISION_NOTES_AND_MASTERY_GATES.md`](LEARNERS/REVISION_NOTES_AND_MASTERY_GATES.md)** — Measurable mastery gates & revision checklists proving real engineering skill.
+- **[`LEARNERS/MKDOCS_PORTAL_PLAN.md`](LEARNERS/MKDOCS_PORTAL_PLAN.md)** — Zero-duplication GitHub Pages **MkDocs Material** portal architecture (`docs_dir: .`, MathJax v3, Mermaid, strict CI link gating).

@@ -140,7 +140,7 @@ Per **RM0440 §6.1.5** and **Table 9**, any `SYSCLK > 150 MHz` (both **160 MHz**
 3. **Flash Wait States:** Program **`FLASH->ACR.LATENCY = 4WS`** (`0100b`, required for `136–170 MHz` in Boost Mode) + ART `PRFTEN`/`ICEN`/`DCEN`, and read back `LATENCY == 4WS`.
 4. **RM0440 §6.1.5 Two-Step Ramp:** Set **`RCC->CFGR.HPRE = /2`** (85 MHz or 80 MHz intermediate HCLK) → switch `SW = PLL` → wait `SWS == PLL` → **wait $\ge 1\ \mu\text{s}$** → set `HPRE = /1`!
 
-**Verified PLL Math ($f_{\text{PLL\_IN}} \in [2.66, 16]\text{ MHz}$, $f_{\text{VCO}} \in [96, 344]\text{ MHz}$):**
+**Verified PLL Math ($f_{\text{PLL-IN}} \in [2.66, 16]\text{ MHz}$, $f_{\text{VCO}} \in [96, 344]\text{ MHz}$):**
 - **170 MHz from HSI16 (16 MHz):** $M=4$ (`PLLM=3`) $\to 4\text{ MHz}$, $N=85 \to f_{\text{VCO}}=340\text{ MHz}$, $R=2$ (`PLLR=0`) $\to \mathbf{170\text{ MHz}}$. *(From 24 MHz HSE `X3`: $M=6$ [`PLLM=5`], $N=85$, $R=2$.)*
 - **160 MHz from HSI16 (16 MHz):** $M=4$ (`PLLM=3`) $\to 4\text{ MHz}$, $N=80 \to f_{\text{VCO}}=320\text{ MHz}$, $R=2$ (`PLLR=0`) $\to \mathbf{160\text{ MHz}}$. *(From 24 MHz HSE `X3`: $M=6$ [`PLLM=5`], $N=80$, $R=2$.)*
 

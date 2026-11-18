@@ -23,7 +23,7 @@
 | `USART_RTOR` | `0x014` | `0x00000000` | RW | Receiver timeout register (Modbus / idle frame detection) |
 | `USART_RQR` | `0x018` | `0x00000000` | WO | Request register (`RXFRQ` flush RX, `TXFRQ` flush TX, `ABRRQ`, `SBKRQ`) |
 | `USART_ISR` | `0x01C` | `0x020000C0` | RO | Interrupt & status (`PE`, `FE`, `NE`, `ORE`, `IDLE`, `RXNE_RXFNE`, `TC`, `TXE_TXFNF`, `BUSY`, **`WUF` b20** Stop wakeup flag, `TEACK`, `REACK`) |
-| `USART_ICR` | `0x020` | `0x00000000` | **WO** | Interrupt flag clear (`PECF`, `FECF`, `NECF`, `ORECF`, `IDLECF`, `TCCF`, `RTOCF`, **`WUCF` b20** — write `1` directly) |
+| `USART_ICR` | `0x020` | `0x00000000` | **WO** | Interrupt flag clear (`PECF`, `FECF`, `NECF`, `ORECF`, `IDLECF`, `TCCF`, `RTOCF`, **`WUCF` b20** — direct `USARTx->ICR = mask;`, NEVER `|=`; in ISRs follow with `(void)USARTx->ISR; __DSB();` per ARM AN321 §4.9 & ES0430 §2.1.3) |
 | `USART_RDR` | `0x024` | `0x00000000` | RO | Receive data register (Reading automatically clears `RXNE` when FIFO disabled) |
 | `USART_TDR` | `0x028` | `0x00000000` | RW | Transmit data register (Writing automatically clears `TXE` when FIFO disabled) |
 | `USART_PRESC` | `0x02C` | `0x00000000` | RW | Clock prescaler (`PRESCALER[3:0]`: `0000`=`/1`, `0001`=`/2`, `0010`=`/4`, `0011`=`/6`, `0100`=`/8`, `0101`=`/10`, `0110`=`/12`, `0111`=`/16`, `1000`=`/32`, `1001`=`/64`, `1010`=`/128`, `1011`=`/256`) |
@@ -35,16 +35,16 @@
 
 ### 2. Baud Rate Divisor Mathematics
 
-Let $f_{\text{KER\_PRESC}} = f_{\text{KER}} / \text{PRESC}$ (kernel clock selected via `RCC->CCIPR`: PCLK, SYSCLK, HSI16, or LSE).
+Let $f_{\text{ker,presc}} = f_{\text{ker}} / \text{PRESC}$ (kernel clock selected via `RCC->CCIPR`: PCLK, SYSCLK, HSI16, or LSE).
 
 1. **USART1–3 / UART4–5 (`OVER8 = 0`, 16× oversampling):**
-   $$\text{BRR} = \text{round}\!\left(\frac{f_{\text{KER\_PRESC}}}{\text{Baud}}\right)$$
+   $$\text{BRR} = \text{round}\!\left(\frac{f_{\text{ker,presc}}}{\text{Baud}}\right)$$
    - At $f_{\text{CK}} = 170\ \text{MHz}$ (Profile A), `PRESC = /1`, target $115{,}200\ \text{bps}$:
      $$\text{BRR} = \frac{170{,}000{,}000}{115{,}200} = 1475.69 \rightarrow 1476\ (\texttt{0x05C4}), \quad \text{Error} = -0.021\%$$
    - At $f_{\text{CK}} = 160\ \text{MHz}$ (Profile B), `PRESC = /1`, target $115{,}200\ \text{bps}$:
      $$\text{BRR} = \frac{160{,}000{,}000}{115{,}200} = 1388.89 \rightarrow 1389\ (\texttt{0x056D}), \quad \text{Error} = -0.008\%$$
-2. **LPUART1 (20-bit fractional BRR, valid when $3 \times \text{Baud} \le f_{\text{KER\_PRESC}} \le 4096 \times \text{Baud}$):**
-   $$\text{BRR}_{\text{LPUART}} = \text{round}\!\left(\frac{256 \times f_{\text{KER\_PRESC}}}{\text{Baud}}\right)$$
+2. **LPUART1 (20-bit fractional BRR, valid when $3 \times \text{Baud} \le f_{\text{ker,presc}} \le 4096 \times \text{Baud}$):**
+   $$\text{BRR}_{\text{LPUART}} = \text{round}\!\left(\frac{256 \times f_{\text{ker,presc}}}{\text{Baud}}\right)$$
    - Example: $f_{\text{LSE}} = 32{,}768\ \text{Hz}$ at $9{,}600\ \text{bps}$ (Stop 1 wakeup): $\text{BRR} = \frac{256 \times 32768}{9600} = 874$ (`0x036A`). At 170 MHz and 115,200 bps, use `PRESC = /4` ($42.5\ \text{MHz} \le 4096 \times 115200$) so $\text{BRR} = 94{,}444$.
 
 ---

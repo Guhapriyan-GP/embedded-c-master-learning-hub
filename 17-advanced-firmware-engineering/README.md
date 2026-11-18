@@ -1,5 +1,9 @@
 # Stage 16: Production Firmware Engineering, Verification, Optimization, Security & Fault Tolerance
 
+> **Sequential Navigation (Step 17 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 16 (14) — FreeRTOS `ARM_CM4F` (`16-rtos/`)](../16-rtos/README.md) | **Next:** [Capstone Projects (`19-projects/`)](../19-projects/README.md) & [Stage 05 Mastery Exam](../24-assessments/stage-05-rtos-and-advanced-firmware-exam.md)  
+> **Prerequisites:** Stages [`01b`](../01b-digital-electronics-and-hw-integration/README.md)–[`16`](../16-rtos/README.md) (`C-*`, `EMB-*`, `ARM-*`, `TOOL-*`, `RTOS-*`)
+
 > **Directory:** `17-advanced-firmware-engineering/` | **Target Platform:** STM32G474RET6 (NUCLEO-G474RE, MB1367) + Host x86/x64 Verification Pipeline  
 > **Code Verification Notice:** All C/linker/CI snippets in this module are **Statically Reviewed against `stm32g474xx.h`, `core_cm4.h`, RM0440, MISRA C:2012/2023, and SEI CERT C (Not Tested on Physical Hardware)**.
 
@@ -133,11 +137,11 @@ Verified directly against `stm32g474xx.h` and `core_cm4.h`:
 ## 6. Engineering Mathematics & Worked Formulas
 
 ### 6.1 Worst-Case Nested Interrupt Stack Budget (Cortex-M4F)
-$$S_{\text{MSP,max}} = S_{\text{main\_peak}} + \sum_{p \in \text{nesting levels}} \left( S_{\text{hw\_frame},p} + S_{\text{ISR\_local},p} \right)$$
-where $S_{\text{hw\_frame}} = 32\text{ B}$ (non-FPU) or **$104\text{ B}$** (FPU extended frame!). Always verify $S_{\text{MSP,max}} \times 1.25 \le \text{\_Min\_Stack\_Size}$.
+$$S_{\text{MSP,max}} = S_{\text{main,peak}} + \sum_{p \in \text{nesting levels}} \left( S_{\text{hw,frame},p} + S_{\text{ISR,local},p} \right)$$
+where $S_{\text{hw,frame}} = 32\text{ B}$ (non-FPU) or **$104\text{ B}$** (FPU extended frame!). Always verify $S_{\text{MSP,max}} \times 1.25 \le S_{\text{stack budget}}$ (`_Min_Stack_Size`).
 
 ### 6.2 `DWT->CYCCNT` Time Conversion at 170 MHz
-$$t_{\mu\text{s}} = \frac{(uint32\_t)(t_{\text{end}} - t_{\text{start}})}{170.0}$$
+$$t_{\mu\text{s}} = \frac{\left(t_{\text{end}} - t_{\text{start}}\right) \bmod 2^{32}}{170.0}$$
 Max single measurable interval before 32-bit wrap: $2^{32} / 170\times 10^6 = \mathbf{25.264\text{ s}}$.
 
 ---
@@ -390,3 +394,8 @@ boot_auth_status_t bootloader_verify_anti_rollback(
 | `PROF-STK-001` / `PROF-WCET-001` | `.su` worst-case call-graph + nested FPU frame $\le 75\%$ stack budget; `DWT->CYCCNT` min/avg/max WCET profiled on target | GCC `.su` + GDB |
 | `SEC-TAMP-001` / `SEC-CRYPTO-001` / `SEC-BOOT-002` | `TAMP` pin zeroes `BKP0R..3R`; hardware `RNG` generates 10,000 words with `CECS==SECS==0`; `bootloader_verify_anti_rollback()` rejects downgraded `security_version` while permitting equal/higher signed epochs | GDB + Host Unit Test |
 | `REL-CRASH-001` / `PROF-REL-001` | Naked `HardFault_Handler` persists faulting `PSP` `PC`/`CFSR` in `.noinit` matching `addr2line`; 6-row FMEA + `SYSCFG->CFGR2` lockup break verified | GDB + Oscilloscope |
+
+---
+
+> **Sequential Navigation (Step 17 of 17):**  
+> **Prev:** [Stage 16 (14) — FreeRTOS `ARM_CM4F` (`16-rtos/`)](../16-rtos/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Capstone Projects (`19-projects/`)](../19-projects/README.md) & [Stage 05 Mastery Exam](../24-assessments/stage-05-rtos-and-advanced-firmware-exam.md)

@@ -1,8 +1,9 @@
 # Stage 09: Hardware Timers (Basic, General-Purpose, Advanced, LPTIM1 & HRTIM1)
 
+> **Navigation:** [← Stage 08: Interrupts, NVIC & EXTI](../10-interrupts/README.md) | [Curriculum Map](../README.md) | [Stage 10: Serial & Industrial Communication →](../11-communication/README.md)  
 > **Directory:** `09-timers/` *(directory name preserved for link stability; logically **Stage 09** — Timer Interrupts in Lab 06 strictly follow Stage 08 Interrupts/NVIC in `10-interrupts/`, while Polling-Mode Basic Timers can precede interrupts!)*  
 > **Target Platform:** STM32G474RET6 (14 Hardware Timers: `TIM6/7`, `TIM2/3/4/5/15/16/17`, `TIM1/8/20`, `LPTIM1`, **`HRTIM1`**)  
-> **Code Verification Notice:** All bare-metal C snippets in this module are **Statically Reviewed against `stm32g474xx.h`, RM0440, and AN4539 (Not Tested on Physical Hardware)**.
+> **Code Verification Notice:** All bare-metal C snippets in Section 8 are **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror`)** against `stm32g474xx.h` and `core_cm4.h` (Not Tested on Physical Hardware).
 
 ---
 
@@ -30,7 +31,7 @@
   - **Stage 06 (`07-rcc-and-clocks/`):** `STM32-RCC-001`, `STM32-RCC-002` (170 MHz `SYSCLK` and APB timer $\times 2$ multiplier rule).
   - **Stage 07 (`08-gpio/`):** `PERIPH-GPIO-001`, `PERIPH-GPIO-002` (GPIO Alternate Function `AFR[0..1]` and `OSPEEDR`).
 - **For Level 2/3 Timer Interrupts (`Lab 06`), Input Capture ISRs, & Break ISRs:**
-  - **Stage 08 (`10-interrupts/`):** `RT-IRQ-001`, `RT-IRQ-002` (NVIC `PRIGROUP`, `NVIC_EnableIRQ()`, and `__DSB()` barrier).
+  - **Stage 08 (`10-interrupts/`):** `RT-IRQ-001`, `RT-IRQ-002` (NVIC `PRIGROUP`, `NVIC_EnableIRQ()`, and peripheral dummy readback + `__DSB()` barrier per ARM AN321 §4.9 & ES0430 §2.1.3).
 
 ---
 
@@ -55,10 +56,11 @@
   TIM2->SR  = 0U;         /* Clear the spurious UIF caused by UG before enabling UIE! */
   ```
   Omitting `EGR.UG` leaves `PSC = 0` for the very first period — causing an immediate phantom glitch interrupt!
-- **`rc_w0` Status Register Rule (`TIMx->SR`):** Unlike `EXTI->PR1` (`rc_w1`), `TIMx->SR` flags are **write-0-to-clear (`rc_w0`)**! Never use read-modify-write `TIM2->SR &= ~TIM_SR_UIF;` (if `CC1IF` sets between the read and write, `&=` accidentally writes `0` to `CC1IF` and drops it!). Always use direct write:
+- **`rc_w0` Status Register Rule (`TIMx->SR`):** Unlike `EXTI->PR1` (`rc_w1`), `TIMx->SR` flags are **write-0-to-clear (`rc_w0`)**! Never use read-modify-write `TIM2->SR &= ~TIM_SR_UIF;` (if `CC1IF` sets between the read and write, `&=` accidentally writes `0` to `CC1IF` and drops it!). Clear early via direct write, then perform a dummy readback (`ARM AN321 §4.9` — stalls until the write commits across the AHB-to-APB1 bridge) followed by `__DSB();` (`ST ES0430 §2.1.3` / `ARM Erratum 838869`):
   ```c
   TIM2->SR = ~TIM_SR_UIF; /* Writes 0 ONLY to UIF; writes 1 to all other bits (no effect!) */
-  __DSB();
+  (void)TIM2->SR;         /* Dummy readback forces APB1 clear completion (ARM AN321 §4.9) */
+  __DSB();                /* Drains write buffer & guards ARM Erratum 838869 (ES0430 §2.1.3) */
   ```
 
 ### 3.3 Edge-Aligned vs Center-Aligned PWM, Input Capture, OPM & Quadrature Encoder
@@ -79,8 +81,8 @@ Updating multiple timer registers synchronously every PWM period (e.g., `CCR1`, 
 
 1. **CRITICAL STM32G4 Offset Trap (vs STM32F4):** Because STM32G4 added `CCR5/6`, `CCMR3`, `DTR2`, `ECR`, `TISEL`, and `AF1/2`, ST relocated **`TIMx->DCR` to offset `0x3DC`** and **`TIMx->DMAR` to offset `0x3E0`** (verified via `offsetof(TIM_TypeDef, DCR)` in `stm32g474xx.h` — NOT `0x48`/`0x4C` as on STM32F4!).
 2. **`TIMx->DCR` (`0x3DC`) Configuration:**
-   - **`DBA[4:0]` (`TIM_DCR_DBA_Pos = 0`):** Base register word offset relative to `TIMx->CR1` (`0x00`):
-     $$\text{DBA} = \frac{\text{offsetof}(\text{TIM\_TypeDef},\ \text{StartReg})}{4}$$
+   - **`DBA[4:0]` (`TIM_DCR_DBA_Pos = 0`):** Base register word offset relative to `TIMx->CR1` (`0x00`), computed in C as `offsetof(TIM_TypeDef, StartReg) / 4`:
+     $$\text{DBA} = \frac{\text{byte offset}(\text{StartReg})}{4}$$
      For `CCR1` (`0x34`): $\text{DBA} = \texttt{0x34} / 4 = \mathbf{13}$ (`0x0D`).
    - **`DBL[12:8]` (`TIM_DCR_DBL_Pos = 8`):** Burst transfer length **minus 1** ($\text{DBL} = N_{\text{regs}} - 1$, supporting $1\dots 18$ consecutive 32-bit registers per trigger event). For `CCR1..CCR3` ($N = 3$): $\text{DBL} = 3 - 1 = \mathbf{2}$.
 3. **`TIMx->DMAR` (`0x3E0`) Hardware Address Redirector:**
@@ -157,8 +159,9 @@ Let $t_{\text{DTS}} = \frac{1}{f_{\text{TIMCLK}}} \times 2^{\text{CKD}}$ (for `C
 **Worked Example (500 ns Dead-Time @ 170 MHz):** $\text{DTG} = \text{round}(500\text{ ns} / 5.8824\text{ ns}) = \mathbf{85}$ (`0x55`) $\implies t_{\text{DT}} = 85 \times 5.8824\text{ ns} = \mathbf{500.0\text{ ns}}$.
 
 ### 6.3 `HRTIM1` Period & Resolution Math
-$$f_{\text{HRTIM\_EQ}} = 32 \times f_{\text{HRTIM}} = 32 \times 170\text{ MHz} = 5.44\text{ GHz} \implies t_{\text{step}} = \mathbf{183.82\text{ ps}}$$
-For a 200 kHz digital power stage: $\text{PER}x\text{R} = \frac{5.44\text{ GHz}}{200\text{ kHz}} = \mathbf{27{,}200}$ (14.73 bits of duty resolution at 200 kHz — impossible on a standard 170 MHz timer which only gets 850 steps = 9.7 bits!).
+$$f_{\text{HRTIM eq}} = 32 \times f_{\text{HRTIM}} = 32 \times 170\text{ MHz} = 5.44\text{ GHz} \implies t_{\text{step}} = \mathbf{183.82\text{ ps}}$$
+*(At $160\text{ MHz}$ Profile B: $f_{\text{HRTIM eq}} = 5.12\text{ GHz}$, $t_{\text{step}} = \mathbf{195.31\text{ ps}}$.)*
+For a 200 kHz digital power stage at 170 MHz: $\text{PER}x\text{R} = \frac{5.44\text{ GHz}}{200\text{ kHz}} = \mathbf{27{,}200}$ (14.73 bits of duty resolution at 200 kHz — impossible on a standard 170 MHz timer which only gets 850 steps = 9.7 bits!).
 
 ---
 
@@ -169,15 +172,15 @@ For a 200 kHz digital power stage: $\text{PER}x\text{R} = \frac{5.44\text{ GHz}}
 | **ST RM0440** | Ch. 27/28 (*HRTIM1*), Ch. 28/29 (*Advanced TIM1/8/20*), Ch. 29/30 (*GP TIM2–5, TIM15–17*), Ch. 31/33 (*Basic TIM6/7*), Ch. 32 (*LPTIM1*) — *note Rev 8 vs Rev 9 numbering* |
 | **ST AN4013** | *STM32 Cross-Series Timer Overview* |
 | **ST AN4539** | *HRTIM Cookbook* (essential guide for STM32G474RE power electronics) |
-| **ST ES0430** | §2.11 (*HRTIM Errata*) |
+| **ST ES0430 / ARM AN321** | **ES0430 §2.1.3** (ARM 838869 `__DSB()`), **§2.3.1** (DMA `CGIFx`), **§2.11** (*HRTIM Errata*) & **ARM AN321 §4.9** (Peripheral Readback Across APB Bridges) |
 
 ---
 
 ## 8. Production-Grade Bare-Metal C Code Examples
 
-> **Verification Status:** Statically Reviewed against `stm32g474xx.h` & RM0440 (Not Tested on Physical Hardware).
+> **Verification Status:** **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror`)** against `stm32g474xx.h` & `core_cm4.h` (Not Tested on Physical Hardware).
 
-### 8.1 `TIM2` 10 Hz Periodic Interrupt (`EGR.UG` Shadow Load + `rc_w0` Direct Clear + `__DSB()`)
+### 8.1 `TIM2` 10 Hz Periodic Interrupt (`EGR.UG` Shadow Load + `rc_w0` Direct Clear + Readback & `__DSB()`)
 ```c
 #include "stm32g474xx.h"
 #include <stdint.h>
@@ -188,7 +191,7 @@ void TIM2_Init_10Hz_170MHz(void)
     (void)RCC->APB1ENR1;
 
     TIM2->CR1  = 0U;
-    TIM2->PSC  = 16999U;          /* 170 MHz / 17000 = 10 kHz tick */
+    TIM2->PSC  = 16999U;          /* 170 MHz / 17000 = 10 kHz tick (use 15999U @ 160 MHz) */
     TIM2->ARR  = 999U;            /* 10 kHz / 1000 = 10 Hz UEV */
     TIM2->EGR  = TIM_EGR_UG;      /* Force shadow load of PSC & ARR BEFORE enabling UIE! */
     TIM2->SR   = 0U;              /* Clear UG-generated UIF */
@@ -206,7 +209,8 @@ void TIM2_IRQHandler(void)
     if ((TIM2->SR & TIM_SR_UIF) != 0U) {
         TIM2->SR = ~TIM_SR_UIF;   /* rc_w0 direct write: NEVER use '&= ~UIF'! */
         GPIOA->BSRR = ((GPIOA->ODR & GPIO_ODR_OD5) != 0U) ? GPIO_BSRR_BR5 : GPIO_BSRR_BS5;
-        __DSB();
+        (void)TIM2->SR;           /* APB1 bridge sync readback (ARM AN321 §4.9) */
+        __DSB();                  /* Core write-buffer drain & ARM Erratum 838869 (ES0430 §2.1.3) */
     }
 }
 ```
@@ -351,7 +355,7 @@ void TIM1_DMA_Burst_CCR1_to_CCR3_Init(void)
 
 1. **Forgetting `BDTR.MOE = 1` on `TIM1/8/15/16/17/20`:** Counter runs normally in GDB, `CCER.CC1E = 1`, GPIO AF is correct — yet physical output stays dead flat! Always set `TIMx->BDTR |= TIM_BDTR_MOE;`.
 2. **Omitting `EGR = UG` Before `CEN`:** First period runs at reset `PSC = 0` (`ARR = 0xFFFF`), creating an unexpected glitch pulse or premature ISR.
-3. **Using `TIMx->SR &= ~TIM_SR_UIF` on an `rc_w0` Register:** Silently clears concurrently asserted `CCxIF`/`BIF` flags! Always write `TIMx->SR = ~TIM_SR_UIF;`.
+3. **Using `TIMx->SR &= ~TIM_SR_UIF` on an `rc_w0` Register (or Omitting Readback + `__DSB()`):** RMW `&=` silently clears concurrently asserted `CCxIF`/`BIF` flags! Always clear early via `TIMx->SR = ~TIM_SR_UIF;`, then perform `(void)TIMx->SR; __DSB();` before ISR exit (`ARM AN321 §4.9` & `ES0430 §2.1.3 / ARM 838869`).
 4. **Unsigned Integer Underflow in PWM Ramping:** `for (uint32_t d = 6799; d > 0; d -= 50)` wraps `49 - 50 -> 0xFFFFFFFF` and hangs for hours! Use signed `int32_t` or clamp before subtracting.
 5. **Forgetting `HRTIM1` DLL Calibration (`DLLRDY`) or `PA9` `UCPD_DBDIS`:** Starting HRTIM before `DLLRDY == 1` produces undefined timing; `PA9` (`HRTIM1_CHA2`) carries a 5.1 kΩ pull-down until `PWR->CR3 |= PWR_CR3_UCPD_DBDIS`.
 6. **Using Software Polling/RTOS Task for Power-Stage Overcurrent Trip:** Software latency (`10–100 µs`) destroys MOSFETs. Always wire `COMPx_OUT` directly to `TIMx_BKIN` / `HRTIM1` Fault for `< 50 ns` asynchronous hardware shutdown!
@@ -392,3 +396,7 @@ void TIM1_DMA_Burst_CCR1_to_CCR3_Init(void)
 | `PERIPH-BDTR-001` / `002` | `TIM1` complementary PWM with $500\text{ ns} \pm 10\text{ ns}$ dead-time; `COMP1` $\to$ `BKIN` clears `MOE=0` in `< 50 ns` with CPU halted | Dual-Trace Oscilloscope |
 | `PERIPH-TIM-004` (`HRTIM1`) | `HRTIM1_COMMON->ISR.DLLRDY == 1`; 200 kHz PWM on `CHA1` with verified sub-2 ns (`+10` count) duty step | High-BW Oscilloscope + GDB |
 | `TIM-DMA-001` | Configure `TIM1->DCR` (`DBA=13`, `DBL=2`) + `DMAMUX1` ID `46` (`TIM1_UP`) targeting `TIM1->DMAR` (`0x3E0`) to update `CCR1..CCR3` synchronously every PWM cycle with 0 CPU interrupts | GDB + 3-Channel Scope |
+
+---
+
+> **Navigation:** [← Stage 08: Interrupts, NVIC & EXTI](../10-interrupts/README.md) | [Curriculum Map](../README.md) | [Stage 10: Serial & Industrial Communication →](../11-communication/README.md)

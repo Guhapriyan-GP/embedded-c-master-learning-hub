@@ -1,5 +1,9 @@
 # Stage 14: System Reliability, Watchdogs (`IWDG`/`WWDG`), `RTC`/`TAMP` & Low-Power Modes
 
+> **Sequential Navigation (Step 15 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 14 (12) — Dual-Bank Flash, ECC & Bootloaders (`14-memory-and-storage/`)](../14-memory-and-storage/README.md) | **Next:** [Stage 16 (14) — FreeRTOS `ARM_CM4F` & Real-Time Scheduling (`16-rtos/`)](../16-rtos/README.md)  
+> **Prerequisites:** [`07-rcc-and-clocks/`](../07-rcc-and-clocks/README.md), [`10-interrupts/` (`PERIPH-EXTI-*`)](../10-interrupts/README.md), [`09-timers/`](../09-timers/README.md), [`14-memory-and-storage/`](../14-memory-and-storage/README.md)
+
 > **Directory:** `15-power-management/` | **Target Platform:** STM32G474RET6 on NUCLEO-G474RE (MB1367 — IDD Jumper **`JP6`**, NOT `JP5`!)  
 > **Code Verification Notice:** All bare-metal C snippets in this module are **Statically Reviewed against `stm32g474xx.h`, RM0440, DS12288, and UM2505 (Not Tested on Physical Hardware)**.
 
@@ -258,3 +262,8 @@ void WWDG_IRQHandler(void)
 | `PERIPH-RTC-001` | Wake from Standby after 5.00 s via `RTC_Alarm_IRQn = 41` with intact `TAMP->BKP0R` | Oscilloscope / GDB |
 | `PERIPH-WDG-001` / `002` | Verify `IWDG` (`PR=4`, `WINR`), `WWDG` early/late reset + `EWI` backup log, `RCC->CSR` flags, and `DBGMCU` breakpoint freeze | GDB + UART Log |
 | `REL-BOR-001` | Verify `FLASH->OPTR.BOR_LEV >= 3` and `PVD` (EXTI16) ISR saving state to `TAMP->BKP0R` prior to supply collapse | Bench PSU + GDB |
+
+---
+
+> **Sequential Navigation (Step 15 of 17):**  
+> **Prev:** [Stage 14 (12) — Dual-Bank Flash, ECC & Bootloaders (`14-memory-and-storage/`)](../14-memory-and-storage/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 16 (14) — FreeRTOS `ARM_CM4F` & Real-Time Scheduling (`16-rtos/`)](../16-rtos/README.md)

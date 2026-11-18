@@ -16,7 +16,7 @@
 
 ### 1. Architectural Overview (5.44 GHz Equivalent Resolution)
 
-The STM32G474RE **HRTIM1** embeds an internal **Delay-Locked Loop (DLL)** multiplying the APB2 timer clock by **×32** to achieve an equivalent clock of $f_{\text{HRTIM\_EQ}} = 5.44\ \text{GHz}$ (**183.8 ps resolution** at 170 MHz Profile A; or $5.12\ \text{GHz}$ / **195.3 ps** at 160 MHz Profile B). It comprises **1 Master Timer** + **6 independent 16-bit Timer Units (`TIMA..TIMF`)** driving **12 complementary high-resolution outputs (`CHA1/2..CHF1/2`)**, 10 External Events (`EEV1..10`, e.g., from `COMP1..7`), 6 Hardware Fault inputs (`FLT1..6`), Burst Mode controller, and 10 ADC triggers.
+The STM32G474RE **HRTIM1** embeds an internal **Delay-Locked Loop (DLL)** multiplying the APB2 timer clock by **×32** to achieve an equivalent clock of $f_{\text{HRTIM eq}} = 5.44\ \text{GHz}$ (**183.8 ps resolution** at 170 MHz Profile A; or $5.12\ \text{GHz}$ / **195.3 ps** at 160 MHz Profile B). It comprises **1 Master Timer** + **6 independent 16-bit Timer Units (`TIMA..TIMF`)** driving **12 complementary high-resolution outputs (`CHA1/2..CHF1/2`)**, 10 External Events (`EEV1..10`, e.g., from `COMP1..7`), 6 Hardware Fault inputs (`FLT1..6`), Burst Mode controller, and 10 ADC triggers.
 
 ---
 
@@ -26,7 +26,7 @@ The STM32G474RE **HRTIM1** embeds an internal **Delay-Locked Loop (DLL)** multip
 |---|---|---|---|
 | `MCR` | `0x000` | RW | Master control (`CKPSC[2:0]`, `CONT`, `RETRIG`, `HALF`, `MCEN`, `TACEN..TFCEN` timer counter enables, `PREEN`) |
 | `MISR` | `0x004` | RO | Master interrupt status (`MCMP1..4`, `MREP`, `SYNC`, `MUPD`) |
-| `MICR` | `0x008` | WO | Master interrupt clear (`MCMP1C..4C`, `MREPC`, `SYNCC`, `MUPDC`) |
+| `MICR` | `0x008` | **WO** | Master interrupt clear (`MCMP1C..4C`, `MREPC`, `SYNCC`, `MUPDC` — direct `=` write, NEVER `|=`; follow with `(void)HRTIM1_MASTER->MISR; __DSB();` in ISRs per ARM AN321 §4.9 & ES0430 §2.1.3) |
 | `MDIER` | `0x00C` | RW | Master interrupt & DMA enable |
 | `MCNTR` | `0x010` | RW | Master 16-bit counter register |
 | `MPER` | `0x014` | RW | Master period register |
@@ -40,7 +40,7 @@ The STM32G474RE **HRTIM1** embeds an internal **Delay-Locked Loop (DLL)** multip
 | Register | Offset | Access | Description |
 |---|---|---|---|
 | `TIMxCR` | `0x000` | RW | Timer x control (`CKPSCx[2:0]`: `000` = ×32 DLL 184 ps, `CONT`, `PREEN`, `TxREPU`, `TxRSTU`) |
-| `TIMxISR` / `TIMxICR` | `0x004` / `0x008` | RO / WO | Timer x status & clear (`CMP1..4`, `REP`, `UPD`, `CPT1/2`, `SETx1/RSTx1`, `DLYPRT`) |
+| `TIMxISR` / `TIMxICR` | `0x004` / `0x008` | RO / **WO** | Timer x status & clear (`CMP1..4`, `REP`, `UPD`, `CPT1/2`, `SETx1/RSTx1`, `DLYPRT` — direct `TIMxICR = mask;`, NEVER `|=`; follow with `(void)HRTIM1_TIMx->TIMxISR; __DSB();` in ISRs) |
 | `TIMxDIER` | `0x00C` | RW | Timer x interrupt & DMA request enable |
 | `CNTxR` / `PERxR` | `0x010` / `0x014` | RW | 16-bit counter & period registers (min valid `PERxR` depends on `CKPSCx` per RM0440 Table 216) |
 | `REPxR` | `0x018` | RW | Repetition counter |

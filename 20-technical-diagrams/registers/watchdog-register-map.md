@@ -38,7 +38,7 @@ Clocked by `PCLK1 / 4096 / 2^WDGTB`. Resets the MCU if: (a) counter decrements f
 |---|---|---|---|---|
 | `WWDG_CR` | `0x000` | `0x0000007F` | RW | Control (`T[6:0]` 7-bit down-counter `0x40..0x7F`; `WDGA` bit 7 activation — write-1-only until reset) |
 | `WWDG_CFR` | `0x004` | `0x0000007F` | RW | Config (`W[6:0]` window value, `EWI` bit 9 Early Wakeup IRQ enable, **`WDGTB[13:11]`** prescaler `/1`..`/128`!) |
-| `WWDG_SR` | `0x008` | `0x00000000` | rc_w0 | Status (`EWIF` bit 0; write `0` to clear) |
+| `WWDG_SR` | `0x008` | `0x00000000` | **rc_w0** | Status (`EWIF` bit 0; direct `WWDG->SR = 0U;` write `0` to clear — NEVER `&=`; in `WWDG_IRQHandler` follow with `(void)WWDG->SR; __DSB();` per ARM AN321 §4.9 & ES0430 §2.1.3) |
 
 > **STM32G4 Enhancement:** `WWDG_CFR.WDGTB[13:11]` is **3 bits wide** on STM32G4 (`000`=`/1`, `001`=`/2`, `010`=`/4`, `011`=`/8`, `100`=`/16`, `101`=`/32`, `110`=`/64`, **`111`=`/128`** — older STM32F4 only supported `/1`..`/8`!).
 
@@ -98,8 +98,9 @@ void WWDG_Init_With_EWI(void) {
 
 void WWDG_IRQHandler(void) {
     if (WWDG->SR & WWDG_SR_EWIF) {
-        WWDG->SR = 0U; /* Log emergency state to TAMP->BKPxR before reset */
-        __DSB();
+        WWDG->SR = 0U;      /* Direct rc_w0 clear; log emergency state to TAMP->BKPxR before reset */
+        (void)WWDG->SR;     /* APB1 bridge sync readback (ARM AN321 §4.9) */
+        __DSB();            /* Core write-buffer drain & ARM Erratum 838869 (ES0430 §2.1.3) */
     }
 }
 ```

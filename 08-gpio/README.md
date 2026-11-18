@@ -1,7 +1,8 @@
 # Stage 07: General-Purpose I/O (GPIO) Hardware Engine
 
+> **Navigation:** [← Stage 06A: STM32 Fundamentals](../06-stm32-fundamentals/README.md) | [Curriculum Map](../README.md) | [Stage 06B: RCC & Dual 170/160 MHz Clocks →](../07-rcc-and-clocks/README.md)  
 > **Directory:** `08-gpio/` | **Target Platform:** STM32G474RET6 (LQFP64, 52 GPIOs) on NUCLEO-G474RE (MB1367)  
-> **Code Verification Notice:** All bare-metal C snippets in this module are **Statically Reviewed against `stm32g474xx.h`, RM0440, DS12288, and UM2505 (Not Tested on Physical Hardware)**.
+> **Code Verification Notice:** All bare-metal C snippets in Section 8 are **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror`)** against `stm32g474xx.h` (Not Tested on Physical Hardware).
 
 ---
 
@@ -27,9 +28,9 @@
 - **Stage 05 (`06-stm32-fundamentals/`):** `STM32-ARCH-001` (AHB2 bus address map and DS12288 pin tables).
 - **Stage 06 Phase A (`07-rcc-and-clocks/`):** Minimal clock gating (`RCC->AHB2ENR |= RCC_AHB2ENR_GPIOxEN` on default 16 MHz HSI16).
 
-### Pedagogical Sequencing Note (Practice Basic GPIO BEFORE 170 MHz PLL!)
+### Pedagogical Sequencing Note (Practice Basic GPIO BEFORE 170/160 MHz PLL!)
 - **Level 1 Basic GPIO (`Labs 01–02`)** is practiced **first** on the reset-default **16 MHz HSI16** clock (requiring only `RCC->AHB2ENR`).
-- Once you can toggle `PA5` (`LD2`) and read `PC13` (`B1`) cleanly, return to **[Stage 06 Phase B (`07-rcc-and-clocks/`)](../07-rcc-and-clocks/README.md)** to configure the **170 MHz PLL + Range 1 Boost (`Lab 03`)** and verify `SYSCLK/16` via `PA8` (`MCO` AF0)!
+- Once you can toggle `PA5` (`LD2`) and read `PC13` (`B1`) cleanly, proceed to **[Stage 06 Phase B (`07-rcc-and-clocks/`)](../07-rcc-and-clocks/README.md)** to configure the **dual 170 MHz (Max) / 160 MHz (Clean Integer) PLL + Range 1 Boost (`Lab 03`)** and verify `SYSCLK/16` (`10.625 MHz` / `10.000 MHz`) via `PA8` (`MCO` AF0)! *(Note: Section 8.4 clocks `I2C1` from `HSI16` via `RCC->CCIPR`, keeping 1 MHz Fm+ timing identical across 16 MHz, 160 MHz, and 170 MHz `SYSCLK` profiles.)*
 
 ---
 
@@ -395,3 +396,7 @@ void I2C1_FastModePlus_Init_PA15_PB7(void)
 | `PERIPH-GPIO-004` | Non-blocking 4-state debounce FSM produces exactly 1 event per press on Active-HIGH `PC13` with 0 blocking delays | Debugger / Logic analyzer |
 | `PERIPH-GPIO-005` | Execute 4-step `LCKR` sequence; verify `LCKR[16]==1` and subsequent `MODER` writes are ignored until reset | GDB |
 | `GPIO-FMP-001` | Enable `SYSCFGEN` + `SYSCFG->CFGR1` (`I2C1_FMP`/`I2C_PB7_FMP`); verify `CFGR1` bits `[23:16]` in GDB and measure $V_{OL} \le 0.4\text{ V}$ & $t_r \le 120\text{ ns}$ at 1 MHz Fm+ with $470\text{--}680\ \Omega$ pull-ups | GDB + Oscilloscope |
+
+---
+
+> **Navigation:** [← Stage 06A: STM32 Fundamentals](../06-stm32-fundamentals/README.md) | [Curriculum Map](../README.md) | [Stage 06B: RCC & Dual 170/160 MHz Clocks →](../07-rcc-and-clocks/README.md)

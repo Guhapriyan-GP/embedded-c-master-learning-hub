@@ -1,5 +1,9 @@
 # Stage 13: Embedded Memory Subsystems, Dual-Bank Flash, ECC & Bootloaders
 
+> **Sequential Navigation (Step 14 of 17 — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 13 (11) — DMA1/2 & DMAMUX1 (`13-dma/`)](../13-dma/README.md) | **Next:** [Stage 15 (13) — Watchdogs, RTC & Low-Power Modes (`15-power-management/`)](../15-power-management/README.md)  
+> **Prerequisites:** [`05-toolchain-and-debugging/` (`TOOL-LD-*`)](../05-toolchain-and-debugging/README.md), [`06-stm32-fundamentals/`](../06-stm32-fundamentals/README.md), [`10-interrupts/`](../10-interrupts/README.md)
+
 > **Directory:** `14-memory-and-storage/` | **Target Platform:** STM32G474RET6 (512 KB Dual-Bank ECC Flash, 80 KB SRAM1 + 16 KB SRAM2 + 32 KB CCM-SRAM)  
 > **Code Verification Notice:** All bare-metal C snippets in this module are **Statically Reviewed against `stm32g474xx.h`, `core_cm4.h`, RM0440, AN2606, and ES0430 (Not Tested on Physical Hardware)**.
 
@@ -403,3 +407,8 @@ bool Flash_CommitBFB2_AndColdReset(bool enable_bfb2)
 | `BOOT-VERIF-001` | Corrupt 1 byte in Bank 2 image $\to$ bootloader rejects via Hardware `CRC`; unconfirmed trial boot auto-rolls back via IWDG | Hardware Test / GDB |
 | `MEM-OB-001` | Run `Flash_ValidateBank2PreFlight()` checking `DBANK==1`, SRAM MSP, Thumb Reset_Handler, and CRC-32 prior to idempotent `OPTSTRT` + `OBL_LAUNCH`; confirm `RCC->CSR.OBLRSTF` and SWD `mode=UR` recovery | GDB + CubeProgrammer CLI |
 | `STM32-SRAM-001` | Verify `SYSCFG->SWPR` write-protect fault and `.noinit` / `TAMP->BKP0R` persistence across `NVIC_SystemReset()` | GDB |
+
+---
+
+> **Sequential Navigation (Step 14 of 17):**  
+> **Prev:** [Stage 13 (11) — DMA1/2 & DMAMUX1 (`13-dma/`)](../13-dma/README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 15 (13) — Watchdogs, RTC & Low-Power Modes (`15-power-management/`)](../15-power-management/README.md)

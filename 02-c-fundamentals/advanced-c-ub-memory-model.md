@@ -1,5 +1,9 @@
 # Stage 02 Companion Deep-Dive: Alignment, Undefined Behavior, C11 Memory Model, Fixed/Floating-Point Math & Newlib Reentrancy
 
+> **Sequential Navigation (Step 2B of 17 (Companion Deep-Dive) — Canonical Acyclic Order):**  
+> **Home:** [`START_HERE.md`](../START_HERE.md) | **Roadmap:** [`learning-sequence.md`](../01-master-concept-map/learning-sequence.md) | **Prev:** [Stage 02 — C Language Foundations (`02-c-fundamentals/README.md`)](./README.md) | **Next:** [Stage 03 — Embedded C & MMIO (`03-embedded-c/`)](../03-embedded-c/README.md)  
+> **Prerequisites:** [Stage 02 (`C-INT-*`, `C-PTR-*`, `C-TYPE-*`, `C-QUAL-*`)](./README.md)
+
 > **Parent Module:** [Stage 02 — C Language Foundations](./README.md)  
 > **Concept IDs Covered:** `C-ALIGN-001..003`, `C-UB-001..003`, `C-SEQ-001..002`, `C-ATOM-001..004`, `C-MATH-001..003`, `C-PTR-004`, `C-MEM-003`, `C-OPT-001..003`, `C-LIB-001` (Levels 2–3)  
 > **Target ABI:** ARM Cortex-M4F (`arm-none-eabi-gcc 14.3.1 -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -O2 -Wall -Wextra -Werror`)  
@@ -491,3 +495,8 @@ size_t split_csv_reentrant(char *line_buf, char *tokens[], size_t max_tokens)
 - [ ] Enable `SCB->CCR |= SCB_CCR_UNALIGN_TRP_Msk`, dereference an unaligned pointer from a packed struct in GDB, confirm `CFSR.UNALIGNED == 1`, and fix with `read_be32_safe()` / `read_le32_safe()`.
 - [ ] Verify `c11_spsc_push` emits `dmb ish` and `atomic_inc_sat` emits `ldrex`/`strex` + `dmb ish` in `arm-none-eabi-objdump -d`.
 - [ ] Verify `__malloc_lock` / `__malloc_unlock` compiles cleanly against `<reent.h>` and traps Handler mode (`__get_IPSR() != 0UL`).
+
+---
+
+> **Sequential Navigation (Step 2B of 17 (Companion Deep-Dive)):**  
+> **Prev:** [Stage 02 — C Language Foundations (`02-c-fundamentals/README.md`)](./README.md) | **Home:** [`START_HERE.md`](../START_HERE.md) | **Progress:** [`LEARNER_PROGRESS_DASHBOARD.md`](../LEARNERS/LEARNER_PROGRESS_DASHBOARD.md) | **Next:** [Stage 03 — Embedded C & MMIO (`03-embedded-c/`)](../03-embedded-c/README.md)
