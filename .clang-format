@@ -5,13 +5,14 @@ Standard: c11
 IndentWidth: 4
 TabWidth: 4
 UseTab: Never
-ColumnLimit: 100
+ColumnLimit: 120
 BreakBeforeBraces: Attach
 AllowShortFunctionsOnASingleLine: None
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: true
 PointerAlignment: Right
-AlignConsecutiveAssignments: false
+AlignConsecutiveAssignments: Consecutive
 AlignConsecutiveDeclarations: false
 SortIncludes: CaseSensitive
 IncludeBlocks: Preserve

@@ -1,0 +1,41 @@
+# ----------------------------------------------------------------------------
+# .clang-tidy — Embedded C11 Static Analysis Configuration (STM32G474RE)
+# Aligned with MISRA-C:2012, SEI CERT-C, and bugprone safety rules for
+# bare-metal Cortex-M4F firmware drivers and host-testable C11 modules.
+# ----------------------------------------------------------------------------
+---
+Checks: >-
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+  cert-*,
+  -cert-dcl37-c,
+  -cert-dcl51-cpp,
+  -cert-err33-c,
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  misc-no-recursion,
+  misc-redundant-expression,
+  misc-unused-parameters,
+  readability-braces-around-statements,
+  readability-inconsistent-declaration-parameter-name,
+  readability-misleading-indentation,
+  readability-non-const-parameter,
+  readability-redundant-control-flow,
+  readability-suspicious-call-argument
+
+# Analyze user drivers and starter headers; skip upstream ST/ARM CMSIS headers
+HeaderFilterRegex: '23-code-library/(Drivers/(?!CMSIS)|templates/Inc)/.*'
+
+FormatStyle: file
+
+CheckOptions:
+  - key: readability-braces-around-statements.ShortStatementLines
+    value: '0'
+  - key: bugprone-suspicious-string-compare.WarnOnImplicitComparison
+    value: 'true'
+  - key: bugprone-suspicious-string-compare.WarnOnLogicalNotComparison
+    value: 'true'
+...

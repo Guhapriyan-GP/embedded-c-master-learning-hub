@@ -21,6 +21,12 @@ bin/
 *.log
 *.tmp
 
+# Code coverage artifacts (gcov / lcov)
+*.gcda
+*.gcno
+*.gcov
+*.info
+
 # VS Code / IDE settings (preserve standard workspace templates, ignore local session caches)
 .vscode/*
 !.vscode/settings.json

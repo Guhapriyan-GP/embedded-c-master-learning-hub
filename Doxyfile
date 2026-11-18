@@ -1,0 +1,97 @@
+#---------------------------------------------------------------------------
+# Doxyfile — Embedded C & STM32G474RE Master Learning Hub
+# Covers:
+#   - 23-code-library/Drivers/ (12 bare-metal CMSIS drivers; CMSIS vendor headers excluded)
+#   - 23-code-library/templates/Src/ & Inc/ (starter application & C vector table)
+#
+# Run locally or in CI:
+#   doxygen Doxyfile
+# Output generated into build/docs/html/ (git-ignored).
+#---------------------------------------------------------------------------
+
+DOXYFILE_ENCODING      = UTF-8
+PROJECT_NAME           = "Embedded C & STM32G474RE Master Learning Hub"
+PROJECT_NUMBER         = "1.0"
+PROJECT_BRIEF          = "Production Bare-Metal CMSIS Drivers & Firmware Template for NUCLEO-G474RE (STM32G474RET6)"
+OUTPUT_DIRECTORY       = build/docs
+CREATE_SUBDIRS         = NO
+OPTIMIZE_OUTPUT_FOR_C  = YES
+MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES
+
+#---------------------------------------------------------------------------
+# Build & Extraction Options
+#---------------------------------------------------------------------------
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+EXTRACT_LOCAL_CLASSES  = NO
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+CASE_SENSE_NAMES       = YES
+SORT_MEMBER_DOCS       = YES
+SORT_BRIEF_DOCS        = NO
+STRICT_PROTO_MATCHING  = NO
+
+#---------------------------------------------------------------------------
+# Warning & CI Quality Gate Options
+#---------------------------------------------------------------------------
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_IF_INCOMPLETE_DOC = YES
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = YES
+WARN_FORMAT            = "$file:$line: $text"
+
+#---------------------------------------------------------------------------
+# Input Sources (User Drivers & Starter Template Only — Vendor CMSIS Excluded)
+#---------------------------------------------------------------------------
+INPUT                  = 23-code-library/Drivers \
+                         23-code-library/templates/Src \
+                         23-code-library/templates/Inc
+INPUT_ENCODING         = UTF-8
+FILE_PATTERNS          = *.c *.h
+RECURSIVE              = NO
+EXCLUDE                = 23-code-library/Drivers/CMSIS \
+                         23-code-library/templates/Src/system_stm32g4xx.c
+EXCLUDE_SYMLINKS       = NO
+EXCLUDE_PATTERNS       = */CMSIS/* */FreeRTOS-Kernel/* */build/*
+
+#---------------------------------------------------------------------------
+# Source Browsing & Preprocessing
+#---------------------------------------------------------------------------
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = YES
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+SEARCH_INCLUDES        = YES
+INCLUDE_PATH           = 23-code-library/Drivers \
+                         23-code-library/templates/Inc \
+                         23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include \
+                         23-code-library/Drivers/CMSIS/Core/Include
+PREDEFINED             = STM32G474xx \
+                         __IO=volatile \
+                         "__attribute__(x)=" \
+                         "__STATIC_INLINE=static inline"
+
+#---------------------------------------------------------------------------
+# Output Formats (HTML only — lightweight & CI-friendly)
+#---------------------------------------------------------------------------
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+HTML_TIMESTAMP         = NO
+GENERATE_TREEVIEW      = YES
+SEARCHENGINE           = YES
+
+GENERATE_LATEX         = NO
+GENERATE_RTF           = NO
+GENERATE_MAN           = NO
+GENERATE_XML           = NO
+HAVE_DOT               = NO

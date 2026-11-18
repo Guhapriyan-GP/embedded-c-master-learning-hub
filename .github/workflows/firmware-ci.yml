@@ -1,14 +1,66 @@
-name: Firmware & Unit Test CI
+name: Firmware, Unit Tests, Coverage & Static Analysis CI
+
+# ----------------------------------------------------------------------------
+# Cloud CI Scope Notice:
+#   This workflow executes ONLY host-side unit tests, gcov/lcov coverage,
+#   static analysis (GCC -fanalyzer, cppcheck, clang-tidy, clang-format),
+#   Doxygen documentation validation, repository integrity checks, and
+#   arm-none-eabi-gcc cross-compilation.
+#
+#   Physical NUCLEO-G474RE (STM32G474RET6) hardware-in-the-loop (HIL)
+#   flashing and bench validation are strictly separate from cloud CI.
+# ----------------------------------------------------------------------------
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, "feature/*"]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 jobs:
-  firmware-build:
-    name: Build STM32G474RE Firmware (Debug & Release)
+  host-unit-tests-and-coverage:
+    name: Host Unit Tests, gcov/lcov Coverage & GCC -fanalyzer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install host GCC, Make, and lcov
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc make lcov
+
+      - name: Print host toolchain versions
+        run: |
+          gcc --version
+          gcov --version
+
+      - name: Compile and execute all 4 host unit test suites
+        working-directory: tests
+        run: make clean test
+
+      - name: Run GCC -fanalyzer static analysis on host-testable drivers and tests
+        working-directory: tests
+        run: make analyze
+
+      - name: Measure real gcov line and branch coverage across 10 drivers
+        working-directory: tests
+        run: |
+          make clean coverage
+          lcov --capture --directory build/cov --output-file build/cov/coverage.info --rc branch_coverage=1 --ignore-errors inconsistent,gcov
+          lcov --list build/cov/coverage.info --rc branch_coverage=1 --ignore-errors inconsistent,gcov
+
+      - name: Upload gcov/lcov coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-coverage-report
+          path: |
+            tests/build/cov/*.gcov
+            tests/build/cov/coverage.info
+
+  firmware-cross-compile:
+    name: Cross-Compile STM32G474RE Firmware (Template, 12 Drivers, FreeRTOS, Capstones)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -19,55 +71,163 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make
 
-      - name: Verify toolchain version
+      - name: Verify ARM toolchain version
         run: arm-none-eabi-gcc --version
 
-      - name: Build Debug Profile (-Og -g3)
+      - name: Build Starter Template + All 12 Bare-Metal Drivers (Debug & Release)
         working-directory: 23-code-library/templates
         run: |
           make clean
           make BUILD_TYPE=debug
           arm-none-eabi-readelf -S build/firmware.elf
           arm-none-eabi-size -A build/firmware.elf
+          make clean
+          make BUILD_TYPE=release
+          arm-none-eabi-size -A build/firmware.elf
 
-      - name: Verify .isr_vector is exactly 472 bytes and 512-byte aligned
+      - name: Verify .isr_vector is exactly 472 bytes and 512-byte aligned at 0x08000000
         working-directory: 23-code-library/templates
         run: |
           python3 -c '
-          import subprocess, re, sys
+          import subprocess, re
           out = subprocess.check_output(["arm-none-eabi-readelf", "-SW", "build/firmware.elf"], text=True)
           m = re.search(r"\.isr_vector\s+PROGBITS\s+([0-9a-f]+)\s+[0-9a-f]+\s+([0-9a-f]+)\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)", out)
           assert m, f".isr_vector section not found:\n{out}"
           addr, size, align = int(m.group(1), 16), int(m.group(2), 16), int(m.group(3))
           print(f".isr_vector addr=0x{addr:08x} size={size} align={align}")
+          assert addr == 0x08000000, f"Expected 0x08000000, got 0x{addr:08x}"
           assert size == 472, f"Expected 472 bytes, got {size}"
           assert align >= 512 and (addr % 512) == 0, f"Expected >=512 alignment, got align={align}, addr=0x{addr:x}"
           '
 
-      - name: Build Release Profile (-O2 -g)
-        working-directory: 23-code-library/templates
+      - name: Run arm-none-eabi-gcc -fanalyzer across all 12 drivers and starter template
+        run: |
+          arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard \
+            -O1 -fanalyzer -Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion -Wdouble-promotion -Wundef \
+            -DSTM32G474xx \
+            -I23-code-library/templates/Inc \
+            -I23-code-library/Drivers \
+            -isystem 23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include \
+            -isystem 23-code-library/Drivers/CMSIS/Core/Include \
+            -fsyntax-only \
+            23-code-library/Drivers/*.c \
+            23-code-library/templates/Src/main.c \
+            23-code-library/templates/Src/startup_stm32g474re.c
+
+      - name: Build FreeRTOS V11.1.0 STM32G474RE Firmware (Debug & Release)
+        working-directory: 23-code-library/freertos
         run: |
           make clean
+          make BUILD_TYPE=debug
+          make nm-check
+          make clean
           make BUILD_TYPE=release
-          arm-none-eabi-size -A build/firmware.elf
+          arm-none-eabi-size -A build/nucleo_g474re_freertos.elf
 
-  host-unit-tests:
-    name: Host Unit Tests (C Foundations & Ring Buffer)
+      - name: Build All Capstone Firmware Projects under 19-projects/
+        run: |
+          found=0
+          for mf in $(find 19-projects -maxdepth 3 -name Makefile | sort); do
+            dir=$(dirname "$mf")
+            echo "=== Building Capstone: $dir ==="
+            make -C "$dir" clean all BUILD_TYPE=debug
+            make -C "$dir" clean all BUILD_TYPE=release
+            found=$((found + 1))
+          done
+          echo "=== Building Project 03 External Hardware Mode (POWER_SIM_MODE=0) ==="
+          make -C 19-projects/03-advanced-freertos-digital-power-controller clean all BUILD_TYPE=release POWER_SIM_MODE=0
+          echo "Built $found capstone firmware project(s) + Project 03 POWER_SIM_MODE=0."
+
+  static-analysis-and-format:
+    name: Static Analysis (cppcheck, clang-tidy) & Code Formatting (clang-format)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Compile and execute host unit tests
-        working-directory: tests
-        run: make test
+      - name: Install cppcheck, clang-tidy, and clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cppcheck clang-tidy clang-format
+
+      - name: Run cppcheck on Drivers and Host Tests
+        run: |
+          cppcheck --enable=warning,performance,portability \
+            --std=c11 --language=c --inline-suppr \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --error-exitcode=1 \
+            -DDRIVER_HOST_TEST \
+            -I23-code-library/Drivers \
+            23-code-library/Drivers/ring_buffer.c \
+            23-code-library/Drivers/exti_g4.c \
+            23-code-library/Drivers/tim_g4.c \
+            23-code-library/Drivers/usart_g4.c \
+            23-code-library/Drivers/spi_g4.c \
+            23-code-library/Drivers/i2c_g4.c \
+            23-code-library/Drivers/adc_g4.c \
+            23-code-library/Drivers/dma_g4.c \
+            23-code-library/Drivers/iwdg_g4.c \
+            tests/test_c_foundations.c \
+            tests/unit/test_ring_buffer.c \
+            tests/unit/test_drivers_math.c
+
+      - name: Run clang-tidy (using root .clang-tidy) on host-testable drivers & tests
+        run: |
+          clang-tidy \
+            23-code-library/Drivers/ring_buffer.c \
+            23-code-library/Drivers/exti_g4.c \
+            23-code-library/Drivers/tim_g4.c \
+            23-code-library/Drivers/usart_g4.c \
+            23-code-library/Drivers/spi_g4.c \
+            23-code-library/Drivers/i2c_g4.c \
+            23-code-library/Drivers/adc_g4.c \
+            23-code-library/Drivers/dma_g4.c \
+            23-code-library/Drivers/iwdg_g4.c \
+            tests/test_c_foundations.c \
+            tests/unit/test_ring_buffer.c \
+            tests/unit/test_drivers_math.c \
+            -- -std=c11 -DDRIVER_HOST_TEST -I23-code-library/Drivers
+
+      - name: Check formatting with clang-format --dry-run (advisory diff report)
+        continue-on-error: true
+        run: |
+          clang-format --dry-run \
+            23-code-library/Drivers/*.c \
+            23-code-library/Drivers/*.h \
+            23-code-library/templates/Src/main.c \
+            23-code-library/templates/Src/startup_stm32g474re.c \
+            tests/test_c_foundations.c \
+            tests/unit/*.c \
+            tests/mocks/*.h
+
+  doxygen-docs:
+    name: Doxygen API Documentation Build & Warning Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen
+
+      - name: Generate Doxygen HTML documentation (WARN_AS_ERROR = YES)
+        run: doxygen Doxyfile
+
+      - name: Upload Doxygen HTML documentation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doxygen-api-docs
+          path: build/docs/html
 
   repo-validation:
-    name: Repository Validation Script
+    name: Repository Integrity & Ground-Truth Validation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run repository validator
-        run: python3 scripts/validate_repo.py
+      - name: Run repository validator (structure, links, Mermaid, SOT, registers, curriculum)
+        run: python3 scripts/validate_repo.py --skip-builds
