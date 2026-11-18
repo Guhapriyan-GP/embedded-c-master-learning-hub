@@ -1,6 +1,8 @@
 # Lab 14: Low-Power Stop 0 Mode & EXTI13 Wakeup with Full 170 MHz Clock Restore
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware; optional `JP6` `IDD` µA check requires external DMM)*
+> ⬅️ **Prev Lab:** [Lab 13: IWDG Hardware Watchdog](../lab-13-iwdg-hardware-watchdog/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 15: FreeRTOS Multi-Tasking](../lab-15-freertos-multitask-producer-consumer/README.md) ➡️
+
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `PENDING — USER CONNECTION REQUIRED` *(Requires manual physical `B1` wakeup press + precision µA ammeter across `JP6` `IDD` — NEVER `JP5`!)*
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (Stop 0 halts PLL, wakes on `16 MHz HSI16`, restores `170 MHz` via `Clock_Init_170MHz()`) | **Alternate = `160 MHz Range 1 Boost`** (restores `160 MHz` via `Clock_Init_160MHz()`) | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`), [`exti_g4.h`](../../23-code-library/Drivers/exti_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h) (`GPIO_ConfigAnalog()`).
 
@@ -136,6 +138,7 @@ static void Clock_Init_170MHz(void) {
 void EXTI15_10_IRQHandler(void) {
     if ((EXTI->PR1 & EXTI_PR1_PIF13) != 0U) {
         EXTI->PR1 = EXTI_PR1_PIF13; /* Clear rc_w1 pending bit */
+        (void)EXTI->PR1;            /* Flush AHB-to-APB2 posted-write bridge */
         g_wakeup_count++;
         __DSB();
     }
@@ -289,17 +292,32 @@ int main(void) {
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard Wakeup — Queued for Physical Execution; optional `JP6` DMM µA measurement external)* |
+| **Verification Status** | `CROSS-COMPILED` / `PENDING — USER CONNECTION REQUIRED` |
 | **Objective** | Enter STM32G474RE **Stop 0** low-power mode (`PWR->CR1.LPMS = 000b`, `SLEEPDEEP = 1`, SysTick suspended), wake cleanly via rising-edge `EXTI13` (`PC13` `B1`) with full SRAM retention, clear `SLEEPDEEP`, and restore the `170 MHz` (or `160 MHz`) PLL clock tree. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,848 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only (Functional Wakeup & Clock Restore):** `PWR`, `RCC`, `SYSCFG`, `EXTI13`, `SCB`, `GPIOA` (`PA5` `LD2`), `GPIOC` (`PC13` `B1`). *(Optional external DMM in series across `JP6` `IDD` — NEVER `JP5` — for absolute µA validation.)* |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` *(Functional Stop 0 + Wake + PLL Restore)* |
+| **Hardware Availability** | `PENDING — USER CONNECTION REQUIRED` *(Manual `B1` press + µA DMM across `JP6` `IDD` with SWD detached)* |
 | **Pin Configuration** | `PC13` (`B1`): `MODER[27:26] = 00b`, `PUPDR = 00b`, `EXTI13` Rising Edge; `PA5` (`LD2`): `MODER = 01b` (driven LOW prior to Stop 0); all other GPIOs kept in reset Analog (`11b`) for minimum leakage. |
 | **Expected Behavior** | Blinks `LD2` 3 times at `170 MHz`, enters Stop 0 (`LD2` OFF); pressing `B1` wakes MCU via `EXTI15_10_IRQHandler`, increments retained `g_wakeup_count`, clears `SLEEPDEEP`, restores `170 MHz` (`SWS = PLL`), and repeats. |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon; absolute `JP6` µA figure requires standalone DMM test without SWD probe attached)*. |
+| **Actual Observations** | `PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; Stop 0 physical wakeup requires manual physical `B1` actuation and true microamp current measurement requires disconnecting SWD and inserting a µA DMM across `JP6` `IDD` per `HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md`)*. |
 | **Register Values** | Reset: `PWR->CR1.LPMS = 000b`, `SCB->SCR = 0`. Pre-Stop: `RCC->APB1ENR1[28] (PWREN) = 1`, `PWR->CR1.LPMS = 000b` (Stop 0), `SCB->SCR[2] (SLEEPDEEP) = 1`. Post-Wake: `SCB->SCR[2] = 0`, `RCC->CFGR.SWS = 11b` (PLL `170 MHz` or `160 MHz`), `g_wakeup_count >= 1`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD (set `DBGMCU->CR |= DBGMCU_CR_DBG_STOP` only during GDB sessions, clear for true current check); inspect `p g_wakeup_count`, `p/x SCB->SCR`, `p/x RCC->CFGR`. |
-| **Remaining Limitations** | Active SWD probe keeps debug domains powered and inflates `JP6` current above datasheet Stop 0 typ (~150–400 µA); measure true microamp draw standalone with DMM on `JP6` (`IDD`). Physical wakeup/clock-restore test pending Agent 4. |
+| **Remaining Limitations** | Active SWD probe keeps debug domains powered and inflates `JP6` current above datasheet Stop 0 typ (`~160–350 µA` per DS12288 Table 31); measure true microamp draw standalone with DMM across `JP6` (`IDD`, NEVER `JP5`). |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | `PWR_CR1_LPMS_STOP0`, `SCB_SCR_SLEEPDEEP_Msk`, SysTick suspend/resume, `EXTI13` wakeup + `(void)EXTI->PR1; __DSB();`, and `170`/`160 MHz` PLL restore verified against RM0440 Ch. 5. |
+| **Host test passed** | `N/A` | Hardware low-power Stop 0 silicon state machine. |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS program compiles cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors). |
+| **On-target upload succeeded** | `PENDING — USER CONNECTION REQUIRED` | Deferred because Stop 0 halts SWD unless `DBG_STOP` is set and requires physical `B1` press + `JP6` ammeter. |
+| **Physical behavior verified** | `PENDING — USER CONNECTION REQUIRED` | Awaiting manual physical `B1` (`PC13`) wakeup & `170 MHz` PLL restore test on bench. |
+| **Measurement verified** | `PENDING — USER CONNECTION REQUIRED` | Awaiting standalone µA DMM / PPK2 current measurement across `JP6` (`IDD`, NEVER `JP5`) (`HWSW-PWR-001`, `RT-PWR-002`). |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 13: IWDG Hardware Watchdog](../lab-13-iwdg-hardware-watchdog/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 15: FreeRTOS Multi-Tasking](../lab-15-freertos-multitask-producer-consumer/README.md) ➡️

@@ -1,6 +1,8 @@
 # Lab 18: FDCAN1 Internal Loopback (500 kbps / 2 Mbps BRS) & Hardware CRC-32 Integrity
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** [Lab 17: CORDIC & FMAC Math](../lab-17-cordic-fmac-hardware-math/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 19: MPU & HardFault Recovery](../lab-19-hardfault-mpu-and-crash-diagnostics/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `onboard_selftest` Test 7 (`CRC-32=0xCBF43926`, `FDCAN1` 16 B BRS `500k/2M` internal loopback `MATCH=1`, `ECR=0x0`)
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`PCLK1 = 170 MHz`: `NBTP` `NBRP=9, NTSEG1=26, NTSEG2=5` = `500 kbps`; `DBTP` `DBRP=4, DTSEG1=11, DTSEG2=3` = `2.00 Mbps`) | **Alternate = `160 MHz Range 1 Boost`** (`PCLK1 = 160 MHz`: `NBTP` `NBRP=9, NTSEG1=24, NTSEG2=5` = `500 kbps`; `DBTP` `DBRP=4, DTSEG1=10, DTSEG2=3` = `2.00 Mbps`) | **Reusable Driver:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`, `Clock_Init_170MHz_HSE24()`).
 
@@ -346,17 +348,32 @@ In GDB at `while (1)`:
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` Test 7 on NUCLEO-G474RE)* |
 | **Objective** | Verify hardware IEEE 802.3 `CRC-32` (`"123456789" -> 0xCBF43926`) and transmit/receive a 64-byte CAN-FD frame (`500 kbps` nominal / `2.000 Mbps` BRS) with embedded CRC-32 trailer over `FDCAN1` Internal Loopback (`SRAMCAN_BASE = 0x4000A400`) with zero external CAN transceiver. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`2,116 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, `CRC` (`0x40023000`), `FDCAN1` (`0x40006400`), `FDCAN1` Message RAM (`0x4000A400`). Zero external wiring required in Internal Loopback Mode. |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18)` |
 | **Pin Configuration** | None required in Internal Loopback (`CCCR.TEST=1, TEST.LBCK=1, CCCR.MON=1`); physical CAN bus uses `PA11`/`PA12` (`AF9`) + external 3.3 V transceiver + `HSE` 24 MHz crystal `X3`. |
 | **Expected Behavior** | `g_crc_selftest_val == 0xCBF43926`, `g_fdcan_rx_id == 0x123`, `g_fdcan_rx_crc_ok == 1`, `g_fdcan_ecr == 0` (zero protocol errors), `g_fdcan_pass == 1`. |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` Test 7, 2026-11-18):** `[PASS] TEST7_FDCAN1_AND_CRC32: CRC_VEC=0xCBF43926 RX_ID=0x123 DLC=10(16B) FDF=1 BRS=1 PAYLOAD_CRC=0x74818A7E MATCH=1 NBTP=0x0A091A05 DBTP=0x00040B33 ECR=0x00000000`. |
 | **Register Values** | Configured (`170 MHz` / `160 MHz`): `RCC->CCIPR.FDCANSEL = 10b` (`PCLK1`), `FDCAN_CONFIG->CKDIV = 0`, `FDCAN1->NBTP = 0x0A091A05` (`0x0A091805` @ 160 MHz), `FDCAN1->DBTP = 0x00040B33` (`0x00040A33` @ 160 MHz), `FDCAN1->TEST.LBCK = 1`, `CRC->POL = 0x04C11DB7`, `CRC->INIT = 0xFFFFFFFF`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` break at `while (1)` and verify `p/x g_crc_selftest_val`, `p/x g_fdcan_rx_id`, `p g_fdcan_rx_crc_ok`, `p/x g_fdcan_ecr`, `p g_fdcan_pass`, plus `x/18wx 0x4000A4B0`. |
-| **Remaining Limitations** | Internal Loopback validates Bosch M_CAN controller, Message RAM, BRS, and CRC-32 without exercising physical transceiver dominant/recessive bus arbitration (requires external transceiver + `Clock_Init_170MHz_HSE24()`). Physical silicon test pending Agent 4. |
+| **Remaining Limitations** | Internal Loopback (`TEST.LBCK=1`, `CCCR.MON=1`) exercises the entire FDCAN1 core and Message RAM (`0x4000A400`) without a CAN transceiver; physical CAN-FD bus communication requires an external `3.3 V` CAN-FD transceiver (e.g., TCAN334) + `120 Ω` termination (`PENDING — USER CONNECTION REQUIRED`). |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | `FDCAN1` Message RAM (`0x4000A400`, 212 words/instance), `NBTP`/`DBTP` (`170`/`160 MHz`), `DLC=10` (16 B), `FDF|BRS`, and IEEE 802.3 `CRC-32` verified against RM0440 Ch. 16/44. |
+| **Host test passed** | `N/A` | Hardware `FDCAN1` + `CRC` silicon units (validated directly on target silicon). |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS lab compiles cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE via `onboard_selftest.elf` (`VDD = 3.29 V`). |
+| **Physical behavior verified** | `PASS` | `FDCAN1` 16-byte CAN-FD BRS internal loopback frame transmitted & received via Message RAM with `MATCH=1`, `ECR=0`. |
+| **Measurement verified** | `PASS` | Hardware `CRC-32("123456789") = 0xCBF43926` exact; payload CRC `0x74818A7E` matched; `NBTP=0x0A091A05`, `DBTP=0x00040B33`, `ECR=0`. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 17: CORDIC & FMAC Math](../lab-17-cordic-fmac-hardware-math/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 19: MPU & HardFault Recovery](../lab-19-hardfault-mpu-and-crash-diagnostics/README.md) ➡️

@@ -1,6 +1,8 @@
 # Lab 15: FreeRTOS Preemptive Producer-Consumer (Queues, Mutexes, Static Allocation & ISR Safety)
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, 0 errors / 0 warnings on user & kernel code) via the standalone official **FreeRTOS-Kernel `V11.1.0`** project in [`23-code-library/freertos/`](../../23-code-library/freertos/README.md) (`build/nucleo_g474re_freertos.elf`, vector bindings `SVC_Handler`, `PendSV_Handler`, `SysTick_Handler` verified via `arm-none-eabi-nm` and `objdump`) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(see [`AUDIT/FREERTOS_VERIFICATION_REPORT.md`](../../AUDIT/FREERTOS_VERIFICATION_REPORT.md))*.
+> ⬅️ **Prev Lab:** [Lab 14: Stop 0 Low-Power Wakeup](../lab-14-low-power-stop-mode-wakeup/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 16: DAC/OPAMP/COMP TIM1_BKIN](../lab-16-dac-opamp-comp-hardware-break/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, FreeRTOS-Kernel `V11.1.0`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `nucleo_g474re_freertos.elf` **`6/6 ALL_PASSED`** + `8.0 s` live `COM8` `[TELEM]` stream (`fpu_err=0`, `heap=21104/21104`)
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`configCPU_CLOCK_HZ = SystemCoreClock = 170,000,000 Hz`, `1 ms` tick `LOAD = 169,999`, `USART2->BRR = 1,476`, `TIM2` 10 Hz `PSC = 16,999, ARR = 999`) | **Alternate = `160 MHz Range 1 Boost`** (`Clock_Init_160MHz()` sets `SystemCoreClock = 160,000,000 Hz`, auto-scaling `configCPU_CLOCK_HZ`, `LOAD = 159,999`, `USART2->BRR = 1,389`, `TIM2` `PSC = 15,999, ARR = 999`) | **Reusable Drivers:** [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), [`usart_g4.h`](../../23-code-library/Drivers/usart_g4.h), [`tim_g4.h`](../../23-code-library/Drivers/tim_g4.h), [`exti_g4.h`](../../23-code-library/Drivers/exti_g4.h), [`iwdg_g4.h`](../../23-code-library/Drivers/iwdg_g4.h).
 
@@ -199,6 +201,7 @@ void vApplicationMallocFailedHook(void) {
 void EXTI15_10_IRQHandler(void) {
     if ((EXTI->PR1 & EXTI_PR1_PIF13) != 0U) {
         EXTI->PR1 = EXTI_PR1_PIF13;
+        (void)EXTI->PR1; /* Flush AHB-to-APB2 posted-write bridge */
 
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
         telemetry_msg_t msg = {
@@ -372,17 +375,32 @@ At `115200 8N1` on the ST-LINK Virtual COM port:
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard FreeRTOS `V11.1.0` Reference ELF Built — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Official FreeRTOS-Kernel `V11.1.0` ELF `6/6 ALL_PASSED` + `8.0 s` `[TELEM]` live on NUCLEO-G474RE)* |
 | **Objective** | Build and verify a preemptive FreeRTOS `V11.1.0` (`ARM_CM4F`) multi-task firmware on STM32G474RE (`170 MHz` primary / `160 MHz` supported via `SystemCoreClock`) exercising `PRIGROUP = 0`, Static + Dynamic tasks, Queues, Binary/Counting Semaphores, Priority-Inheritance Mutexes, Deadlock Guard, `FromISR` notifications/queues, FPU preservation, Stack High-Water Marks, and Event-Group `IWDG` supervision. |
 | **Firmware Version** | `v2.2.0-remediation` — Pinned FreeRTOS-Kernel **`V11.1.0`** (`dbf70559b27d39c1fdb68dfb9a32140b6a6777a0`) in [`23-code-library/freertos/`](../../23-code-library/freertos/README.md) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `23-code-library/freertos/build/nucleo_g474re_freertos.elf` (`debug`: `FLASH = 21,480 B` `4.10%`, `RAM = 35,728 B` `36.34%`; `release`: `FLASH = 21,668 B` `4.13%`), **0 warnings, 0 errors**; `arm-none-eabi-nm` & `objdump` confirmed `SVC_Handler`, `PendSV_Handler`, `SysTick_Handler`, `TIM2_IRQHandler`, and `EXTI15_10_IRQHandler` vector bindings. |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, `NVIC`, `SysTick`, `USART2` (`PA2`/`PA3` ST-LINK VCP `COM8`), `TIM2` (10 Hz IRQ), `EXTI13` (`PC13` `B1`), `GPIOA` (`PA5` `LD2`), `IWDG` (`DBG_IWDG_STOP=1`), Cortex-M4F FPU. Zero external wiring required. |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18)` |
 | **Pin Configuration** | `PA2`/`PA3` (`USART2` `AF7` `115200 8N1` VCP), `PA5` (`LD2` Push-Pull Output), `PC13` (`B1` Input `00b`, `EXTI13` Rising Edge, NVIC prio `7` >= `5`). |
 | **Expected Behavior** | Emits 6 automated `[PASS]` self-test lines (`NVIC_CONFIG`, `SEMAPHORES`, `PRIORITY_INHERITANCE`, `DEADLOCK_GUARD`, `FROM_ISR_AND_QUEUE`, `STACK_HWM`), `[SUMMARY] FREERTOS_SELF_TESTS: 6/6 ALL_PASSED`, `[PASS] IWDG_SUPERVISOR`, and live `[TELEM t=... ms]` lines every `1000 ms` on `COM8` while `PA5` blinks steadily. |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(compiled ELF ready at `23-code-library/freertos/build/nucleo_g474re_freertos.elf`; not yet flashed/executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`23-code-library/freertos/build/nucleo_g474re_freertos.elf`, 2026-11-18):** All 6 automated RTOS self-tests passed (`NVIC_CONFIG`, `SEMAPHORES`, `PRIORITY_INHERITANCE` `1->5->1`, `DEADLOCK_GUARD`, `FROM_ISR_AND_QUEUE` `fpu_err=0`, `STACK_HWM`), `[SUMMARY] FREERTOS_SELF_TESTS: 6/6 ALL_PASSED`, `[PASS] IWDG_SUPERVISOR`, plus `8.0 s` live `COM8` `[TELEM]` (`q_tx=11..81`, `q_rx=10..80`, `tim2=10..80`, `wdg=2..9`, `heap=21104/21104`, healthy `HWM`). |
 | **Register Values** | `SCB->AIRCR.PRIGROUP = 0`, `SHPR3`: `PendSV = 0xF0`, `SysTick = 0xF0`, `BASEPRI` critical mask = `0x50` (`MAX_SYSCALL_PRIO = 5`), `TIM2_IRQn` prio = `6`, `EXTI15_10_IRQn` prio = `7`, `DBGMCU->APB1FZR1[12] = 1`. |
 | **Debugging Procedure** | Flash via `cd 23-code-library/freertos && STM32_Programmer_CLI -c port=SWD -w build/nucleo_g474re_freertos.bin 0x08000000 -v -rst`; monitor `COM8` at `115200 8N1`; verify vector bindings via `make nm-check` and inspect `uxTaskGetStackHighWaterMark` in `arm-none-eabi-gdb`. |
-| **Remaining Limitations** | Tickless Idle (`configUSE_TICKLESS_IDLE = 0`) and `LPTIM1` Stop-1 RTOS sleep are deferred to future low-power RTOS extensions. Physical VCP self-test capture pending Agent 4. |
+| **Remaining Limitations** | Tickless Idle (`configUSE_TICKLESS_IDLE = 0`) and `LPTIM1` Stop-1 RTOS sleep are deferred to future low-power RTOS extensions. Manual physical `B1` press (`btn=0 -> 1+`) remains optional. |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | `FreeRTOSConfig.h` (`__NVIC_PRIO_BITS=4`, `MAX_SYSCALL_PRIO=5`, `PRIGROUP=0`, `heap_4`, Method-2 overflow hook) & vector mappings verified against FreeRTOS `V11.1.0` & PM0214. |
+| **Host test passed** | `N/A` | Cortex-M4F `ARM_CM4F` RTOS scheduler (`SVC`/`PendSV`/`SysTick`) validated directly on target silicon. |
+| **Cross-compilation passed** | `PASS` | `23-code-library/freertos/build/nucleo_g474re_freertos.elf` (`debug` & `release`) built with `arm-none-eabi-gcc 14.3.1`, 0 warnings / 0 errors; `nm-check` verified vectors. |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE (`21.16 KB`, `VDD = 3.28 V`, `0.060 s` verify). |
+| **Physical behavior verified** | `PASS` | `6/6 ALL_PASSED` self-tests + `8.0 s` continuous 4-task + `TIM2` ISR + `IWDG` supervisor execution on `COM8`. |
+| **Measurement verified** | `PASS` | Exact `10 Hz` producer/consumer/TIM2 cadence, `fpu_err=0`, zero heap leak (`heap=21104/21104`), and verified positive stack `HWM(S=339 C=309 P=186 M=324)`. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 14: Stop 0 Low-Power Wakeup](../lab-14-low-power-stop-mode-wakeup/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 16: DAC/OPAMP/COMP TIM1_BKIN](../lab-16-dac-opamp-comp-hardware-break/README.md) ➡️

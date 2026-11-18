@@ -1,6 +1,8 @@
 # Lab 20: Host-Side Unit Testing (TDD), Fake CMSIS Register Mocking, ASan/UBSan & `-fstack-usage`
 
-> **Verification Status:** `HOST TESTED` (`gcc 15.2.0`, `-std=c11 -Wall -Wextra -Werror -Wconversion -O2`, exit code `0`, all assertions passed) | **Hardware Queue:** `HOST PC ONLY — NO MCU HARDWARE REQUIRED`
+> ⬅️ **Prev Lab:** [Lab 19: MPU & HardFault Recovery](../lab-19-hardfault-mpu-and-crash-diagnostics/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** *(End of Practical Laboratory — Proceed to [19-projects](../../19-projects/README.md))* ➡️
+
+> **Verification Status:** `HOST TESTED` (`gcc 15.2.0`, `-std=c11 -Wall -Wextra -Werror -Wconversion -O2`, 0 warnings, exit `0`) | **Hardware Status:** `HOST PC ONLY — NO MCU HARDWARE REQUIRED` (`make -C tests clean test`: **594/594** assertions PASS)
 
 > **Clock Configuration Profile:** **Host PC Execution (`x86_64` / `arm64`, MCU Clock N/A)** — pure target calculation helpers in [`23-code-library/Drivers/`](../../23-code-library/Drivers/) (`-DDRIVER_HOST_TEST`) explicitly unit-test BOTH **`170 MHz`** and **`160 MHz`** (plus `16 MHz`) profiles for `tim_calc_psc_arr()`, `usart_calc_brr()`, `spi_calc_br_div()`, and `i2c_select_timingr()`! | **Reusable Drivers:** [`ring_buffer.h`](../../23-code-library/Drivers/ring_buffer.h) + all `-DDRIVER_HOST_TEST` helpers in `exti_g4.h`, `tim_g4.h`, `usart_g4.h`, `spi_g4.h`, `i2c_g4.h`, `adc_g4.h`, `dma_g4.h`, `iwdg_g4.h`.
 
@@ -275,7 +277,7 @@ driver.c:45:13:gpio_config...   0       static
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `HOST TESTED` *(Host Compile- & Execution-Verified)* |
+| **Verification Status** | `HOST TESTED` (`gcc 15.2.0`, 0 warnings, exit `0`; repository host suite **594/594** assertions PASS) |
 | **Objective** | Execute deterministic host-side C11 unit tests for an SPSC ring buffer (empty/full/wraparound) and a fake CMSIS `GPIO_TypeDef` register mock simulating STM32G4 `MODER = 0xABFFFFFF` Analog reset, plus demonstrate `ASan`/`UBSan` and `arm-none-eabi-gcc -fstack-usage` static stack auditing. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | Host: `gcc 15.2.0 (Rev8, Built by MSYS2 project)`; Target `.su` audit: `arm-none-eabi-gcc 14.3.1 20250623` |
@@ -285,7 +287,22 @@ driver.c:45:13:gpio_config...   0       static
 | **Hardware Availability** | `HOST PC ONLY — NO MCU HARDWARE REQUIRED` |
 | **Pin Configuration** | Virtualized `PA5` (`MODER[11:10]`, `OTYPER[5]`, `PUPDR[11:10]`, `BSRR[5]`/`BSRR[21]`) preserving virtualized `PA13`/`PA14` SWD bits `[29:26]` (`0xA8000000`). |
 | **Expected Behavior** | All `assert()` checks pass across FIFO fill/overflow/wraparound/drain and STM32G4 Analog reset clearing, printing `[PASS] All embedded host unit tests passed (0 failures).` and exiting `0`. |
-| **Actual Observations** | **EXECUTED ON HOST (`gcc 15.2.0`, 2026-11-18):** Printed `[PASS] All embedded host unit tests passed (0 failures).` (exit code `0`); companion repository host suites (`tests/test_c_foundations.c` 35/35 + `tests/unit/test_ring_buffer.c` 78/78 + `-DDRIVER_HOST_TEST` helpers) also pass on host. |
+| **Actual Observations** | **EXECUTED ON HOST (`gcc 15.2.0`, 2026-11-18):** Lab 20 standalone harness exited `0` (`[PASS] All embedded host unit tests passed (0 failures).`); companion repository host suites via `make -C tests clean test` passed **594/594** assertions (`116` C foundations + `104` ring buffer + `292` 8-driver pure math helpers + `82` GPIO mock & fault bounds). |
 | **Register Values** | Virtualized `mock_gpioa` reset: `MODER = 0xABFFFFFF`, `OTYPER = 0xFFFFFFFF`, `PUPDR = 0xFFFFFFFF`. Post-config: `MODER[11:10] = 01b`, `MODER & 0xFC000000 == 0xA8000000`, `OTYPER[5] = 0`, `PUPDR[11:10] = 00b`, `BSRR = 0x00000020` (set) / `0x00200000` (reset). |
 | **Debugging Procedure** | Run `gcc -std=c11 -Wall -Wextra -Werror -Wconversion -g -O1 test_embedded_drivers.c -o test_runner.exe && ./test_runner.exe` (add `-fsanitize=address,undefined` on Linux/macOS); audit target stack via `arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -O2 -fstack-usage -c driver.c`. |
 | **Remaining Limitations** | Windows MinGW-w64 `gcc` lacks native `libasan` runtime (Linux/macOS CI runs `-fsanitize=address,undefined` cleanly). Register mocks validate software bitmask logic, not physical electrical pin timing (covered by onboard/external hardware labs). |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | Fake MMIO `fake_gpio_t`, SPSC FIFO test cases, and `-fstack-usage` workflow reviewed for strict C11 compliance. |
+| **Host test passed** | `PASS` | `gcc 15.2.0` (`-Wall -Wextra -Werror -Wconversion`) passed Lab 20 harness (exit `0`) AND `make -C tests clean test` (**594/594** assertions PASS). |
+| **Cross-compilation passed** | `N/A` | Host PC unit-testing lab (companion `-fstack-usage` `.su` static stack analysis verified with `arm-none-eabi-gcc 14.3.1` on target drivers). |
+| **On-target upload succeeded** | `N/A` | Host PC only — zero MCU hardware required. |
+| **Physical behavior verified** | `N/A` | Host PC only — virtualized in-RAM register mocks. |
+| **Measurement verified** | `PASS` | 594/594 host unit assertions + target `.su` stack-usage bounds measured and verified. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 19: MPU & HardFault Recovery](../lab-19-hardfault-mpu-and-crash-diagnostics/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** *(End of Practical Laboratory — Proceed to [19-projects](../../19-projects/README.md))* ➡️

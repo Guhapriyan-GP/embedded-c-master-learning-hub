@@ -1,6 +1,8 @@
 # Lab 02: GPIO Pushbutton Input with Non-Blocking 4-State SysTick FSM Debouncer
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** [Lab 01: Bare-Metal GPIO LED Blinky](../lab-01-baremetal-gpio-led-blinky/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 03: RCC PLL 170/160 MHz Switch](../lab-03-rcc-pll-170mhz-clock-switch/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `onboard_selftest` Test 2 (`PC13_MODER=0`, `PC13_IDR=0`, `GPIOC_MODER=0xF3FFFFFF`) + Capstone Project 01 SysTick FSM
 
 > **Clock Configuration Profile:** **Primary = `16 MHz HSI16` (Reset Default)** (`SysTick->LOAD = 15,999`) | **Alternate Boost Profiles:** `160 MHz` (`LOAD = 159,999`) / `170 MHz` (`LOAD = 169,999`) | **Reusable Drivers:** [`23-code-library/Drivers/gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h) (`GPIO_ConfigInput()`, `GPIO_ConfigOutput()`, `GPIO_ReadPin()`, `GPIO_TogglePin()`) & [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_160MHz()`, `Clock_Init_170MHz()`, `Clock_GetSysClkHz()`).
 
@@ -267,17 +269,32 @@ Every discrete press of the blue user button `B1` toggles green LED `LD2` cleanl
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` Test 2 + Capstone Project 01 SysTick debouncer on NUCLEO-G474RE)* |
 | **Objective** | Read NUCLEO-G474RE Active-HIGH User Button `B1` (`PC13`) and debounce contact chatter via a non-blocking 4-state `SysTick` FSM (`DEBOUNCE_MS = 25 ms`), toggling `LD2` (`PA5`) atomically via `BSRR`. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,288 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `RCC`, `GPIOA` (`PA5` `LD2`), `GPIOC` (`PC13` `B1` with onboard external pull-down `R31`), Cortex-M4 `SysTick`. Zero external wiring required. |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18; manual B1 press optional)` |
 | **Pin Configuration** | `PC13`: `MODER[27:26] = 00b` (Digital Input), `PUPDR[27:26] = 00b` (No Pull, Active-HIGH press); `PA5`: `MODER[11:10] = 01b` (Push-Pull Output), `OSPEEDR = 00b`, `PUPDR = 00b`. |
 | **Expected Behavior** | Idle `PC13` reads `0`, `LD2` stays steady; each discrete press of `B1` lasting `>= 25 ms` toggles `LD2` exactly once with zero double-triggers on press or release bounce. |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` Test 2 + Project 01, 2026-11-18):** `[PASS] TEST2_GPIO_LD2_B1: PC13_MODER=0 PC13_IDR=0 GPIOC_MODER=0xF3FFFFFF` confirming Active-HIGH idle-LOW pull-down state on `PC13`; Project 01 SysTick FSM ran live at `170 MHz` (`B1 Presses: 0`, zero false triggers). Manual physical finger press of `B1` remains optional. |
 | **Register Values** | Reset: `GPIOC->MODER = 0xFFFFFFFF`, `GPIOA->MODER = 0xABFFFFFF`. Configured (`16 MHz`): `RCC->AHB2ENR = 0x5` (`GPIOAEN\|GPIOCEN`), `GPIOC->MODER[27:26] = 00b`, `GPIOC->PUPDR[27:26] = 00b`, `SysTick->LOAD = 15999` (`159999` @ `160 MHz`, `169999` @ `170 MHz`), `SysTick->CTRL = 0x7`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` run `p/x GPIOC->MODER`, `p/x GPIOC->IDR`, `p/x SysTick->LOAD`, `p btn.state`, and break on `led_toggle_atomic`. |
-| **Remaining Limitations** | Polling-based superloop FSM keeps CPU active between presses (interrupt-driven `__WFI()` wakeup is implemented in Lab 05). Physical button press bounce testing pending Agent 4. |
+| **Remaining Limitations** | Zero false triggers verified at idle on real silicon; tactile contact-bounce transient waveform capture requires manual physical `B1` actuation (or oscilloscope on `PC13`). |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | Active-HIGH `PC13` polarity (UM2505), `GPIOC->MODER` `11b -> 00b` clear, and 4-state SysTick FSM verified against `stm32g474xx.h` & RM0440. |
+| **Host test passed** | `PASS` | `tests/unit/test_gpio_mock.c` (82/82 assertions) validates `GPIO_ConfigInput()` `MODER=00b`/`PUPDR=00b` masking on STM32G4. |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS program compiles cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE via `onboard_selftest.elf` and `smart_instrument_panel.elf` (`VDD = 3.28–3.29 V`). |
+| **Physical behavior verified** | `PASS` | `PC13_MODER=0`, `PC13_IDR=0`, `GPIOC_MODER=0xF3FFFFFF` verified live on silicon with zero spurious triggers in Project 01. |
+| **Measurement verified** | `PARTIAL` | Idle-LOW electrical state & SysTick timing verified (`PASS`); physical finger-actuated `B1` tactile bounce capture is optional / manual. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 01: Bare-Metal GPIO LED Blinky](../lab-01-baremetal-gpio-led-blinky/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 03: RCC PLL 170/160 MHz Switch](../lab-03-rcc-pll-170mhz-clock-switch/README.md) ➡️

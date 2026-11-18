@@ -1,6 +1,8 @@
 # Lab 17: STM32G474RE Hardware Math Coprocessors — CORDIC & FMAC Benchmarked via `DWT->CYCCNT`
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** [Lab 16: DAC/OPAMP/COMP TIM1_BKIN](../lab-16-dac-opamp-comp-hardware-break/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 18: FDCAN1 Loopback & CRC-32](../lab-18-fdcan-loopback-and-crc/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `onboard_selftest` Test 6A (`CORDIC` `9.72×` 256-angle / `20.9×` 1-call speedup, `max_err=2e-6`) & Test 6B (`FMAC` `0 LSB` diff, `2.32×` speedup)
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`170 MMAC/s` FMAC, `6 cycles = 35.3 ns` CORDIC) | **Alternate = `160 MHz Range 1 Boost`** (`160 MMAC/s` FMAC, `6 cycles = 37.5 ns` CORDIC; `CORDIC`/`FMAC` registers and `DWT->CYCCNT` cycle counts are identical!) | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`, `Clock_DWT_Init()`, `Clock_GetCycles()`).
 
@@ -45,7 +47,7 @@ No external pins required. Optional: stream benchmark metrics over `USART2` (`PA
 
 CORDIC expects angles normalized by $\pi$: $\hat{\theta} = \frac{\theta}{\pi} \in [-1, +1)$ represented as a signed 32-bit `q1.31` integer:
 
-$$\text{angle\_q31} = \left\lfloor \frac{\theta}{\pi} \times 2^{31} \right\rfloor \quad \text{(e.g., } \theta = \frac{\pi}{3} \implies \text{angle\_q31} = \frac{2^{31}}{3} = 715\,827\,882\text{)}$$
+$$\theta_{q31} = \left\lfloor \frac{\theta}{\pi} \times 2^{31} \right\rfloor \quad \text{(e.g., } \theta = \frac{\pi}{3} \implies \theta_{q31} = \frac{2^{31}}{3} = 715\,827\,882\text{)}$$
 
 - **`CORDIC->CSR`**: `FUNC = 0` (Cosine primary + Sine secondary), `PRECISION = 6` (`24` iterations = `6` clock cycles, $2^{-19}$ accuracy!), `NRES = 1` (read 2 results: `cos` then `sin`), `NARGS = 0` (1 input argument), `ARGSIZE = 0` (`32-bit`), `RESSIZE = 0` (`32-bit`).
 - **Zero-Wait-State Polling:** Writing `CORDIC->WDATA` starts computation immediately; reading `CORDIC->RDATA` automatically inserts AHB wait states until `RRDY == 1`, eliminating polling-loop overhead!
@@ -346,17 +348,32 @@ Inspecting benchmark globals in GDB after completion:
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` Test 6A/6B on NUCLEO-G474RE)* |
 | **Objective** | Execute `CORDIC` `q1.31` `(cos, sin)` acceleration and `FMAC` 8-tap `q1.15` FIR filtering on AHB1 (`170 MHz` primary / `160 MHz` supported), verifying numerical accuracy (`< 1e-5` CORDIC, `<= 1 LSB` FMAC) and speedup vs Cortex-M4F FPU via `DWT->CYCCNT`. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`2,748 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, Cortex-M4F `FPU` (`SCB->CPACR`), `DWT->CYCCNT`, `CORDIC` (`0x40020C00`), `FMAC` (`0x40021400`). Zero external wiring required. |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18)` |
 | **Pin Configuration** | None required (100% on-chip AHB1 coprocessor benchmark; optional `USART2` `PA2`/`PA3` VCP for telemetry). |
 | **Expected Behavior** | `g_cordic_cycles` is `~5×–10×` lower than `g_fpu_cycles` with `g_cordic_max_err < 1e-5f`; `g_fmac_max_lsb_diff <= 1` with `FMAC->SR` error flags (`OVFL`/`UNFL`/`SAT`) all `0`. |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` Test 6A & 6B, 2026-11-18):** `[PASS] TEST6A_CORDIC_VS_FPU: pi/4 cos=0.707106 sin=0.707106 (1x: CORDIC=28 cyc vs FPU=584 cyc; 256x: CORDIC=8511 vs FPU=82716; max_err=2E-6)` (`20.9×` 1-call, `9.72×` 256-angle); `[PASS] TEST6B_FMAC_FIR: y[0]=2000 y[7]=16000 y[31]=16000 sw[31]=16000 max_diff=0LSB FMAC=2055 cyc vs SW=4766 cyc` (`2.32×` speedup). |
 | **Register Values** | Configured: `SCB->CPACR[23:20] = 0xF` (FPU full access), `RCC->AHB1ENR`: `CORDICEN=1, FMACEN=1`, `CORDIC->CSR`: `FUNC=0, PRECISION=6, NRES=1` (`0x00080060`), `FMAC->X2BUFCFG = 0x0800`, `FMAC->X1BUFCFG = 0x1008`, `FMAC->YBUFCFG = 0x1018`, `FMAC->CR = FMAC_CR_CLIPEN`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` break at `while (1)` and run `p g_cordic_cycles`, `p g_fpu_cycles`, `p g_cordic_max_err`, `p g_fmac_cycles`, `p g_sw_fir_cycles`, `p g_fmac_max_lsb_diff`, `p/x FMAC->SR`. |
-| **Remaining Limitations** | Uses polling loops for FMAC streaming (`X1FULL`/`YEMPTY`); DMA streaming (`DMAMUX1` IDs `110`/`111`) maximizes throughput for large filters (Extension Exercise 1). Physical `DWT->CYCCNT` measurement pending Agent 4. |
+| **Remaining Limitations** | Measured speedup uses CPU polling at `-Og`; DMA-fed `CORDIC`/`FMAC` streaming (Extension Exercise 2) further reduces CPU utilization to near zero. |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | `CORDIC` `q1.31` CSR/WDATA/RDATA & `FMAC` `q1.15` `X1`/`X2`/`Y` ring buffers and `PARAM` codes verified against `stm32g474xx.h` & RM0440 Ch. 17/18. |
+| **Host test passed** | `N/A` | STM32G474RE dedicated hardware math coprocessors (`CORDIC` & `FMAC`), benchmarked directly on silicon. |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS lab compiles cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE via `onboard_selftest.elf` (`VDD = 3.29 V`). |
+| **Physical behavior verified** | `PASS` | Both `CORDIC` (`cos`/`sin` `pi/4 = 0.707106`) and `FMAC` 8-tap `q1.15` FIR (`0 LSB` error) executed accurately on silicon. |
+| **Measurement verified** | `PASS` | `DWT->CYCCNT` verified `CORDIC` `28` vs `584` cyc (`20.9×`), `8,511` vs `82,716` cyc (`9.72×`, `max_err=2e-6`); `FMAC` `2,055` vs `4,766` cyc (`2.32×`, `0 LSB`). |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 16: DAC/OPAMP/COMP TIM1_BKIN](../lab-16-dac-opamp-comp-hardware-break/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 18: FDCAN1 Loopback & CRC-32](../lab-18-fdcan-loopback-and-crc/README.md) ➡️

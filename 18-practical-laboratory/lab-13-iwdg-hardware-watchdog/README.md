@@ -1,6 +1,8 @@
 # Lab 13: Independent Watchdog (IWDG) System Health Protection & Fault Recovery
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** [Lab 12: I2C1 400 kHz SSD1306 OLED](../lab-12-i2c-master-ssd1306-oled/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 14: Stop 0 Low-Power Wakeup](../lab-14-low-power-stop-mode-wakeup/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `onboard_selftest` Test 9 (`IWDG` `PR=2 RLR=3999`, `DBGMCU_APB1FZR1=0x1800`, `kicks=6/6`) + FreeRTOS `IWDG` supervisor (`wdg=2..9`)
 
 > **Clock Configuration Profile:** **Primary = `16 MHz HSI16`** (`SysTick->LOAD = 15,999`) + **Independent `32 kHz LSI` for `IWDG`** (`PR = 4` `/64`, `RLR = 499` $\implies 1.000\text{ s}$ regardless of `SYSCLK`!) | **Alternate = `160 MHz` (`LOAD = 159,999`) / `170 MHz` (`LOAD = 169,999`)** | **Reusable Drivers:** [`23-code-library/Drivers/iwdg_g4.h`](../../23-code-library/Drivers/iwdg_g4.h) (`iwdg_init_ms()`, `iwdg_kick()`, `iwdg_was_reset_cause()`, `iwdg_clear_reset_flags()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
@@ -246,17 +248,32 @@ int main(void) {
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` Test 9 + FreeRTOS `3000 ms` `IWDG` supervisor on NUCLEO-G474RE)* |
 | **Objective** | Arm STM32G474RE `IWDG` (`PR = 4` `/64`, `RLR = 499` $\implies 1.000\text{ s}$ nominal from `32 kHz LSI`) with `DBGMCU_APB1FZR1_DBG_IWDG_STOP`, safe `PC13` Active-HIGH fault injection, and `RCC->CSR.IWDGRSTF` post-reset recovery detection. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,388 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `IWDG`, `LSI` (`32 kHz`), `DBGMCU`, `RCC->CSR`, `SysTick`, `GPIOA` (`PA5` `LD2`), `GPIOC` (`PC13` `B1`). Zero external wiring required. |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18)` |
 | **Pin Configuration** | `PC13` (`B1`): `MODER[27:26] = 00b` (Digital Input, Active-HIGH), `PUPDR[27:26] = 00b`; `PA5` (`LD2`): `MODER[11:10] = 01b` (Push-Pull Output). |
 | **Expected Behavior** | Normal run: `LD2` toggles every `250 ms` (`2 Hz`) indefinitely with zero resets; GDB halt freezes IWDG (`DBG_IWDG_STOP = 1`); pressing `B1` (or deliberate stop-kicking) triggers hardware reset after `~1.0 s`, setting `RCC_CSR_IWDGRSTF` and flashing `LD2` 5 times on reboot. |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` Test 9 + `nucleo_g474re_freertos.elf`, 2026-11-18):** `[PASS] TEST9_IWDG_SAFE_KICK: status=0 PR=2 RLR=3999 DBGMCU_APB1FZR1=0x00001800 kicks=6/6 (300ms no reset)`; FreeRTOS `IWDG_SUPERVISOR` (`~3000 ms`, `DBG_IWDG_STOP=1`) verified `wdg=2..9` over `8.0 s` with zero unexpected resets. |
 | **Register Values** | Reset: `IWDG->PR = 0`, `IWDG->RLR = 0x0FFF`, `DBGMCU->APB1FZR1 = 0`. Configured: `DBGMCU->APB1FZR1[12] = 1`, `IWDG->PR = 0x4` (`/64`), `IWDG->RLR = 0x01F3` (`499`), `IWDG->SR = 0`, `SysTick->LOAD = 15999` (`159999` @ 160 MHz, `169999` @ 170 MHz); post-timeout `RCC->CSR[29] (IWDGRSTF) = 1`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` verify `p/x DBGMCU->APB1FZR1`, `p/x IWDG->PR`, `p IWDG->RLR`, confirm zero reset while halted `> 5 s`, then inject hang and verify `(RCC->CSR & (1<<29)) != 0` on reboot. |
-| **Remaining Limitations** | Once started, `IWDG` cannot be stopped by software until reset; LSI `±5%` tolerance yields `[0.952 s .. 1.053 s]` timeout window. Physical reset-recovery test pending Agent 4. |
+| **Remaining Limitations** | `LSI` nominal `32 kHz` varies `±5%` across silicon/temperature (`17..47 kHz` worst-case bounds in DS12288); size watchdog margins conservatively. Intentional watchdog-expiry reset test (halting kicks) is optional to preserve unattended test flow. |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | RM0440 §35.3.2 key sequence (`0xCCCC -> 0x5555 -> SR wait -> PR/RLR -> SR wait -> 0xAAAA`), `DBGMCU_APB1FZR1_DBG_IWDG_STOP`, and `RCC_CSR_RMVF` clear verified. |
+| **Host test passed** | `PASS` | `tests/unit/test_drivers_math.c` verifies `iwdg_calc_prescaler_reload()` across `100 ms..32 s`. |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS lab & `iwdg_g4.c` compile cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE via `onboard_selftest.elf`, `nucleo_g474re_freertos.elf`, and Project 03. |
+| **Physical behavior verified** | `PASS` | `TEST9_IWDG_SAFE_KICK` (`6/6` kicks, `DBG_IWDG_STOP=1`) and FreeRTOS Event-Group supervisor (`wdg=2..9`, Project 03 `wdg=1..19`) verified live. |
+| **Measurement verified** | `PASS` | `DBGMCU_APB1FZR1=0x00001800`, `PR=2`, `RLR=3999` verified on live silicon (`RCC_CSR` clean `IWDGRST=0`). |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 12: I2C1 400 kHz SSD1306 OLED](../lab-12-i2c-master-ssd1306-oled/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 14: Stop 0 Low-Power Wakeup](../lab-14-low-power-stop-mode-wakeup/README.md) ➡️

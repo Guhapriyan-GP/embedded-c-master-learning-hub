@@ -1,6 +1,8 @@
 # Lab 10: Multichannel ADC1 (Internal `VREFINT` + Die Temp) + Circular Ping-Pong DMA1
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** [Lab 09: ADC1 Potentiometer](../lab-09-adc-single-channel-potentiometer/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 11: SPI1 Master Interfacing](../lab-11-spi-master-sensor-interfacing/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `onboard_selftest` Test 5A/5B/5C (`VDDA=3288 mV`, `Die Temp=32.91 °C`, `DMAMUX0_CCR=0x5`, `HT=20/TC=20/TE=0`) + Project 02 25× `$LOG2` frames
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`CKMODE = 11b` $\implies f_{\text{ADC}} = 42.5\text{ MHz} \le 60\text{ MHz}$, `SMP16`/`SMP18 = 640.5` cyc $= 15.07\ \mu\text{s}$) | **Alternate = `160 MHz Range 1 Boost`** (`CKMODE = 11b` $\implies f_{\text{ADC}} = 40.0\text{ MHz} \le 60\text{ MHz}$, `SMP16`/`SMP18 = 640.5` cyc $= 16.01\ \mu\text{s}$) | **Reusable Drivers:** [`23-code-library/Drivers/adc_g4.h`](../../23-code-library/Drivers/adc_g4.h) (`adc_init_single_ended()`, `adc_calc_vdda_mv()`, `adc_temp_mdegc()`), [`dma_g4.h`](../../23-code-library/Drivers/dma_g4.h) (`dma_config_p2m_circular()`, `dma_clear_flags()`, `DMAMUX_REQ_ADC1`), & [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h).
 
@@ -71,9 +73,9 @@ Both `170 MHz` and `160 MHz` exceed `2 × 60 MHz = 120 MHz`, so **BOTH MUST use 
    - `VREFINT_CAL` (`0x1FFF75AA`, 16-bit): measured at $30\ ^\circ\text{C}$, $V_{\text{DDA}} = 3.0\text{ V}$.
    - `TS_CAL2` (`0x1FFF75CA`, 16-bit): measured at $130\ ^\circ\text{C}$, $V_{\text{DDA}} = 3.0\text{ V}$.
    - Actual supply voltage from `ADC1_IN18`:
-     $$V_{\text{DDA}}\ (\text{mV}) = \frac{3000 \times \text{VREFINT\_CAL}}{\text{avg\_vrefint}}$$
+     $$V_{\text{DDA}}\ (\text{mV}) = \frac{3000 \times \text{VREFINT}_{\text{CAL}}}{\overline{N}_{\text{vrefint}}}$$
    - True $V_{\text{DDA}}$-compensated temperature from `ADC1_IN16`:
-     $$\text{TS\_DATA}_{3.0\text{V}} = \text{avg\_temp} \times \frac{V_{\text{DDA}}}{3000}, \qquad T\ (^\circ\text{C}) = 30 + \frac{100 \times (\text{TS\_DATA}_{3.0\text{V}} - \text{TS\_CAL1})}{\text{TS\_CAL2} - \text{TS\_CAL1}}$$
+     $$\text{TS}_{\text{3.0V}} = \overline{N}_{\text{temp}} \times \frac{V_{\text{DDA}}}{3000}, \qquad T\ (^\circ\text{C}) = 30 + \frac{100 \times (\text{TS}_{\text{3.0V}} - \text{TS}_{\text{CAL1}})}{\text{TS}_{\text{CAL2}} - \text{TS}_{\text{CAL1}}}$$
 
 ### 5.3 Ping-Pong Buffer Geometry & DMAMUX Routing
 
@@ -179,6 +181,7 @@ void DMA1_Channel1_IRQHandler(void) {
         g_dma_errors++;
     }
 
+    (void)DMA1->ISR;
     __DSB();
 }
 
@@ -368,17 +371,32 @@ int main(void) {
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` Test 5A/5B/5C + Project 02 `25×` ping-pong DMA frames on NUCLEO-G474RE)* |
 | **Objective** | Continuously scan onboard internal `ADC1_IN18` (`VREFINT`) and `ADC1_IN16` (Die Temp Sensor) via `DMA1_Channel1` circular ping-pong (`DMAMUX1_Channel0` ID `5`), honoring DS12288 `f_ADC <= 60 MHz`, `640.5`-cycle sampling, and ES0430 §2.3.1 individual `IFCR` flag clearing. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`2,204 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, `ADC1` (`VREFINT` + internal Temp Sensor), `DMA1_Channel1`, `DMAMUX1_Channel0`, `NVIC`. Zero external wiring required. |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18)` |
 | **Pin Configuration** | None required (`ADC1_IN18` and `ADC1_IN16` are internal silicon channels; optional `PA0` `ADC1_IN1` `MODER=11b` for Extension Exercise 2). |
 | **Expected Behavior** | Continuous ping-pong `HTIF1`/`TCIF1` interrupts increment `g_blocks_done` with `g_dma_errors == 0`; `g_vdda_mv` settles around `~3280 mV` (`3250..3350 mV`) and `g_temp_deci_c` reports ambient + self-heating die temperature (`~240..450`). |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` Test 5A/5B/5C + Project 02, 2026-11-18):** `[PASS] TEST5B_ADC1_VREF_TEMP: ADC_CCR=0x00C30000 CALFACT=0x45 VREF_CAL=1657 VREF_RAW=1513 VDDA=3288mV TS_CAL1=1037 TS_CAL2=1370 TEMP_RAW=956 DIE_TEMP=32906mdegC`; `[PASS] TEST5C_ADC1_DMA1_CIRC: DMAMUX0_CCR=0x00000005 HT=20 TC=20 TE=0`; Project 02 streamed 25 consecutive `160 ms` ping-pong frames (`ovr=0, te=0`). |
 | **Register Values** | Reset: `ADC1->CR = 0x20000000`, `ADC12_COMMON->CCR = 0`, `DMAMUX1_Channel0->CCR = 0`. Configured (`170 MHz` / `160 MHz`): `ADC12_COMMON->CCR = 0x00C30000` (`CKMODE=11b`, `VREFEN=1`, `VSENSESEL=1`), `ADC1->SMPR2`: `SMP16=7, SMP18=7`, `ADC1->SQR1`: `L=1, SQ1=18, SQ2=16`, `DMAMUX1_Channel0->CCR = 5`, `DMA1_Channel1->CNDTR = 64`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` verify `p/x ADC12_COMMON->CCR`, `p/x DMAMUX1_Channel0->CCR`, `p g_vdda_mv`, `p g_temp_deci_c`, `p g_blocks_done`, `p g_dma_errors`. |
-| **Remaining Limitations** | Uses continuous free-running scan (`ADC_CFGR_CONT`); exact fixed-rate DSP sampling requires `TIM6_TRGO` hardware trigger (Extension Exercise 1). Physical silicon calibration check pending Agent 4. |
+| **Remaining Limitations** | Onboard internal channels (`VREFINT`, Die Temp) verified end-to-end with zero external hardware; adding external analog channels requires verifying source impedance and `<= 3.3 V` clamping. |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | `DMAMUX1_Channel0->CCR = 5` (`ADC1`), `DMA1_Channel1` circular `HTIE`/`TCIE`/`TEIE`, individual `IFCR` clears (no `CGIF1`, ES0430 §2.3.1), and factory cal addresses verified against RM0440 & DS12288. |
+| **Host test passed** | `PASS` | `tests/unit/test_drivers_math.c` verifies `dma_dmamux_channel_index()`, `adc_calc_vdda_mv()`, and `adc_temp_mdegc()`. |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS lab, `adc_g4.c`, & `dma_g4.c` compile cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE via `onboard_selftest.elf` and `dma_data_logger.elf`. |
+| **Physical behavior verified** | `PASS` | Circular ping-pong DMA (`HT=20, TC=20, TE=0`) and 25 consecutive Project 02 `$LOG2` frames (`half=0/1`, `ovr=0`) ran cleanly. |
+| **Measurement verified** | `PASS` | `VDDA = 3288 mV` matched ST-LINK `3.28–3.29 V` within `2 mV`; `Die Temp = 32.91 °C`; `MEM2MEM` `256/256` match in `1,977` cycles. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 09: ADC1 Potentiometer](../lab-09-adc-single-channel-potentiometer/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 11: SPI1 Master Interfacing](../lab-11-spi-master-sensor-interfacing/README.md) ➡️

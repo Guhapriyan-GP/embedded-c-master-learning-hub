@@ -95,8 +95,12 @@ adc_status_t adc_init_single_ended(ADC_TypeDef *adc, uint32_t timeout_iters) {
         }
     }
 
+    /* RM0440 §21.4.8: wait >= 4 ADC clock cycles after ADCAL clears before setting ADEN */
+    Clock_DelayUs(2U);
+
     /* 7. Clear ADRDY via direct rc_w1 write (NEVER `|=`) then set ADEN = 1 */
     adc->ISR = ADC_ISR_ADRDY;
+    (void)adc->ISR;
     adc->CR |= ADC_CR_ADEN;
     rem = timeout_iters;
     while ((adc->ISR & ADC_ISR_ADRDY) == 0U) {

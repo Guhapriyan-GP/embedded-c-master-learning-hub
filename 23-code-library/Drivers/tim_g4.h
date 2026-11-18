@@ -8,11 +8,12 @@
  *     (including STM32 x2 timer clock multiplier when APB prescaler > /1).
  *   - Forces shadow-register preload via `TIMx->EGR = TIM_EGR_UG` and clears stale
  *     UIF before enabling UIE/CEN so the first period never glitches with PSC=0.
- *   - Clears rc_w0 status flags using direct write `TIMx->SR = ~TIM_SR_UIF` (NEVER `&= ~`)
- *     plus `__DSB()`.
+ *   - Clears rc_w0 status flags using direct write `TIMx->SR = ~TIM_SR_UIF` (NEVER `&= ~`),
+ *     followed by dummy readback `(void)TIMx->SR;` (ARM AN321 §4.9: APB posted-write commit)
+ *     and `__DSB()` (write-buffer drain + ARM Erratum 838869 / ST ES0430 §2.1.3).
  *   - Enables ARPE + OCxPE for glitch-free runtime PWM duty-cycle updates.
  *
- * Reference: RM0440 Ch. 29/30 (GP Timers TIM2-5), Ch. 31/33 (Basic Timers TIM6-7).
+ * Reference: RM0440 Ch. 29/30 (GP Timers TIM2-5), Ch. 31/33 (Basic Timers TIM6-7), ARM AN321 §4.9, ES0430 §2.1.3.
  * Concepts:  PERIPH-TIM-001, PERIPH-TIM-002, PERIPH-PWM-001
  */
 
@@ -20,6 +21,7 @@
 #define TIM_G4_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #if !defined(DRIVER_HOST_TEST)
@@ -132,11 +134,15 @@ tim_status_t TIM_SetPwmCompare(TIM_TypeDef *tim, uint8_t channel, uint32_t ccr_v
 
 /**
  * @brief Clear TIM update interrupt flag (UIF) safely on STM32 rc_w0 SR register
- *        (direct write `~TIM_SR_UIF`, NEVER RMW `&=`) + Cortex-M4 `__DSB()`.
+ *        (direct write `~TIM_SR_UIF`, NEVER RMW `&=`), read back SR to flush the
+ *        AHB-to-APB1 posted-write bridge, and issue Cortex-M4 `__DSB()`.
  */
 static inline void TIM_ClearUpdateFlag(TIM_TypeDef *tim) {
-    tim->SR = ~TIM_SR_UIF;
-    __DSB();
+    if (tim != NULL) {
+        tim->SR = ~TIM_SR_UIF;
+        (void)tim->SR;
+        __DSB();
+    }
 }
 
 #endif /* !defined(DRIVER_HOST_TEST) */

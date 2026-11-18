@@ -1,6 +1,8 @@
 # Lab 16: Mixed-Signal Hardware Safety — DAC1 + OPAMP1 PGA + COMP1 → `TIM1_BKIN` Sub-Microsecond Trip
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `EXTERNAL HARDWARE PENDING` *(Requires External Potentiometer/DC Stimulus on `PA1` & Oscilloscope on `PA8`/`PA4` — User Connection Required; internal `DAC1 -> COMP1 -> TIM1_BKIN` path can also be observed via GDB)*
+> ⬅️ **Prev Lab:** [Lab 15: FreeRTOS Multi-Tasking](../lab-15-freertos-multitask-producer-consumer/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 17: CORDIC & FMAC Math](../lab-17-cordic-fmac-hardware-math/README.md) ➡️
+
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `PENDING — USER CONNECTION REQUIRED` *(External `PA1` `0..3.0 V` stimulus + `>= 100 MHz` oscilloscope on `PA8`/`PA4`; `TIM1`/`COMP1` arming verified in Project 03)*
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`DAC1->MCR.HFSEL = 10b` for $> 160\text{ MHz}$, `TIM1->ARR = 3,399` $\implies 50.00\text{ kHz}$) | **Alternate = `160 MHz Range 1 Boost`** (`DAC1->MCR.HFSEL = 01b` for $80\text{–}160\text{ MHz}$, `TIM1->ARR = 3,199` $\implies 50.00\text{ kHz}$) | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`) & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
@@ -140,6 +142,7 @@ static void Clock_Init_170MHz(void) {
 void TIM1_BRK_TIM15_IRQHandler(void) {
     if ((TIM1->SR & TIM_SR_BIF) != 0U) {
         TIM1->SR = ~TIM_SR_BIF;    /* Atomic rc_w0 clear */
+        (void)TIM1->SR;            /* Flush AHB-to-APB2 posted-write bridge */
         g_fault_trip_count++;
         g_fault_latched = 1U;
         GPIOA->BSRR = GPIO_BSRR_BS5; /* Illuminate LD2 fault indicator */
@@ -328,17 +331,32 @@ int main(void) {
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` / `EXTERNAL HARDWARE PENDING` |
+| **Verification Status** | `CROSS-COMPILED` / `PENDING — USER CONNECTION REQUIRED` *(Digital `TIM1`/`COMP1` arming verified in Project 03; external `PA1` analog stimulus + `<50 ns` scope measurement pending user wiring)* |
 | **Objective** | Build a zero-CPU-latency STM32G474RE mixed-signal hardware overcurrent trip chain (`DAC1_CH1` `1.65 V` ref + `OPAMP1` internal PGA ×8 + `COMP1` -> `TIM1_BKIN` clearing `TIM1->BDTR.MOE` in `< 50 ns` even while CPU is halted). |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,844 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **External Hardware Required (Full Trip Verification):** `DAC1`, `OPAMP1`, `COMP1`, `TIM1` + external `10 kΩ` potentiometer / bench DC supply (`0..3.3 V`) on `PA1` + oscilloscope on `PA8`/`PA1`/`PA4`. *(Note: internal `DAC1 -> OPAMP1 -> COMP1` silicon path & register state can also be inspected via GDB without external wiring.)* |
-| **Hardware Availability** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` *(Internal silicon path observable in GDB; external stimulus/scope trip verification pending user wiring)* |
+| **Hardware Availability** | `PENDING — USER CONNECTION REQUIRED` *(External `PA1` `0..3.0 V` pot/PSU + 2-ch `>= 100 MHz` oscilloscope on `PA8`/`PA4`)* |
 | **Pin Configuration** | `PA4` (`A2`, `DAC1_OUT1`, `MODER=11b`), `PA1` (`A1`, `OPAMP1_VINP` & `COMP1_INP`, `MODER=11b`), `PA8` (`D7`, `TIM1_CH1`, `AF6`, `OSPEEDR=10b`), `PA5` (`LD2`, Fault indicator Output `01b`). |
 | **Expected Behavior** | For `PA1 < 1.65 V`, `PA8` outputs `50.00 kHz` 50% PWM and `LD2` is OFF; raising `PA1 > 1.65 V` asserts `COMP1->CSR.VALUE = 1`, clears `TIM1->BDTR.MOE = 0` in `< 50 ns` (even with CPU halted in GDB), drives `PA8` safely LOW (`AOE = 0` latched), and illuminates `LD2` in `TIM1_BRK_TIM15_IRQHandler`. |
-| **Actual Observations** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; external `PA1` overcurrent stimulus and `< 50 ns` oscilloscope propagation measurement deferred until user connects external hardware)*. |
+| **Actual Observations** | `PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; Project 03 confirmed `TIM1` complementary PWM + `COMP1 -> TIM1->AF1.BKCMP1E` arming on silicon with `moe:1, fault:0`; physical `<50 ns` hardware break timing requires external `PA1` stimulus and `>= 100 MHz` oscilloscope per `HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md`)*. |
 | **Register Values** | Configured (`170 MHz` / `160 MHz`): `DAC1->MCR`: `HFSEL = 10b` (`01b` @ 160 MHz), `MODE1 = 001b`, `DAC1->DHR12R1 = 2048` (`1.650 V`); `OPAMP1->CSR`: `VMSEL=10b, PGGAIN=00010b (x8), OPAMPINTEN=1, EN=1`; `COMP1->CSR`: `INPSEL=0, INMSEL=5, HYST=2, EN=1`; `TIM1->ARR = 3399` (`3199` @ 160 MHz), `TIM1->AF1 = TIM1_AF1_BKCMP1E`, `TIM1->BDTR`: `OSSI\|OSSR\|BKE\|BKP\|MOE`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; halt CPU in `arm-none-eabi-gdb`, raise `PA1 > 1.65 V`, confirm `PA8` drops to `0 V` on scope while halted, and inspect `p/x COMP1->CSR`, `p/x TIM1->BDTR`, `p/x TIM1->AF1`. |
-| **Remaining Limitations** | Full end-to-end trip timing (`< 50 ns`) and `PA4`/`PA8` waveform proof require external DC stimulus on `PA1` and an oscilloscope. |
+| **Remaining Limitations** | Sub-50 ns analog-to-`MOE` hardware trip latency requires a `>= 100 MHz` oscilloscope on `PA8` (`TIM1_CH1`) and `PA1` (`<= 3.3 V` strictly — NEVER `5 V` on analog pin `PA1`!). |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | `DAC1` AHB2 clock, `HFSEL` (`10b` @ 170 MHz / `01b` @ 160 MHz), `OPAMP1` PGA, `COMP1`, and `TIM1->AF1.BKCMP1E` / `BDTR.AOE=0` verified against RM0440. |
+| **Host test passed** | `N/A` | Mixed-signal silicon peripheral chain (`DAC1 -> OPAMP1 -> COMP1 -> TIM1_BKIN`). |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS program compiles cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors). |
+| **On-target upload succeeded** | `PENDING — USER CONNECTION REQUIRED` | Standalone Lab 16 bench test deferred until external `PA1` stimulus + scope are connected (Project 03 verified `TIM1`/`COMP1` arming onboard). |
+| **Physical behavior verified** | `PENDING — USER CONNECTION REQUIRED` | Awaiting external `PA1` (`0..3.0 V`) ramp above `DAC1` threshold to observe latched `MOE -> 0` trip. |
+| **Measurement verified** | `PENDING — USER CONNECTION REQUIRED` | Awaiting `>= 100 MHz` oscilloscope single-shot capture confirming `< 50 ns` `PA8` shutoff latency. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 15: FreeRTOS Multi-Tasking](../lab-15-freertos-multitask-producer-consumer/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 17: CORDIC & FMAC Math](../lab-17-cordic-fmac-hardware-math/README.md) ➡️

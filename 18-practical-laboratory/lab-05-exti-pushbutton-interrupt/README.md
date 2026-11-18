@@ -1,6 +1,8 @@
 # Lab 05: EXTI Pushbutton Interrupt, NVIC Priority & 3-Way API Comparison
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** [Lab 04: SysTick Accurate Delay](../lab-04-systick-accurate-delay-generator/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 06: TIM2 Periodic Interrupt](../lab-06-general-purpose-timer-periodic-interrupt/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `onboard_selftest` Test 4 (`EXTI13` `swier_cb=3/3`, `last_line=13`, `SYSCFG_EXTICR4=0x00000020`, zero spurious re-entry)
 
 > **Clock Configuration Profile:** **Primary = `16 MHz HSI16` (Reset Default)** | **160 MHz / 170 MHz Boost Compatibility:** Identical `SYSCFG`/`EXTI`/`NVIC` registers (`__DSB()` becomes even more critical at `160 MHz` / `170 MHz`) | **Reusable Drivers:** [`23-code-library/Drivers/exti_g4.h`](../../23-code-library/Drivers/exti_g4.h) (`EXTI_ConfigLine()`, `EXTI_RegisterCallback()`, `EXTI_DispatchRange()`, `EXTI_ClearPending()`), [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h), & [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h).
 
@@ -54,24 +56,30 @@ Route the NUCLEO-G474RE onboard Blue Button (`B1` on `PC13`, **Active-HIGH** per
 
 ### Explicit Clock Configuration Profile Declaration (`16 MHz` vs `160 MHz` vs `170 MHz`)
 
-`EXTI13` edge detection is asynchronous to `SYSCLK` and requires no frequency-dependent prescalers. However, at `160 MHz` and `170 MHz` Range 1 Boost, the AHB-to-APB2 posted-write latency (`EXTI->PR1` clear) relative to CPU instruction retirement makes the trailing **`__DSB()`** (ES0430 §2.1.3 / ARM Errata 838869) strictly mandatory:
+`EXTI13` edge detection is asynchronous to `SYSCLK` and requires no frequency-dependent prescalers. However, at `160 MHz` and `170 MHz` Range 1 Boost, the AHB-to-APB2 posted-write latency (`EXTI->PR1` clear) relative to CPU instruction retirement makes the authoritative **dummy readback + `__DSB()`** sequence (`EXTI->PR1 = EXTI_PR1_PIF13; (void)EXTI->PR1; __DSB();`, per RM0440 & ARM Erratum 838869 / ES0430 §2.1.3) strictly mandatory:
 
-| Clock Profile | `clock_g4.h` API | `SYSCFG`/`EXTI`/`NVIC` Registers | `EXTI->PR1` Clear & Barrier | Interrupt Stacking Latency (`12` Core Cycles) |
+| Clock Profile | `clock_g4.h` API | `SYSCFG`/`EXTI`/`NVIC` Registers | `EXTI->PR1` Clear, Readback & Barrier | Interrupt Stacking Latency (`12` Core Cycles) |
 |---|---|---|---|---|
-| **`16 MHz HSI16` *(Primary here)*** | Reset default | `EXTICR[3]=0x20`, `RTSR1=0x2000`, `IMR1=0x2000` | `EXTI->PR1 = EXTI_PR1_PIF13; __DSB();` | `~750 ns` |
-| **`160 MHz Range 1 Boost`** | `Clock_Init_160MHz()` | **Identical** (`EXTI` is clock-independent) | `EXTI->PR1 = EXTI_PR1_PIF13; __DSB();` | `~75.0 ns` |
-| **`170 MHz Range 1 Boost`** | `Clock_Init_170MHz()` | **Identical** (`EXTI` is clock-independent) | `EXTI->PR1 = EXTI_PR1_PIF13; __DSB();` | `~70.6 ns` |
+| **`16 MHz HSI16` *(Primary here)*** | Reset default | `EXTICR[3]=0x20`, `RTSR1=0x2000`, `IMR1=0x2000` | `EXTI->PR1 = EXTI_PR1_PIF13; (void)EXTI->PR1; __DSB();` | `~750 ns` |
+| **`160 MHz Range 1 Boost`** | `Clock_Init_160MHz()` | **Identical** (`EXTI` is clock-independent) | `EXTI->PR1 = EXTI_PR1_PIF13; (void)EXTI->PR1; __DSB();` | `~75.0 ns` |
+| **`170 MHz Range 1 Boost`** | `Clock_Init_170MHz()` | **Identical** (`EXTI` is clock-independent) | `EXTI->PR1 = EXTI_PR1_PIF13; (void)EXTI->PR1; __DSB();` | `~70.6 ns` |
 
-- **Reusable Production Driver (`23-code-library/Drivers/exti_g4.h`):** Replace boilerplate setup with `GPIO_ConfigInput(GPIOC, 13U, GPIO_PULL_NONE)`, `EXTI_RegisterCallback(13U, on_btn, NULL)`, `EXTI_ConfigLine(GPIOC, 13U, EXTI_EDGE_RISING, 3U)`, and call `EXTI_DispatchRange(10U, 15U)` inside `EXTI15_10_IRQHandler()` (includes `EXTI_ClearPending()` + `__DSB()` automatically).
+- **Reusable Production Driver (`23-code-library/Drivers/exti_g4.h`):** Replace boilerplate setup with `GPIO_ConfigInput(GPIOC, 13U, GPIO_PULL_NONE)`, `EXTI_RegisterCallback(13U, on_btn, NULL)`, `EXTI_ConfigLine(GPIOC, 13U, EXTI_EDGE_RISING, 3U)`, and call `EXTI_DispatchRange(10U, 15U)` inside `EXTI15_10_IRQHandler()` (includes `EXTI_ClearPending()` with `(void)EXTI->PR1;` readback + `__DSB()` automatically).
 
 > [!IMPORTANT]
-> **Why `__DSB()` Is Mandatory Before ISR Exit on Cortex-M4:** Peripheral writes to APB2 (`EXTI->PR1 = EXTI_PR1_PIF13`) traverse the Cortex-M4 write buffer and AHB-to-APB2 bridge. If the ISR executes `BX LR` before the write reaches the EXTI peripheral, NVIC still sees `EXTI13` asserted and immediately tail-chains a **spurious duplicate ISR entry**! Executing `__DSB()` forces the write to complete before exception return.
+> **Why `(void)EXTI->PR1;` Readback + `__DSB()` Are Both Mandatory Before ISR Exit on Cortex-M4:** These address **two distinct hardware mechanisms**:
+> 1. **APB2 Posted-Write Bridge Commit (`(void)EXTI->PR1;` — ARM AN321 §4.9):** Writing `EXTI->PR1 = EXTI_PR1_PIF13` posts a Device-memory store across the AHB-to-APB2 bridge. `__DSB()` alone drains the processor's internal write buffer, whereas the **dummy readback `(void)EXTI->PR1;`** stalls until the AHB-to-APB2 bridge physically commits the clear at the EXTI slave so NVIC does not observe a stale asserted `EXTI13` line and tail-chain a **spurious duplicate ISR entry**.
+> 2. **ARM Cortex-M4 r0p1 Erratum 838869 (`__DSB();` — ST ES0430 §2.1.3):** On Cortex-M4 r0p1 (`__CM4_REV = 0x0001U`), a stalling store-immediate instruction immediately overlapping an exception return (`BX LR` / `POP {PC}`) can cause the core to **vector to an incorrect interrupt handler**. Placing `__DSB();` after the dummy readback drains the write buffer/pipeline and prevents that overlap.
 
 ---
 
 ## 6. Code Implementation
 
+All three implementations below (**6.1 CMSIS Direct Register**, **6.2 STM32CubeG4 LL**, and **6.3 STM32CubeG4 HAL**) are **functionally equivalent, independently complete standalone programs** (`PA5` `LD2` output init + `PC13` `B1` rising-edge `EXTI13` init + `NVIC` `PRIGROUP=0` + complete `EXTI15_10_IRQHandler()` + `__WFI()` `main()` loop).
+
 ### 6.1 Approach A — Direct Register Access (CMSIS Bare-Metal)
+
+> **Build Scope:** *Complete Bare-Metal CMSIS Program — Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors).*
 
 ```c
 #include "stm32g474xx.h"
@@ -81,8 +89,12 @@ static volatile uint32_t g_button_irq_count = 0U;
 
 void EXTI15_10_IRQHandler(void) {
     if ((EXTI->PR1 & EXTI_PR1_PIF13) != 0U) {
-        /* 1. Clear pending flag via direct write-1 (rc_w1) — NEVER use |= */
+        /* 1. Clear pending flag via direct write-1 (rc_w1) — NEVER use |=
+         *    Follow with dummy readback to flush AHB-to-APB2 posted-write bridge
+         *    and __DSB() to drain CPU write buffer (ARM Erratum 838869). */
         EXTI->PR1 = EXTI_PR1_PIF13;
+        (void)EXTI->PR1;
+        __DSB();
 
         /* 2. Atomic LED toggle via BSRR (never non-atomic ODR ^= inside an ISR!) */
         if ((GPIOA->ODR & GPIO_ODR_OD5) != 0U) {
@@ -92,10 +104,6 @@ void EXTI15_10_IRQHandler(void) {
         }
 
         g_button_irq_count++;
-
-        /* 3. Data Synchronization Barrier: ensure PR1 clear reaches APB2
-         *    before exception return to prevent spurious re-entry */
-        __DSB();
     }
 }
 
@@ -107,10 +115,12 @@ int main(void) {
     (void)tmpreg;
     __DSB();
 
-    /* 2. PA5 -> Push-Pull Output */
-    GPIOA->MODER  &= ~(3U << (5U * 2U));
-    GPIOA->MODER  |=  (1U << (5U * 2U));
-    GPIOA->OTYPER &= ~(1U << 5U);
+    /* 2. PA5 -> Push-Pull Output, Low Speed, No Pull (clear STM32G4 11b reset first) */
+    GPIOA->MODER   &= ~(3U << (5U * 2U));
+    GPIOA->MODER   |=  (1U << (5U * 2U));
+    GPIOA->OTYPER  &= ~(1U << 5U);
+    GPIOA->OSPEEDR &= ~(3U << (5U * 2U));
+    GPIOA->PUPDR   &= ~(3U << (5U * 2U));
 
     /* 3. PC13 -> Digital Input (00b), No Pull (external pull-down on NUCLEO-G474RE) */
     GPIOC->MODER &= ~(3U << (13U * 2U));
@@ -124,6 +134,7 @@ int main(void) {
     EXTI->RTSR1 |=  EXTI_RTSR1_RT13;
     EXTI->FTSR1 &= ~EXTI_FTSR1_FT13;
     EXTI->PR1    =  EXTI_PR1_PIF13; /* Clear any stale pending flag */
+    (void)EXTI->PR1;
     EXTI->IMR1  |=  EXTI_IMR1_IM13;
 
     /* 6. Configure NVIC: 4 preemption priority bits, 0 subpriority bits */
@@ -141,61 +152,146 @@ int main(void) {
 
 ### 6.2 Approach B — STM32Cube Low-Layer (LL) Comparison
 
+> **Build Scope:** *Complete STM32CubeG4 LL Program (requires STM32CubeG4 LL headers in include path; not built by bare-metal CMSIS Makefile — Statically Reviewed).*
+
 ```c
-/* Requires stm32g4xx_ll_bus.h, stm32g4xx_ll_system.h, stm32g4xx_ll_exti.h */
+/* Complete STM32CubeG4 LL Program (requires STM32CubeG4 LL headers in include path;
+ * not built by bare-metal CMSIS Makefile) */
 #include "stm32g4xx_ll_bus.h"
 #include "stm32g4xx_ll_system.h"
 #include "stm32g4xx_ll_exti.h"
 #include "stm32g4xx_ll_gpio.h"
+#include <stdint.h>
 
-void Lab05_LL_EXTI13_Init(void) {
-    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SYSCFG);
+static volatile uint32_t g_button_irq_count = 0U;
+
+void EXTI15_10_IRQHandler(void) {
+    if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_13) != 0U) {
+        /* 1. Clear pending flag via rc_w1 write, flush AHB-to-APB2 posted-write
+         *    bridge via dummy readback, and execute __DSB() (ARM Erratum 838869). */
+        LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_13);
+        (void)EXTI->PR1;
+        __DSB();
+
+        /* 2. Atomic LED toggle via BSRR inside LL_GPIO_TogglePin() */
+        LL_GPIO_TogglePin(GPIOA, LL_GPIO_PIN_5);
+        g_button_irq_count++;
+    }
+}
+
+static void Lab05_LL_Init(void) {
+    /* 1. Enable GPIOA, GPIOC (AHB2) and SYSCFG (APB2) clocks (LL includes readback) */
+    LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
     LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
+    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SYSCFG);
 
+    /* 2. PA5 (LD2) -> Push-Pull Output, Low Speed, No Pull */
+    LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_5, LL_GPIO_MODE_OUTPUT);
+    LL_GPIO_SetPinOutputType(GPIOA, LL_GPIO_PIN_5, LL_GPIO_OUTPUT_PUSHPULL);
+    LL_GPIO_SetPinSpeed(GPIOA, LL_GPIO_PIN_5, LL_GPIO_SPEED_FREQ_LOW);
+    LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_5, LL_GPIO_PULL_NO);
+
+    /* 3. PC13 (B1) -> Digital Input, No Pull (external pull-down on NUCLEO-G474RE) */
     LL_GPIO_SetPinMode(GPIOC, LL_GPIO_PIN_13, LL_GPIO_MODE_INPUT);
     LL_GPIO_SetPinPull(GPIOC, LL_GPIO_PIN_13, LL_GPIO_PULL_NO);
-    LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTC, LL_SYSCFG_EXTI_LINE13);
 
+    /* 4. Route PC13 -> EXTI13 and enable Rising-Edge interrupt */
+    LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTC, LL_SYSCFG_EXTI_LINE13);
     LL_EXTI_EnableRisingTrig_0_31(LL_EXTI_LINE_13);
     LL_EXTI_DisableFallingTrig_0_31(LL_EXTI_LINE_13);
     LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_13);
+    (void)EXTI->PR1;
     LL_EXTI_EnableIT_0_31(LL_EXTI_LINE_13);
 
+    /* 5. Configure NVIC: 4 preemption bits, 0 subpriority bits */
+    NVIC_SetPriorityGrouping(0U);
     NVIC_SetPriority(EXTI15_10_IRQn, 3U);
+    NVIC_ClearPendingIRQ(EXTI15_10_IRQn);
     NVIC_EnableIRQ(EXTI15_10_IRQn);
+}
+
+int main(void) {
+    Lab05_LL_Init();
+
+    while (1) {
+        __WFI();
+    }
 }
 ```
 
 ### 6.3 Approach C — STM32Cube HAL Comparison
 
+> **Build Scope:** *Complete STM32CubeG4 HAL Program (requires STM32CubeG4 HAL drivers & `SysTick_Handler -> HAL_IncTick()` — Statically Reviewed).*
+
 ```c
-/* Requires stm32g4xx_hal.h; EXTI15_10_IRQHandler calls HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_13) */
+/* Complete STM32CubeG4 HAL Program (requires STM32CubeG4 HAL drivers &
+ * SysTick_Handler -> HAL_IncTick(); not built by bare-metal CMSIS Makefile) */
 #include "stm32g4xx_hal.h"
+#include <stdint.h>
 
-void Lab05_HAL_EXTI13_Init(void) {
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-    GPIO_InitTypeDef gpio = {0};
-    gpio.Pin  = GPIO_PIN_13;
-    gpio.Mode = GPIO_MODE_IT_RISING; /* Automatically enables SYSCFG + EXTICR + RTSR1 + IMR1 */
-    gpio.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(GPIOC, &gpio);
+static volatile uint32_t g_button_irq_count = 0U;
 
-    HAL_NVIC_SetPriority(EXTI15_10_IRQn, 3U, 0U);
-    HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+void SysTick_Handler(void) {
+    HAL_IncTick();
+}
+
+void EXTI15_10_IRQHandler(void) {
+    /* Clears EXTI->PR1 bit 13 and invokes HAL_GPIO_EXTI_Callback(GPIO_PIN_13) */
+    HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_13);
+    (void)EXTI->PR1;
+    __DSB();
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     if (GPIO_Pin == GPIO_PIN_13) {
         HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+        g_button_irq_count++;
+    }
+}
+
+static void Lab05_HAL_Init(void) {
+    /* 1. Initialize HAL (configures Flash prefetch, NVIC PRIGROUP=4, 1 ms SysTick) */
+    HAL_Init();
+    HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+
+    /* 2. Enable GPIOA and GPIOC clocks */
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+
+    /* 3. PA5 (LD2) -> Push-Pull Output, No Pull, Low Speed */
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin   = GPIO_PIN_5;
+    gpio.Mode  = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull  = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA, &gpio);
+
+    /* 4. PC13 (B1) -> Rising-Edge EXTI13 (automatically enables SYSCFG + EXTICR + RTSR1 + IMR1) */
+    gpio.Pin   = GPIO_PIN_13;
+    gpio.Mode  = GPIO_MODE_IT_RISING;
+    gpio.Pull  = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOC, &gpio);
+
+    /* 5. Configure and enable NVIC EXTI15_10_IRQn (preemption priority 3, subpriority 0) */
+    HAL_NVIC_SetPriority(EXTI15_10_IRQn, 3U, 0U);
+    HAL_NVIC_ClearPendingIRQ(EXTI15_10_IRQn);
+    HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+}
+
+int main(void) {
+    Lab05_HAL_Init();
+
+    while (1) {
+        __WFI();
     }
 }
 ```
 
 ### 6.4 3-Way Comparison Summary
 
-- **Direct Register:** Explicit control of `PR1` (`rc_w1`), `SYSCFGEN`, and `__DSB()`; minimum interrupt latency (12 cycles hardware stacking + ~8 cycles body).
-- **STM32 LL:** Identical runtime latency to Direct Register when compiled with `-O2`, while providing self-documenting macro names (`LL_SYSCFG_EXTI_PORTC`).
-- **STM32 HAL:** Automatically enables `SYSCFGEN` inside `HAL_GPIO_Init()`, but `HAL_GPIO_EXTI_IRQHandler()` adds function call overhead and weak-callback indirection.
+- **Direct Register:** Explicit control of `PR1` (`rc_w1`), `SYSCFGEN`, dummy readback `(void)EXTI->PR1;`, and `__DSB()`; minimum interrupt latency (12 cycles hardware stacking + ~8 cycles body).
+- **STM32 LL:** Identical runtime latency to Direct Register when compiled with `-O2`, while providing self-documenting inline wrappers (`LL_SYSCFG_EXTI_PORTC`, `LL_EXTI_ClearFlag_0_31`, atomic `LL_GPIO_TogglePin`).
+- **STM32 HAL:** Automatically enables `SYSCFGEN` inside `HAL_GPIO_Init()`, but `HAL_GPIO_EXTI_IRQHandler()` adds function call overhead and weak-callback indirection (`HAL_GPIO_EXTI_Callback`), and `HAL_Init()` requires `SysTick_Handler -> HAL_IncTick()`.
 
 ---
 
@@ -227,7 +323,7 @@ The CPU stays halted in `__WFI()` sleep mode consuming zero active loop cycles u
 | Interrupt never fires when pressing `B1` | Forgot `RCC->APB2ENR \|= RCC_APB2ENR_SYSCFGEN`, so `EXTICR[3]` stayed `0` (Port A!) | Enable `SYSCFGEN` before writing `SYSCFG->EXTICR[3]` |
 | Interrupt fires when *releasing* `B1` instead of pressing | Configured `EXTI->FTSR1` (falling edge) assuming STM32F4 Active-LOW | Use `EXTI->RTSR1` (rising edge) for NUCLEO-G474RE Active-HIGH `B1` |
 | CPU locks up executing ISR infinitely | Forgot to clear `EXTI->PR1` bit 13, or cleared with `&= ~` instead of `= (1U << 13)` | Write `EXTI->PR1 = EXTI_PR1_PIF13;` (`rc_w1` semantics) |
-| Occasional double-trigger right after clearing `PR1` | Posted APB2 write did not retire before ISR exit | Add `__DSB();` before leaving `EXTI15_10_IRQHandler` |
+| Occasional double-trigger right after clearing `PR1` | Posted APB2 write did not commit at EXTI slave before ISR exit (ARM AN321 §4.9), or store overlapped `BX LR` (ARM Erratum 838869 / ES0430 §2.1.3) | Perform `(void)EXTI->PR1;` dummy readback (APB2 bridge commit, AN321 §4.9) followed by `__DSB();` (write-buffer drain + ES0430 §2.1.3) before leaving `EXTI15_10_IRQHandler` |
 
 ---
 
@@ -236,7 +332,7 @@ The CPU stays halted in `__WFI()` sleep mode consuming zero active loop cycles u
 - [ ] Code compiles cleanly with `arm-none-eabi-gcc -Wall -Wextra -Werror`.
 - [ ] `SYSCFG->EXTICR[3]` bits `[7:4]` equal `2` (Port C) and `EXTI->RTSR1` bit 13 equals `1`.
 - [ ] Pressing `B1` increments `g_button_irq_count` on press (not release).
-- [ ] ISR uses atomic `GPIOA->BSRR` and ends with `__DSB()`.
+- [ ] ISR uses atomic `GPIOA->BSRR` and performs `(void)EXTI->PR1;` dummy readback followed by `__DSB();` before exit.
 
 ---
 
@@ -252,17 +348,32 @@ The CPU stays halted in `__WFI()` sleep mode consuming zero active loop cycles u
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` Test 4 using `exti_g4.c` on NUCLEO-G474RE; 3-way Register/LL/HAL complete)* |
 | **Objective** | Route Active-HIGH `B1` (`PC13`) via `SYSCFG->EXTICR[3]` to rising-edge `EXTI13` (`EXTI15_10_IRQn`), toggle `LD2` (`PA5`) atomically via `BSRR`, and clear `rc_w1` `EXTI->PR1` with `__DSB()` while comparing Register vs LL vs HAL. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,284 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `RCC`, `SYSCFG`, `EXTI`, `NVIC`, `GPIOA` (`PA5` `LD2`), `GPIOC` (`PC13` `B1`). Zero external wiring required (also supports software self-test via `EXTI->SWIER1` / `EXTI_TriggerSoftware(13)`). |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18; manual physical B1 press optional)` |
 | **Pin Configuration** | `PC13`: `MODER[27:26] = 00b`, `PUPDR[27:26] = 00b`, `EXTICR[3][7:4] = 0010b` (Port C), Rising Edge `RTSR1[13] = 1`; `PA5`: `MODER[11:10] = 01b`, `OTYPER[5] = 0`. |
 | **Expected Behavior** | CPU sleeps in `__WFI()` until `B1` rising edge (or software trigger `EXTI->SWIER1 = (1U << 13)`), enters `EXTI15_10_IRQHandler`, clears `PR1[13]`, toggles `LD2`, increments `g_button_irq_count`, and returns without spurious re-entry. |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` Test 4, 2026-11-18):** `[PASS] TEST4_TIM2_AND_EXTI13: EXTI13(swier_cb=3 last_line=13 SYSCFG_EXTICR4=0x00000020)` — verified `SYSCFGEN`, `EXTICR[3]` Port C mapping (`0x20`), `EXTI15_10_IRQHandler` dispatch, `EXTI->PR1` `rc_w1` clear + `(void)EXTI->PR1; __DSB();` with zero spurious duplicate entries across 3/3 software triggers. *(Approaches B/C LL & HAL statically reviewed.)* |
 | **Register Values** | Reset: `RCC->APB2ENR = 0`, `SYSCFG->EXTICR[3] = 0x0000`, `EXTI->IMR1 = 0x1F800000` (lines 0..15 masked). Configured: `RCC->APB2ENR[0] = 1` (`SYSCFGEN`), `SYSCFG->EXTICR[3][7:4] = 0x2`, `EXTI->RTSR1[13] = 1`, `EXTI->FTSR1[13] = 0`, `EXTI->IMR1[13] = 1`, `NVIC` `PRIGROUP = 0`, `EXTI15_10_IRQn (40)` prio = `3`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` break on `EXTI15_10_IRQHandler`, inspect `p/x SYSCFG->EXTICR[3]`, `p/x EXTI->RTSR1`, `p/x EXTI->PR1`, and verify `p g_button_irq_count` increments cleanly. |
-| **Remaining Limitations** | Raw mechanical button edge interrupt without timer blanking may trigger multiple counts on noisy tactile bounce (see Extension Exercise 1 and Lab 02 FSM). Physical board execution pending Agent 4. |
+| **Remaining Limitations** | Raw mechanical button edge interrupt without timer blanking may trigger multiple counts on noisy tactile bounce (see Extension Exercise 1 and Lab 02 FSM). Approaches B (LL) and C (HAL) require STM32CubeG4 headers and are statically reviewed. Manual physical `B1` finger press remains optional. |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | All 3 approaches (CMSIS Register, STM32CubeG4 LL, STM32CubeG4 HAL) independently complete with `PA5`+`PC13` init, `EXTI15_10_IRQHandler`, `(void)EXTI->PR1; __DSB();`, and `main()`. Verified against `stm32g474xx.h` & RM0440 Ch. 10/15. |
+| **Host test passed** | `PASS` | `tests/unit/test_drivers_math.c` verifies `exti_calc_exticr_index_shift()` for lines 0..15 (part of 292/292 driver helper assertions). |
+| **Cross-compilation passed** | `PASS` | Approach A bare-metal CMSIS & `exti_g4.c` compile cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE via `onboard_selftest.elf` (`VDD = 3.29 V`). |
+| **Physical behavior verified** | `PASS` | `TEST4_TIM2_AND_EXTI13` verified `SYSCFG_EXTICR4=0x00000020`, `swier_cb=3/3`, `last_line=13`, and zero duplicate re-entries. |
+| **Measurement verified** | `PARTIAL` | Onboard NVIC/SYSCFG/EXTI13 callback & register state verified (`PASS`); manual physical `B1` tactile actuation optional. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 04: SysTick Accurate Delay](../lab-04-systick-accurate-delay-generator/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 06: TIM2 Periodic Interrupt](../lab-06-general-purpose-timer-periodic-interrupt/README.md) ➡️

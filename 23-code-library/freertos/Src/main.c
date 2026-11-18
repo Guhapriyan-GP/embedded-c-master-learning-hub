@@ -227,6 +227,7 @@ void TIM2_IRQHandler(void)
 {
     if ((TIM2->SR & TIM_SR_UIF) != 0U) {
         TIM2->SR = ~TIM_SR_UIF; /* Atomic rc_w0 clear (NEVER RMW &= ~ on rc_w0!) */
+        (void)TIM2->SR;         /* Flush AHB-to-APB1 posted-write bridge */
         g_tim2_isr_total++;
 
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -242,6 +243,7 @@ void EXTI15_10_IRQHandler(void)
 {
     if ((EXTI->PR1 & EXTI_PR1_PIF13) != 0U) {
         EXTI->PR1 = EXTI_PR1_PIF13;
+        (void)EXTI->PR1;        /* Flush AHB-to-APB2 posted-write bridge */
         g_btn_isr_total++;
 
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;

@@ -1,6 +1,8 @@
 # Lab 09: ADC1 Single-Channel Acquisition & Hardware Self-Calibration
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `EXTERNAL HARDWARE PENDING` *(Requires External `10 kΩ` Potentiometer on `PA0` — User Connection Required)*
+> ⬅️ **Prev Lab:** [Lab 08: USART2 Driver & printf](../lab-08-usart-baremetal-driver-printf/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 10: ADC1 + Circular DMA1](../lab-10-adc-dma-multichannel-circular-buffer/README.md) ➡️
+
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `PENDING — USER CONNECTION REQUIRED` *(External `10 kΩ` potentiometer on `PA0` `ADC1_IN1`)*
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`CKMODE = 11b` $\implies f_{\text{ADC}} = 42.5\text{ MHz} \le 60\text{ MHz}$) | **Alternate = `160 MHz Range 1 Boost`** (`CKMODE = 11b` $\implies f_{\text{ADC}} = 40.0\text{ MHz} \le 60\text{ MHz}$) | **Reusable Drivers:** [`23-code-library/Drivers/adc_g4.h`](../../23-code-library/Drivers/adc_g4.h) (`adc_init_single_ended()`, `adc_read_channel()`, `adc_raw_to_mv()`, `adc_calc_vdda_mv()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
@@ -72,11 +74,11 @@ $$t_S = \frac{47.5}{42.5\text{ MHz}} = 1.118\ \mu\text{s}, \qquad t_{\text{CONV}
 
 12-bit ratiometric millivolt conversion (assuming $V_{\text{REF+}} = 3300\text{ mV}$):
 
-$$V_{\text{in}}\ (\text{mV}) = \frac{\text{ADC1\_DR} \times 3300}{4095}$$
+$$V_{\text{in}}\ (\text{mV}) = \frac{\text{ADC1}_{\text{DR}} \times 3300}{4095}$$
 
 ### 5.3 Mandatory Hardware Rules (RM0440 §21.4)
 
-1. **`ADC1->CR` Reset Value is `0x20000000` (`DEEPPWD = 1`):** You MUST clear `DEEPPWD` *before* setting `ADVREGEN = 1`, then wait $t_{\text{ADCVREG\_STUP}} \ge 20\ \mu\text{s}$.
+1. **`ADC1->CR` Reset Value is `0x20000000` (`DEEPPWD = 1`):** You MUST clear `DEEPPWD` *before* setting `ADVREGEN = 1`, then wait $t_{\text{ADCVREG,STUP}} \ge 20\ \mu\text{s}$.
 2. **Disabling an Already-Enabled ADC:** Clearing `ADEN` via `ADC1->CR &= ~ADC_CR_ADEN` does **nothing** in hardware! Per RM0440, `ADEN` is cleared exclusively by setting **`ADC1->CR |= ADC_CR_ADDIS`** and polling `ADEN == 0`.
 3. **Calibration (`ADCAL`):** Requires `ADEN == 0` and `ADCALDIF == 0` (for single-ended mode).
 4. **Enabling (`ADEN`) & `rc_w1` Clearing:** Clear `ADRDY` by direct assignment **`ADC1->ISR = ADC_ISR_ADRDY;`** (NEVER `|=`, which would wipe all other concurrently set status flags!).
@@ -284,7 +286,7 @@ Rotating the `10 kΩ` potentiometer wiper from `GND` to `3.3 V` smoothly sweeps 
 
 ## 11. Extension Exercises
 
-1. **True $V_{\text{DDA}}$ Self-Calibration via `VREFINT`:** Sample internal channel `ADC1_IN18` (`VREFINT`, $t_S \ge 4\ \mu\text{s}$, enable `ADC_CCR_VREFEN`) and compute exact $V_{\text{DDA}} = 3000\text{ mV} \times \frac{\text{VREFINT\_CAL}}{\text{raw}_{\text{vref}}}$ using the factory constant at `0x1FFF75AA` (`*VREFINT_CAL_ADDR`).
+1. **True $V_{\text{DDA}}$ Self-Calibration via `VREFINT`:** Sample internal channel `ADC1_IN18` (`VREFINT`, $t_S \ge 4\ \mu\text{s}$, enable `ADC_CCR_VREFEN`) and compute exact $V_{\text{DDA}} = 3000\text{ mV} \times \frac{\text{VREFINT}_{\text{CAL}}}{\text{raw}_{\text{vref}}}$ using the factory constant at `0x1FFF75AA` (`*VREFINT_CAL_ADDR`).
 2. **Hardware 16× Oversampling:** Enable `ADC1->CFGR2 |= ADC_CFGR2_ROVSE | (3U << ADC_CFGR2_OVSR_Pos) | (4U << ADC_CFGR2_OVSS_Pos)` to average 16 samples in hardware with zero CPU overhead.
 3. **Differential Input Mode:** Configure `ADC1->DIFSEL` and run differential calibration (`ADCALDIF = 1`) across `PA0`/`PA1`.
 
@@ -294,17 +296,32 @@ Rotating the `10 kΩ` potentiometer wiper from `GND` to `3.3 V` smoothly sweeps 
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` / `EXTERNAL HARDWARE PENDING` |
+| **Verification Status** | `CROSS-COMPILED` / `PENDING — USER CONNECTION REQUIRED` |
 | **Objective** | Initialize `ADC1` with safe DS12288 synchronous clocking (`CKMODE = 11b`, `42.5 MHz @ 170 MHz` / `40.0 MHz @ 160 MHz <= 60 MHz`), execute `DEEPPWD -> ADVREGEN -> ADCAL -> ADEN` with bounded timeouts, and read an external `10 kΩ` potentiometer on `PA0` (`ADC1_IN1`). |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,612 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **External Hardware Required:** `ADC1`, `GPIOA` (`PA0`) + external `10 kΩ` linear potentiometer (wiper -> `PA0`, ends -> `3V3`/`GND`) + optional `100 nF` filter cap and handheld DMM. |
-| **Hardware Availability** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` |
+| **Hardware Availability** | `PENDING — USER CONNECTION REQUIRED` *(External `10 kΩ` potentiometer on `PA0` `ADC1_IN1`)* |
 | **Pin Configuration** | `PA0` (Arduino `A0`, `ADC1_IN1`): `MODER[1:0] = 11b` (Analog), `PUPDR[1:0] = 00b` (No Pull). Voltage strictly constrained to `0..3.3 V`. |
 | **Expected Behavior** | Sweeping potentiometer wiper from `0 V` to `3.3 V` smoothly varies `g_adc_raw` across `0..4095` and `g_adc_mv` across `0..3300 mV` within `±25 mV` of DMM reading. |
-| **Actual Observations** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; external potentiometer sweep deferred until user connects hardware. Note: onboard internal ADC1 `VREFINT`/`Temp` verification is covered in Lab 10)*. |
+| **Actual Observations** | `PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; underlying `adc_g4.c` `CKMODE=11b`, `DEEPPWD=0`, `ADVREGEN`, `ADCAL`, `ADEN` silicon path passed on internal channels in `onboard_selftest` Test 5B; external `PA0` potentiometer sweep deferred until user connects hardware per `HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md`)*. |
 | **Register Values** | Reset: `ADC1->CR = 0x20000000` (`DEEPPWD=1`), `ADC12_COMMON->CCR = 0x00000000`. Configured: `ADC12_COMMON->CCR[17:16] = 11b` (`0x00030000`), `ADC1->CR`: `DEEPPWD=0, ADVREGEN=1, ADEN=1, ADCAL=0`, `ADC1->SQR1 = 0x00000040` (`SQ1=1, L=0`), `ADC1->SMPR1[5:3] = 100b` (`47.5` cyc). |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` verify `p/x ADC12_COMMON->CCR`, `p/x ADC1->CR`, `p/x ADC1->CALFACT`, `p g_adc_raw`, `p g_adc_mv` against DMM on `PA0`. |
-| **Remaining Limitations** | Assumes nominal `3300 mV` $V_{\text{DDA}}$ unless dynamically calibrated via `VREFINT` (`ADC1_IN18`, demonstrated in Lab 10 and `adc_g4.h`). External potentiometer test pending user wiring. |
+| **Remaining Limitations** | External `10 kΩ` potentiometer sweep on `PA0` (`0..3.28 V` strictly, NEVER `5 V`!) and DMM linearity comparison await user connection. |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | `DEEPPWD=0 -> ADVREGEN -> >=20 us -> ADCAL -> >=4 ADC clk -> ADEN`, `CKMODE=11b`, and `SMPR1` verified against `stm32g474xx.h` & RM0440 §21.4. |
+| **Host test passed** | `PASS` | `tests/unit/test_drivers_math.c` verifies `adc_raw_to_mv()`, `adc_calc_vdda_mv()`, and `adc_temp_mdegc()` math accuracy. |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS lab & `adc_g4.c` compile cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings). |
+| **On-target upload succeeded** | `PENDING — USER CONNECTION REQUIRED` | External `PA0` pot lab deferred until user wires `10 kΩ` pot (note: `adc_g4.c` core init was verified onboard via Test 5B). |
+| **Physical behavior verified** | `PENDING — USER CONNECTION REQUIRED` | Awaiting external `10 kΩ` potentiometer on `PA0` (`0..3.3 V`) to verify monotonic `0..4095` sweep. |
+| **Measurement verified** | `PENDING — USER CONNECTION REQUIRED` | Awaiting DMM vs `ADC1->DR` comparison (`±5 mV`) on `PA0`. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 08: USART2 Driver & printf](../lab-08-usart-baremetal-driver-printf/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 10: ADC1 + Circular DMA1](../lab-10-adc-dma-multichannel-circular-buffer/README.md) ➡️

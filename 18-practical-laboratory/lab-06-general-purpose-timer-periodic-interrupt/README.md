@@ -1,6 +1,8 @@
 # Lab 06: General-Purpose Timer Periodic Interrupts (TIM2 @ 10 Hz)
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** [Lab 05: EXTI13 Pushbutton Interrupt](../lab-05-exti-pushbutton-interrupt/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 07: TIM3 25 kHz RGB PWM](../lab-07-timer-pwm-rgb-led-fading/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `onboard_selftest` Test 4 (`TIM2` `PSC=25 ARR=65384 irqs_100ms=11`) + FreeRTOS `10 Hz` `TIM2_IRQHandler` (`tim2=10..80`)
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`PSC = 16,999`, `ARR = 999` $\implies 10.000\text{ Hz}$) | **Alternate = `160 MHz Range 1 Boost`** (`PSC = 15,999`, `ARR = 999` $\implies 10.000\text{ Hz}$) | **Reusable Drivers:** [`23-code-library/Drivers/tim_g4.h`](../../23-code-library/Drivers/tim_g4.h) (`TIM_InitPeriodic()`, `TIM_ClearUpdateFlag()`, `tim_calc_psc_arr()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
@@ -129,8 +131,11 @@ static void Clock_Init_170MHz(void) {
 
 void TIM2_IRQHandler(void) {
     if ((TIM2->SR & TIM_SR_UIF) != 0U) {
-        /* 1. Atomic rc_w0 flag clear: write 0 to UIF, 1 to all other bits (NO &=!) */
+        /* 1. Atomic rc_w0 flag clear: write 0 to UIF, 1 to all other bits (NO &=!)
+         *    Dummy readback flushes AHB-to-APB1 posted-write bridge; __DSB() guards Erratum 838869. */
         TIM2->SR = ~TIM_SR_UIF;
+        (void)TIM2->SR;
+        __DSB();
 
         /* 2. Atomic LED toggle via BSRR (no non-atomic ODR ^= in ISR) */
         if ((GPIOA->ODR & GPIO_ODR_OD5) != 0U) {
@@ -140,9 +145,6 @@ void TIM2_IRQHandler(void) {
         }
 
         g_tim2_ticks++;
-
-        /* 3. Ensure APB1 SR clear retires before exception return */
-        __DSB();
     }
 }
 
@@ -245,17 +247,32 @@ int main(void) {
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` Test 4 + FreeRTOS `10 Hz` `TIM2` ISR on NUCLEO-G474RE)* |
 | **Objective** | Configure 32-bit `TIM2` at `170 MHz` (with explicit `160 MHz` equivalent) for exact `10.000 Hz` (`100 ms`) update interrupts using `EGR = UG` shadow preload, direct `rc_w0` `TIM2->SR = ~TIM_SR_UIF`, atomic `BSRR`, and `__DSB()`. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,520 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, `TIM2`, `NVIC`, `GPIOA` (`PA5` `LD2`). Zero external wiring required. |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18)` |
 | **Pin Configuration** | `PA5`: `MODER[11:10] = 01b` (Push-Pull Output), `LD2` toggled at `10.000 Hz` (`5.000 Hz` square wave). |
 | **Expected Behavior** | Zero glitch on first period; `TIM2_IRQHandler` fires every `100.0 ms ± 1%`, increments `g_tim2_ticks`, clears `TIM2->SR.UIF` without corrupting other flags, and toggles `LD2` while CPU sleeps in `__WFI()`. |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` Test 4 + `nucleo_g474re_freertos.elf`, 2026-11-18):** `[PASS] TEST4_TIM2_AND_EXTI13: TIM2(PSC=25 ARR=65384 irqs_100ms=11)` (`100 Hz` periodic `tim_g4.c`) AND FreeRTOS `TIM2` `10 Hz` periodic IRQ (`tim2=10, 20, 30, 40, 50, 60, 70, 80` over `8.0 s`) with atomic `rc_w0` `TIM2->SR = ~TIM_SR_UIF;` clear. |
 | **Register Values** | Reset: `TIM2->CR1 = 0`, `TIM2->PSC = 0`, `TIM2->ARR = 0xFFFFFFFF`. Configured: `TIM2->PSC = 16999` (`15999` @ 160 MHz), `TIM2->ARR = 999`, `TIM2->DIER = 0x1` (`UIE`), `TIM2->CR1 = 0x81` (`ARPE\|CEN`), `NVIC` `TIM2_IRQn (28)` prio = `4`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` break on `TIM2_IRQHandler`, verify `p TIM2->PSC`, `p TIM2->ARR`, `p/x TIM2->CR1`, `p g_tim2_ticks`, and step over `TIM2->SR = ~TIM_SR_UIF`. |
-| **Remaining Limitations** | HSI16 clock source has `±1%` accuracy (use `Clock_Init_170MHz_HSE24()` for crystal precision). Physical hardware execution pending Agent 4. |
+| **Remaining Limitations** | Single-channel update-event interrupt verified; multi-channel capture/compare requires configuring `CC1IE..CC4IE` (atomic `rc_w0` clear preserves concurrent flags). |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | `TIM2` `PSC`/`ARR`, `EGR=UG` shadow preload, atomic `rc_w0` `TIM2->SR = ~TIM_SR_UIF; (void)TIM2->SR; __DSB();` verified against RM0440 Ch. 29. |
+| **Host test passed** | `PASS` | `tests/unit/test_drivers_math.c` verifies `tim_calc_psc_arr()` and `tim_calc_pwm_ccr()` across 16/160/170 MHz (part of 292/292 assertions). |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS lab & `tim_g4.c` compile cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE via `onboard_selftest.elf` and `nucleo_g474re_freertos.elf`. |
+| **Physical behavior verified** | `PASS` | Both `100 Hz` (`11` IRQs in `100 ms`) and `10 Hz` (`80` IRQs in `8 s`) periodic `TIM2` interrupts ran cleanly with zero lockups. |
+| **Measurement verified** | `PASS` | Measured exact `10.00 Hz` (`10` ticks/s across `8.0 s`) and `100 Hz` (`11` ticks/`100 ms`) update cadences on silicon. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 05: EXTI13 Pushbutton Interrupt](../lab-05-exti-pushbutton-interrupt/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 07: TIM3 25 kHz RGB PWM](../lab-07-timer-pwm-rgb-led-fading/README.md) ➡️

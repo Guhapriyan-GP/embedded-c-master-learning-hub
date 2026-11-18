@@ -1,6 +1,8 @@
 # Lab 01: Bare-Metal GPIO LED Blinky (Register vs LL vs HAL)
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** *(Start of Practical Laboratory)* | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 02: GPIO Pushbutton Debouncing](../lab-02-gpio-pushbutton-debouncing/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `onboard_selftest` Test 2 (`PA5` `BSRR` set/rst/tog, `GPIOA_MODER=0xABFFF7AF`) + restored `170 MHz` blinky template (`firmware.elf`)
 
 > **Clock Configuration Profile:** **Primary = `16 MHz HSI16` (Reset Default)** | **Reusable Drivers:** [`23-code-library/Drivers/gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h) (`GPIO_EnableClock()`, `GPIO_ConfigOutput()`, `GPIO_SetPin()`, `GPIO_ResetPin()`, `GPIO_TogglePin()`) & [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_160MHz()`, `Clock_Init_170MHz()`, `Clock_DelayMs()`).
 
@@ -85,7 +87,11 @@ This introductory lab intentionally runs at the STM32G474RE reset clock (**`16 M
 
 ## 6. Code Implementation
 
+All three implementations below (**6.1 CMSIS Direct Register**, **6.2 STM32CubeG4 LL**, and **6.3 STM32CubeG4 HAL**) are **functionally equivalent, independently complete standalone programs** configuring `PA5` (`LD2`) out of STM32G4's `11b` Analog reset state into push-pull digital output and blinking it atomically via `BSRR`.
+
 ### 6.1 Approach A — Direct Register Access (CMSIS Bare-Metal)
+
+> **Build Scope:** *Complete Bare-Metal CMSIS Program — Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors).*
 
 ```c
 #include "stm32g474xx.h"
@@ -130,33 +136,60 @@ int main(void) {
 
 ### 6.2 Approach B — STM32Cube Low-Layer (LL) API Comparison
 
+> **Build Scope:** *Complete STM32CubeG4 LL Program (requires STM32CubeG4 LL headers in include path; not built by bare-metal CMSIS Makefile — Statically Reviewed).*
+
 ```c
-/* Requires stm32g4xx_ll_bus.h and stm32g4xx_ll_gpio.h */
+/* Complete STM32CubeG4 LL Program (requires STM32CubeG4 LL headers in include path;
+ * not built by bare-metal CMSIS Makefile) */
 #include "stm32g4xx_ll_bus.h"
 #include "stm32g4xx_ll_gpio.h"
+#include <stdint.h>
 
-void Lab01_LL_GPIO_Init(void) {
-    LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA); /* Includes dummy readback internally */
+static void delay_cycles(volatile uint32_t count) {
+    while (count > 0U) {
+        count--;
+        __NOP();
+    }
+}
+
+static void Lab01_LL_GPIO_Init(void) {
+    /* 1. Enable GPIOA clock on AHB2 (LL macro includes dummy readback internally) */
+    LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
+
+    /* 2. Configure PA5 as Push-Pull Output, Low Speed, No Pull */
     LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_5, LL_GPIO_MODE_OUTPUT);
     LL_GPIO_SetPinOutputType(GPIOA, LL_GPIO_PIN_5, LL_GPIO_OUTPUT_PUSHPULL);
     LL_GPIO_SetPinSpeed(GPIOA, LL_GPIO_PIN_5, LL_GPIO_SPEED_FREQ_LOW);
     LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_5, LL_GPIO_PULL_NO);
 }
 
-static inline void Lab01_LL_LED_Toggle(void) {
-    LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_5);   /* Compiles to single STR to BSRR */
-    LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_5); /* Compiles to single STR to BSRR */
+int main(void) {
+    Lab01_LL_GPIO_Init();
+
+    while (1) {
+        LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_5);   /* Compiles to single STR to BSRR */
+        delay_cycles(400000U);
+        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_5); /* Compiles to single STR to BSRR */
+        delay_cycles(400000U);
+    }
 }
 ```
 
 ### 6.3 Approach C — STM32Cube HAL API Comparison
 
+> **Build Scope:** *Complete STM32CubeG4 HAL Program (requires STM32CubeG4 HAL drivers & `SysTick_Handler -> HAL_IncTick()` — Statically Reviewed).*
+
 ```c
-/* Requires stm32g4xx_hal.h and configured SysTick HAL_IncTick() */
+/* Complete STM32CubeG4 HAL Program (requires STM32CubeG4 HAL drivers &
+ * SysTick_Handler -> HAL_IncTick(); not built by bare-metal CMSIS Makefile) */
 #include "stm32g4xx_hal.h"
 
-void Lab01_HAL_GPIO_Init(void) {
-    __HAL_RCC_GPIOA_CLK_ENABLE(); /* Includes dummy readback */
+void SysTick_Handler(void) {
+    HAL_IncTick();
+}
+
+static void Lab01_HAL_GPIO_Init(void) {
+    __HAL_RCC_GPIOA_CLK_ENABLE(); /* Includes dummy readback internally */
 
     GPIO_InitTypeDef gpio = {0};
     gpio.Pin   = GPIO_PIN_5;
@@ -166,11 +199,15 @@ void Lab01_HAL_GPIO_Init(void) {
     HAL_GPIO_Init(GPIOA, &gpio);
 }
 
-void Lab01_HAL_LED_Loop(void) {
+int main(void) {
+    /* 1. Initialize HAL (configures Flash prefetch, NVIC PRIGROUP=4, 1 ms SysTick) */
+    HAL_Init();
+    Lab01_HAL_GPIO_Init();
+
     while (1) {
-        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);   /* Writes BSRR */
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);   /* Atomic write to BSRR */
         HAL_Delay(500U);
-        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); /* Writes BSRR */
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); /* Atomic write to BSRR */
         HAL_Delay(500U);
     }
 }
@@ -241,17 +278,32 @@ On a NUCLEO-G474RE running at default reset clock (`16 MHz HSI16`), green LED **
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` Test 2 + `23-code-library/templates/build/firmware.elf` on NUCLEO-G474RE)* |
 | **Objective** | Configure onboard Green LED `LD2` (`PA5`) out of STM32G4 Analog reset mode (`MODER5 = 11b -> 01b`) and blink atomically via `GPIOA->BSRR` while comparing Register, ST LL, and ST HAL APIs. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`960 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `RCC`, `GPIOA`, onboard Green LED `LD2` (`PA5` via `SB42`/`SB6`). Zero external wiring required. |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18)` |
 | **Pin Configuration** | `PA5`: `MODER = 01b` (Output), `OTYPER = 0` (Push-Pull), `OSPEEDR = 00b` (Low), `PUPDR = 00b` (No Pull); `PA13`/`PA14` SWD pins preserved untouched. |
 | **Expected Behavior** | At `16 MHz HSI16`, `LD2` (`PA5`) blinks steadily; `GPIOA->ODR` bit 5 toggles `0 <-> 1` cleanly via atomic `BSRR` writes (`BS5` / `BR5`). |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` Test 2 + restored `firmware.elf`, 2026-11-18):** `[PASS] TEST2_GPIO_LD2_B1: PA5(set=1 rst=0 tog=1) GPIOA_MODER=0xABFFF7AF`; `PA13`/`PA14` SWD bits preserved untouched. *(Approaches B/C LL & HAL statically reviewed; bare-metal CMSIS Approach A compile-verified.)* |
 | **Register Values** | Reset: `RCC->AHB2ENR = 0x00000000`, `GPIOA->MODER = 0xABFFFFFF`. Configured: `RCC->AHB2ENR[0] = 1`, `GPIOA->MODER = 0xABFFF7FF` (`MODER5[11:10] = 01b`), `GPIOA->OTYPER[5] = 0`, `GPIOA->BSRR = 0x00000020` (`BS5`) / `0x00200000` (`BR5`). |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD (`openocd -f interface/stlink.cfg -f target/stm32g4x.cfg`); in `arm-none-eabi-gdb` verify `x/1wx 0x4002104C`, `x/1wx 0x48000000`, and `x/1wx 0x48000014` across `BSRR` steps. |
-| **Remaining Limitations** | Busy-wait `delay_cycles()` timing depends on optimization level (`-O0` vs `-O2`) and `SYSCLK`; deterministic timing is implemented via `SysTick` (Lab 04) or `Clock_DelayMs()` (`clock_g4.h`). Physical board execution pending Agent 4. |
+| **Remaining Limitations** | Busy-wait `delay_cycles()` timing depends on optimization level (`-O0` vs `-O2`) and `SYSCLK`; deterministic timing uses `SysTick` (Lab 04) or `Clock_DelayMs()` (`clock_g4.h`). Approaches B (LL) and C (HAL) require STM32CubeG4 headers and are statically reviewed. Optional oscilloscope slew-rate (`OSPEEDR`) sweep requires external scope (`PENDING — USER CONNECTION REQUIRED`). |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | All registers/masks (`RCC_AHB2ENR_GPIOAEN`, `MODER=0xABFFFFFF` reset, `BSRR`) verified against `stm32g474xx.h` & RM0440 §9.4; Approaches B (LL) & C (HAL) statically reviewed. |
+| **Host test passed** | `PASS` | `tests/unit/test_gpio_mock.c` (82/82 assertions passing via `gcc 15.2.0`) verifies `GPIO_ConfigOutput()`, `MODER=11b -> 01b`, `BSRR`, and `PA13`/`PA14` SWD preservation. |
+| **Cross-compilation passed** | `PASS` | Approach A bare-metal CMSIS compiles cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified via SWD (`8000 KHz`, `VDD = 3.28–3.29 V`) in `onboard_selftest.elf` and `23-code-library/templates/build/firmware.elf`. |
+| **Physical behavior verified** | `PASS` | `TEST2_GPIO_LD2_B1` confirmed `PA5(set=1 rst=0 tog=1)` and `GPIOA_MODER=0xABFFF7AF` live on NUCLEO-G474RE silicon. |
+| **Measurement verified** | `PARTIAL` | Onboard register & `PA5` logic state verified (`PASS`); optional `OSPEEDR` oscilloscope slew-rate measurement (`DIG-ELEC-006`) is `PENDING — USER CONNECTION REQUIRED`. |
+
+---
+
+> ⬅️ **Prev Lab:** *(Start of Practical Laboratory)* | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 02: GPIO Pushbutton Debouncing](../lab-02-gpio-pushbutton-debouncing/README.md) ➡️

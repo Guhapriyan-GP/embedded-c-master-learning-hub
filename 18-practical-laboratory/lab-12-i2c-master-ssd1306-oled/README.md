@@ -1,6 +1,8 @@
 # Lab 12: I2C1 Master 400 kHz Fast Mode & SSD1306 OLED Display (with NACK/Bus Recovery)
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `EXTERNAL HARDWARE PENDING` *(Requires External SSD1306 I2C OLED + 2.2–4.7 kΩ Pull-Ups on `PA15`/`PB7` — User Connection Required)*
+> ⬅️ **Prev Lab:** [Lab 11: SPI1 Master Interfacing](../lab-11-spi-master-sensor-interfacing/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 13: IWDG Hardware Watchdog](../lab-13-iwdg-hardware-watchdog/README.md) ➡️
+
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `PENDING — USER CONNECTION REQUIRED` *(External `3.3 V` SSD1306 OLED + `4.7 kΩ` pull-ups on `PA15`/`PB7`; absent-slave `NACKF` recovery verified in Project 02)*
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`TIMINGR = 0x70811021` worst-case $t_r=300\text{ ns}$, or `i2c_g4.h` `0x30B21F3B`) | **Alternate = `160 MHz Range 1 Boost`** (`TIMINGR = 0x70710F1F` worst-case $t_r=300\text{ ns}$, or `i2c_g4.h` `0x30B21D38`) | **Reusable Drivers:** [`23-code-library/Drivers/i2c_g4.h`](../../23-code-library/Drivers/i2c_g4.h) (`i2c_init_master()`, `i2c_write()`, `i2c_read_reg()`, `i2c_recover_bus_9clks()`, `i2c_select_timingr()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
@@ -376,17 +378,32 @@ With an SSD1306 OLED attached (and external `2.2 kΩ` pull-ups), `g_last_status 
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` / `EXTERNAL HARDWARE PENDING` |
+| **Verification Status** | `CROSS-COMPILED` / `PENDING — USER CONNECTION REQUIRED` *(Absent-slave `NACKF` handling verified onboard in Project 02; OLED display transfer pending external wiring)* |
 | **Objective** | Drive an `I2C1` 400 kHz Fast Mode Master on `PA15`/`PB7` (`AF4` Open-Drain, completely avoiding the `PB8-BOOT0` trap) with RM0440 §39.4.9 `TIMINGR` (`0x70811021` @ 170 MHz / `0x70710F1F` @ 160 MHz), 9-clock bus recovery, bounded `NACKF` handling, and `RELOAD` chunking for a 1025-byte SSD1306 framebuffer. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`2,284 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **External Hardware Required:** `I2C1`, `GPIOA`/`GPIOB` + external `0.96"` `128×64` SSD1306 I2C OLED (`0x3C`) + two external `2.2 kΩ`–`4.7 kΩ` pull-up resistors to `3.3 V` (+ optional oscilloscope/logic analyzer). |
-| **Hardware Availability** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` |
+| **Hardware Availability** | `PENDING — USER CONNECTION REQUIRED` *(External `3.3 V` SSD1306 OLED + `4.7 kΩ` pull-ups on `PA15`/`PB7`, avoiding `PB8-BOOT0`)* |
 | **Pin Configuration** | `PA15` (`CN7` pin 17, `I2C1_SCL`, `AF4`, `OTYPER=1` Open-Drain, `OSPEEDR=10b`, `PUPDR=00b`); `PB7` (`CN7` pin 21, `I2C1_SDA`, `AF4`, `OTYPER=1` Open-Drain, `OSPEEDR=10b`, `PUPDR=00b`). Avoids `PB8-BOOT0` (`R36` 10 kΩ pull-down). |
 | **Expected Behavior** | Bus idles at `3.3 V`; SSD1306 ACKs init + charge-pump (`0x8D, 0x14`) + 1025-byte `RELOAD` framebuffer displaying horizontal stripes (`g_last_status == I2C_OK`); disconnecting OLED returns `I2C_ERR_NACK` cleanly without hanging. |
-| **Actual Observations** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; physical SSD1306 OLED & I2C waveform measurement deferred until user connects external OLED & pull-ups)*. |
+| **Actual Observations** | `PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; `i2c_g4.c` bounded absent-slave `NACKF` detection verified live on NUCLEO-G474RE in Project 02: `[BOOT] I2C1 OLED (PA15/PB7 0x3C): ABSENT`; full 400 kHz OLED `RELOAD` framebuffer & 9-clock recovery await user connection per `HARDWARE_VALIDATION/PENDING_EXTERNAL_CONNECTIONS.md`)*. |
 | **Register Values** | Reset: `I2C1->CR1 = 0`, `I2C1->TIMINGR = 0`. Configured: `I2C1->TIMINGR = 0x70811021` (`170 MHz`) or `0x70710F1F` (`160 MHz`) — or via `i2c_g4.h`: `0x30B21F3B` (`170 MHz`) / `0x30B21D38` (`160 MHz`); `I2C1->CR1 = 0x1` (`PE=1`); `GPIOA->OTYPER[15] = 1`, `GPIOB->OTYPER[7] = 1`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` verify `p/x I2C1->TIMINGR`, `p/x I2C1->ISR`, `p g_last_status`; verify `3.3 V` idle + `<= 400 kHz` SCL on oscilloscope once OLED & pull-ups are wired. |
-| **Remaining Limitations** | Requires external SSD1306 OLED and external pull-ups for physical ACK and display validation; without pull-ups on `PA15`/`PB7`, `I2C1` reads `BUSY` or `NACK`. |
+| **Remaining Limitations** | Requires external `3.3 V` SSD1306 OLED (`0x3C`) + `4.7 kΩ` pull-ups on `PA15`/`PB7` (NEVER `PB8-BOOT0`) and optional oscilloscope to verify `t_SCLL`/`t_SCLH` and 9-clock bus recovery. |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | `PA15`/`PB7` `AF4` (`PB8-BOOT0` safe), `TIMINGR` (`0x70811021` @ 170 MHz / `0x70710F1F` @ 160 MHz), `RELOAD` >255 B, Repeated START, and 9-clock recovery verified against RM0440 Ch. 39. |
+| **Host test passed** | `PASS` | `tests/unit/test_drivers_math.c` verifies `i2c_select_timingr()` across `16`/`160`/`170 MHz` and `100`/`400 kHz`. |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS lab & `i2c_g4.c` compile cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings). |
+| **On-target upload succeeded** | `PENDING — USER CONNECTION REQUIRED` | Full OLED lab deferred until external OLED is connected (bounded absent-slave `NACKF` path of `i2c_g4.c` verified in Project 02). |
+| **Physical behavior verified** | `PENDING — USER CONNECTION REQUIRED` | Awaiting external `0x3C` SSD1306 OLED + `4.7 kΩ` pull-ups on `PA15`/`PB7` for live display & `i2c_recover_bus_9clks()` verification. |
+| **Measurement verified** | `PENDING — USER CONNECTION REQUIRED` | Awaiting oscilloscope verification of `400 kHz` `t_SCLL >= 1.3 µs` and `t_SCLH >= 0.6 µs` on `PA15`/`PB7`. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 11: SPI1 Master Interfacing](../lab-11-spi-master-sensor-interfacing/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 13: IWDG Hardware Watchdog](../lab-13-iwdg-hardware-watchdog/README.md) ➡️

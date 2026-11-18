@@ -221,8 +221,11 @@ void BSP_USART2_Init_115200(void)
 
 void BSP_USART2_WriteChar(char c)
 {
+    uint32_t timeout = BSP_READY_TIMEOUT;
     while ((USART2->ISR & USART_ISR_TXE_TXFNF) == 0U) {
-        /* wait for TX data register empty */
+        if (--timeout == 0U) {
+            return; /* Bounded timeout prevents permanent task deadlock */
+        }
     }
     USART2->TDR = (uint8_t)c;
 }
@@ -262,12 +265,15 @@ void BSP_TIM2_Init_10Hz(uint32_t nvic_priority)
     DBGMCU->APB1FZR1 |= DBGMCU_APB1FZR1_DBG_TIM2_STOP;
 
     TIM2->CR1  = 0U;
-    /* PCLK1 = 170 MHz -> PSC = 16999 => 10 kHz tick; ARR = 999 => 10 Hz (100 ms) */
-    TIM2->PSC  = 16999U;
+    /* Dynamic 10 kHz tick from SystemCoreClock (16999 @ 170 MHz, 15999 @ 160 MHz, 1599 @ 16 MHz);
+     * ARR = 999 => exact 10 Hz (100 ms) period across all clock profiles */
+    uint32_t psc_div = SystemCoreClock / 10000UL;
+    TIM2->PSC  = (psc_div > 0U) ? (psc_div - 1U) : 0U;
     TIM2->ARR  = 999U;
     TIM2->CNT  = 0U;
     TIM2->EGR  = TIM_EGR_UG;
-    TIM2->SR   = 0U;
+    TIM2->SR   = ~TIM_SR_UIF;
+    (void)TIM2->SR;
     TIM2->DIER = TIM_DIER_UIE;
 
     NVIC_SetPriority(TIM2_IRQn, nvic_priority);
@@ -298,11 +304,19 @@ bool BSP_IWDG_Init_3000ms(void)
     }
 
     /* RM0440 §35.3.2 exact sequence:
-     * 1. Enable IWDG (0xCCCC), 2. Unlock (0x5555), 3. Set PR & RLR,
-     * 4. Wait SR == 0 (PVU/RVU clear), 5. Reload (0xAAAA).
+     * 1. Enable IWDG (0xCCCC), 2. Unlock (0x5555), 3. Wait prior PVU/RVU clear,
+     * 4. Set PR & RLR, 5. Wait SR == 0 (PVU/RVU clear), 6. Reload (0xAAAA).
      * PR = 0x03 -> /32 => 32 kHz / 32 = 1 kHz; RLR = 3000 => ~3.0 s timeout. */
     IWDG->KR  = 0x0000CCCCUL;
     IWDG->KR  = 0x00005555UL;
+
+    timeout = BSP_READY_TIMEOUT;
+    while ((IWDG->SR & (IWDG_SR_PVU | IWDG_SR_RVU)) != 0U) {
+        if (--timeout == 0U) {
+            return false;
+        }
+    }
+
     IWDG->PR  = 0x00000003UL;
     IWDG->RLR = 3000UL;
 

@@ -153,6 +153,7 @@ tim_status_t TIM_InitPeriodic(TIM_TypeDef *tim, uint32_t freq_hz,
     tim->CR1 |= TIM_CR1_ARPE;
     tim->EGR  = TIM_EGR_UG;
     tim->SR   = ~TIM_SR_UIF;
+    (void)tim->SR;
 
     if (enable_irq) {
         tim->DIER |= TIM_DIER_UIE;

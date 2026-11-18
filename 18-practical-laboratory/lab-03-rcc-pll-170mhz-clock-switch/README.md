@@ -1,6 +1,8 @@
 # Lab 03: RCC PLL 170 MHz Clock Switch in Range 1 Boost Mode
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** [Lab 02: GPIO Pushbutton Debouncing](../lab-02-gpio-pushbutton-debouncing/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 04: SysTick Accurate Delay](../lab-04-systick-accurate-delay-generator/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `onboard_selftest` Test 3A (`160 MHz`: `1,599,997` cyc/10 ms) & Test 3B (`170 MHz`: `1,699,989` cyc/10 ms), `PWR_CR5=0x0`, `FLASH_ACR=0x00040704`
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost` (`M=4, N=85, R=2`, `R1MODE=0`, `4WS`, `MCO/16 = 10.625 MHz`)** | **Alternate = `160 MHz Range 1 Boost` (`M=4, N=80, R=2`, `R1MODE=0`, `4WS`, `MCO/16 = 10.000 MHz`)** | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`, `Clock_Init_170MHz_HSE24()`, `Clock_GetSysClkHz()`) & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
@@ -48,17 +50,17 @@ Safely transition the STM32G474RE from its reset `16 MHz HSI16` clock to its max
 ### 5.1 PLL Frequency Synthesis Math (DS12288 Limits)
 
 Per **DS12288**, STM32G474RE PLL limits in Range 1 Boost Mode are:
-- $f_{\text{PLL\_IN}} \in [2.66,\ 16]\text{ MHz}$
+- $f_{\text{PLL,IN}} \in [2.66,\ 16]\text{ MHz}$
 - $f_{\text{VCO}} \in [96,\ 344]\text{ MHz}$
-- $f_{\text{PLL\_R}} \le 170\text{ MHz}$
+- $f_{\text{PLL,R}} \le 170\text{ MHz}$
 
 Choosing `PLLSRC = HSI16` ($16\text{ MHz}$), $M = 4$ (`PLLM = 3`), $N = 85$ (`PLLN = 85`), $R = 2$ (`PLLR = 0`):
 
-$$f_{\text{VCO\_IN}} = \frac{f_{\text{HSI16}}}{M} = \frac{16\text{ MHz}}{4} = 4\text{ MHz} \quad \in [2.66,\ 16]\text{ MHz}\ \checkmark$$
+$$f_{\text{VCO,IN}} = \frac{f_{\text{HSI16}}}{M} = \frac{16\text{ MHz}}{4} = 4\text{ MHz} \quad \in [2.66,\ 16]\text{ MHz}\ \checkmark$$
 
-$$f_{\text{VCO\_OUT}} = f_{\text{VCO\_IN}} \times N = 4\text{ MHz} \times 85 = 340\text{ MHz} \quad \in [96,\ 344]\text{ MHz}\ \checkmark$$
+$$f_{\text{VCO,OUT}} = f_{\text{VCO,IN}} \times N = 4\text{ MHz} \times 85 = 340\text{ MHz} \quad \in [96,\ 344]\text{ MHz}\ \checkmark$$
 
-$$f_{\text{SYSCLK}} = f_{\text{PLL\_R}} = \frac{f_{\text{VCO\_OUT}}}{R} = \frac{340\text{ MHz}}{2} = 170\text{ MHz} \quad \le 170\text{ MHz}\ \checkmark$$
+$$f_{\text{SYSCLK}} = f_{\text{PLL,R}} = \frac{f_{\text{VCO,OUT}}}{R} = \frac{340\text{ MHz}}{2} = 170\text{ MHz} \quad \le 170\text{ MHz}\ \checkmark$$
 
 ### 5.1b Explicit Clock Configuration Profile Comparison (`170 MHz` vs `160 MHz` Range 1 Boost)
 
@@ -259,17 +261,32 @@ int main(void) {
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Dual `160 MHz` & `170 MHz` Range 1 Boost verified via `onboard_selftest` Test 3A/3B on NUCLEO-G474RE)* |
 | **Objective** | Execute the RM0440 §6.1.5 Range 1 Boost Mode clock switch from `16 MHz HSI16` to `170 MHz` (and document exact `160 MHz` equivalent), verifying `VOSF`, `R1MODE = 0`, `4 WS` Flash latency, two-step `HPRE = /2 -> /1` ramp, and `PA8` `MCO/16`. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,416 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, `GPIOA` (`PA5` `LD2`, `PA8` `MCO`). Optional oscilloscope on `PA8` for frequency confirmation; register/DWT verification requires zero external hardware. |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18)` |
 | **Pin Configuration** | `PA5`: `MODER = 01b`, `OSPEEDR = 11b` (`LD2`); `PA8`: `MODER = 10b` (`AF0` = `MCO`), `OSPEEDR = 11b`. |
 | **Expected Behavior** | Zero HardFault/BOR across clock switch; `RCC->CFGR.SWS == 11b` (PLL), `HPRE == 0`, `SystemCoreClock == 170000000` (or `160000000` with `PLLN = 80`), `PA8` outputs `10.625 MHz` (`10.000 MHz` @ 160 MHz). |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` Test 3A & 3B, 2026-11-18):** `[PASS] TEST3A_CLOCK_160MHZ: SYSCLK=160000000Hz PLLCFGR=0x31715032 PWR_CR5=0x00000000 FLASH_ACR=0x00040704 DWT_10ms=1599997 (-0.0002%)`; `[PASS] TEST3B_CLOCK_170MHZ: SYSCLK=170000000Hz PLLCFGR=0x31715532 PWR_CR5=0x00000000 FLASH_ACR=0x00040704 DWT_10ms=1699989 (-0.0006%)`. |
 | **Register Values** | Reset: `PWR->CR5 = 0x00000100` (`R1MODE=1`), `FLASH->ACR[3:0] = 0x0` (`0WS`), `RCC->CFGR.SWS = 01b` (HSI16). Configured (`170 MHz` / `160 MHz`): `PWR->CR1.VOS = 01b`, `PWR->SR2.VOSF = 0`, `PWR->CR5.R1MODE = 0`, `FLASH->ACR[3:0] = 0x4` (`4WS`) + `PRFTEN\|ICEN\|DCEN`, `RCC->PLLCFGR`: `PLLSRC=10b, PLLM=3, PLLN=85 (80 @ 160 MHz), PLLR=0, PLLREN=1`, `RCC->CFGR.SWS = 11b`, `HPRE = 0`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` break after `Clock_Init_170MHz()` and inspect `p/x PWR->CR5`, `p/x PWR->SR2`, `p/x FLASH->ACR`, `p/x RCC->PLLCFGR`, `p/x RCC->CFGR`, and `p SystemCoreClock`. |
-| **Remaining Limitations** | Uses internal HSI16 (`±1%` tolerance); applications needing `±50 ppm` precision (USB/CAN-FD on physical bus) should invoke `Clock_Init_170MHz_HSE24()` in `clock_g4.h`. Physical execution pending Agent 4. |
+| **Remaining Limitations** | `HSI16` factory trim tolerance is `±1%` across temperature (use `Clock_Init_170MHz_HSE24()` with onboard `24 MHz` crystal `X3` for `±50 ppm` precision; MCO `PA8` frequency-counter check is optional external measurement). |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | RM0440 §6.1.5 Boost ramp (`VOS=01b -> VOSF=0 -> R1MODE=0 -> 4 WS -> HPRE=/2 -> SW=PLL -> >=1 us -> HPRE=/1`) verified against `stm32g474xx.h`. |
+| **Host test passed** | `N/A` | Hardware RCC/PWR/FLASH PLL silicon state machine (validated directly on target silicon). |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS lab & `23-code-library/Drivers/clock_g4.c` compile cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE via `onboard_selftest.elf` (`VDD = 3.29 V`, `0.065 s` verify). |
+| **Physical behavior verified** | `PASS` | Both `160 MHz` (`PLLCFGR=0x31715032`) and `170 MHz` (`PLLCFGR=0x31715532`) Boost switches succeeded with `PWR_CR5=0`, `FLASH_ACR=0x00040704`, `CFGR=0x0F`. |
+| **Measurement verified** | `PASS` | `DWT->CYCCNT` measured `1,599,997` cyc/10 ms (`-0.0002%` @ 160 MHz) and `1,699,989` cyc/10 ms (`-0.0006%` @ 170 MHz). |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 02: GPIO Pushbutton Debouncing](../lab-02-gpio-pushbutton-debouncing/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 04: SysTick Accurate Delay](../lab-04-systick-accurate-delay-generator/README.md) ➡️

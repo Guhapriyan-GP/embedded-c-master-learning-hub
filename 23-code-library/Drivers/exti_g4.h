@@ -5,10 +5,11 @@
  * Handles STM32G4-specific silicon details:
  *   - Enables RCC->APB2ENR.SYSCFGEN (+ readback barrier) before writing SYSCFG->EXTICR.
  *   - Clears EXTI->PR1 (rc_w1) using direct assignment `=` (NEVER `|=`) followed by
- *     Cortex-M4 `__DSB()` (ARM Errata 838869 / ES0430 §2.1.3) to prevent double-triggering.
+ *     dummy readback `(void)EXTI->PR1;` (ARM AN321 §4.9: AHB-to-APB2 posted-write commit)
+ *     and Cortex-M4 `__DSB()` (write-buffer drain + ARM Erratum 838869 / ST ES0430 §2.1.3).
  *   - Supports multi-pin shared IRQ dispatch (EXTI9_5_IRQn, EXTI15_10_IRQn) via callbacks.
  *
- * Reference: RM0440 Chapter 10 (SYSCFG), Chapter 15 (EXTI), PM0214 (NVIC), ES0430 §2.1.3.
+ * Reference: RM0440 Chapter 10 (SYSCFG), Chapter 15 (EXTI), PM0214 (NVIC), ARM AN321 §4.9, ES0430 §2.1.3.
  * Concepts:  PERIPH-EXTI-001, PERIPH-EXTI-002, PERIPH-EXTI-003, PERIPH-SYSCFG-001, ARM-NVIC-001
  */
 
@@ -99,13 +100,17 @@ exti_status_t EXTI_RegisterCallback(uint8_t pin, exti_callback_t cb, void *ctx);
 void EXTI_TriggerSoftware(uint8_t pin);
 
 /**
- * @brief Clear EXTI pending flag in EXTI->PR1 (rc_w1 direct assignment, NEVER `|=`)
- *        and issue Cortex-M4 `__DSB()` barrier (ES0430 §2.1.3 / ARM Errata 838869).
+ * @brief Clear EXTI pending flag in EXTI->PR1 (rc_w1 direct assignment, NEVER `|=`),
+ *        read back EXTI->PR1 to flush the AHB-to-APB2 posted-write bridge, and issue
+ *        Cortex-M4 `__DSB()` (drains CPU write buffer & guards ARM Erratum 838869 / ES0430 §2.1.3).
  * @param pin  EXTI line number 0..15.
  */
 static inline void EXTI_ClearPending(uint8_t pin) {
-    EXTI->PR1 = (1UL << pin);
-    __DSB();
+    if (pin <= 15U) {
+        EXTI->PR1 = (1UL << pin);
+        (void)EXTI->PR1;
+        __DSB();
+    }
 }
 
 /**

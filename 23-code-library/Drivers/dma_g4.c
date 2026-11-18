@@ -122,6 +122,7 @@ void dma_clear_flags(DMA_TypeDef *dma, uint8_t ch_num,
 
     if (mask != 0U) {
         dma->IFCR = mask;
+        (void)dma->ISR;
         __DSB();
     }
 }

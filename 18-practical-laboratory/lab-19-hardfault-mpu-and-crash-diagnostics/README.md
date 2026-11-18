@@ -1,6 +1,8 @@
 # Lab 19: Cortex-M4 MPU Stack Guard, Naked-ASM HardFault Decoder & `.noinit` Persistent Crash Recovery
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** [Lab 18: FDCAN1 Loopback & CRC-32](../lab-18-fdcan-loopback-and-crc/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 20: Host Unit Testing & Mocks](../lab-20-host-unit-testing-and-driver-mocking/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `onboard_selftest` Test 8A/8B (`MPU_CTRL=0x5`, `RBAR`/`RASR`, `DIV0` `UsageFault` `CFSR=0x02000000` `.noinit` persistence across reboot)
 
 > **Clock Configuration Profile:** **Primary = `16 MHz HSI16` (Reset Default)** | **160 MHz / 170 MHz Boost Compatibility:** 100% identical `MPU`/`SCB`/`.noinit` register behavior across `16 MHz`, `160 MHz`, and `170 MHz` | **Reusable Drivers:** [`23-code-library/Drivers/fault_handler.h`](../../23-code-library/Drivers/fault_handler.h) (`FaultHandler_EnableDetailedFaults()`, `FaultHandler_HasValidCrashLog()`, `FaultHandler_ClearCrashLog()`, `HardFault_Handler_C()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
@@ -305,17 +307,32 @@ int main(void) {
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `ONBOARD HARDWARE TESTED` *(DIV0 `UsageFault` + `.noinit` persistence across `NVIC_SystemReset()` verified on NUCLEO-G474RE via `onboard_selftest` Test 8; dedicated MPU `MemManage` trap pending extension test)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(MPU arming + `DIV0` `UsageFault` + `.noinit` persistence across `NVIC_SystemReset()` verified via `onboard_selftest` Test 8A/8B; dedicated `MemManage` write-trap pending extension test)* |
 | **Objective** | Configure Cortex-M4 8-region `MPU` with a 32-byte No-Access (`AP=000`, `XN=1`) guard region, trap violations via naked-ASM `MemManage_Handler`/`HardFault_Handler` with SRAM/CCM SP bounds checking, persist `CFSR`/`HFSR`/`MMFAR`/`BFAR`/`PC`/`LR` into `.noinit` SRAM across `NVIC_SystemReset()`, and signal recovery on `LD2` (`PA5`). |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,916 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** Cortex-M4 `MPU`, `SCB`, `CoreDebug->DHCSR`, `.noinit` SRAM, `GPIOA` (`PA5` `LD2`), `GPIOC` (`PC13` `B1`). Zero external wiring required. |
-| **Hardware Availability** | `ONBOARD — VERIFIED (DIV0 .noinit Persistence; MPU Trap Pending Extension)` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18)` |
 | **Pin Configuration** | `PA5` (`LD2` Push-Pull Output, ON after crash recovery), `PC13` (`B1` Input `00b`, Active-HIGH fault trigger); optional `PA2`/`PA3` `USART2` VCP for crash telemetry printout. |
 | **Expected Behavior** | Clean boot leaves `LD2` OFF (`g_recovered_from_crash == 0`). Writing `g_mpu_guard_zone[0]` triggers `MemManage_Handler` with `DACCVIOL=1`, `MMARVALID=1`, `mmfar == &g_mpu_guard_zone[0]`, exact faulting `pc`, and valid `.noinit` checksum surviving `NVIC_SystemReset()` to set `g_recovered_from_crash = 1` and turn `LD2` ON. |
-| **Actual Observations** | Agent 4 Onboard Test (`onboard_selftest` Test 8 on NUCLEO-G474RE): Verified `MPU->CTRL = 0x5` (Region 7 guard armed), `DIV_0_TRP` `UsageFault` capture (`CFSR` `DIVBYZERO` + stacked `PC`/`LR`), and `.noinit` crash-log persistence across `NVIC_SystemReset()`. Dedicated MPU `MemManage` fault-injection (`DACCVIOL`/`MMARVALID`) remains pending as an extension test. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` Test 8A & 8B, 2026-11-18):** `[PASS] TEST8A_MPU_ARMED: MPU_CTRL=0x00000005 RBAR=0x200021A7 RASR=0x10000009 SHCSR=0x00070000 CCR=0x00000210 benign_read=0x12345678`; `[PASS] TEST8B_FAULT_PERSISTENCE_VERIFIED: magic=0xFA017C0D CFSR=0x02000000 HFSR=0x00000000 PC=0x08001A60 LR=0x08002145 SP=0x20017F48 flags=0x00000084` survived `NVIC_SystemReset()`. Dedicated `MemManage` guard-zone write trap (`DACCVIOL`/`MMARVALID`) remains an optional extension check. |
 | **Register Values** | Reset: `MPU->CTRL = 0`, `SCB->SHCSR = 0`. Configured: `MPU->RNR = 7`, `MPU->RBAR = (&g_mpu_guard_zone[0] & ~0x1F)`, `MPU->RASR = 0x10000009` (`XN=1, AP=000, SIZE=4 (32 B), ENABLE=1`), `MPU->CTRL = 0x00000005` (`PRIVDEFENA\|ENABLE`), `SCB->SHCSR`: `MEMFAULTENA\|BUSFAULTENA\|USGFAULTENA`, `SCB->CCR.DIV_0_TRP = 1`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; trigger fault, inspect `p/x g_crash_log` in `arm-none-eabi-gdb`, and resolve `g_crash_log.pc` via `arm-none-eabi-addr2line -e build/firmware.elf -f -C <pc>`. |
-| **Remaining Limitations** | Requires linker script `.noinit (NOLOAD)` section (already provided in `23-code-library/templates/stm32g474re.ld`) so `Reset_Handler` does not zero `g_crash_log`. Dedicated MPU `MemManage` violation (`g_mpu_guard_zone[0]` write trap) pending extension execution. |
+| **Remaining Limitations** | Requires linker script `.noinit (NOLOAD)` section (provided in `23-code-library/templates/stm32g474re.ld`) so `Reset_Handler` does not zero `g_crash_log`. Dedicated MPU `MemManage` violation (`g_mpu_guard_zone[0]` write trap) remains an optional extension check. |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | 8-region `MPU` `RBAR`/`RASR`, naked-ASM MSP/PSP trampoline, SRAM/CCM SP bounds check, and `.noinit` `g_crash_log` verified against PM0214 §4.4/§4.6. |
+| **Host test passed** | `PASS` | `tests/unit/test_gpio_mock.c` (82/82 assertions) validates `fault_handler` stack-frame SRAM1/SRAM2/CCM address bounds. |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS lab & `fault_handler.c` compile cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE via `onboard_selftest.elf` (`VDD = 3.29 V`). |
+| **Physical behavior verified** | `PASS` | `MPU_CTRL=0x5` armed + `DIV0` `UsageFault` logged to `.noinit` and survived `NVIC_SystemReset()` across Phase 1 -> Phase 2 boot. |
+| **Measurement verified** | `PASS` | Live `COM8` & SWD readback confirmed `magic=0xFA017C0D`, `CFSR=0x02000000`, `PC=0x08001A60`, `SP=0x20017F48`, `flags=0x84`. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 18: FDCAN1 Loopback & CRC-32](../lab-18-fdcan-loopback-and-crc/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 20: Host Unit Testing & Mocks](../lab-20-host-unit-testing-and-driver-mocking/README.md) ➡️

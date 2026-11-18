@@ -1,6 +1,8 @@
 # Lab 08: USART2 Bare-Metal Driver, SPSC Ring Buffer RX ISR & Retargeted `printf`
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** [Lab 07: TIM3 25 kHz RGB PWM](../lab-07-timer-pwm-rgb-led-fading/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 09: ADC1 Potentiometer](../lab-09-adc-single-channel-potentiometer/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `COM8` live `115200 8N1` TX (`BRR=1389` @ 160 MHz, `1476` @ 170 MHz) + live RX ISR `'s'` cmd via SPSC `ring_buffer_t` (`rx_cmds: 0 -> 1`)
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`USART2->BRR = 1,476 = 0x05C4`, `-0.021%` err) | **Alternate = `160 MHz Range 1 Boost`** (`USART2->BRR = 1,389 = 0x056D`, `-0.008%` err) | **Reusable Drivers:** [`23-code-library/Drivers/usart_g4.h`](../../23-code-library/Drivers/usart_g4.h) (`usart_init()`, `usart_write_byte()`, `usart_rx_irq_handler()`, `usart_calc_brr()`), [`ring_buffer.h`](../../23-code-library/Drivers/ring_buffer.h), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
@@ -74,7 +76,11 @@ Baud rate mismatches (`BRR` computed for `170 MHz` while running at `160 MHz` = 
 
 ## 6. Code Implementation
 
+All three implementations below (**6.1 CMSIS Direct Register**, **6.2 STM32CubeG4 LL**, and **6.3 STM32CubeG4 HAL**) are **functionally equivalent, independently complete standalone programs** configuring `PA2`/`PA3` (`AF7`) for `USART2` at `115200 8N1`, transmitting with bounded timeouts, and handling interrupt-driven RX echo cleanly.
+
 ### 6.1 Approach A — Direct Register Access with SPSC Ring Buffer & Bounded TX Timeout
+
+> **Build Scope:** *Complete Bare-Metal CMSIS Program — Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors).*
 
 ```c
 #include "stm32g474xx.h"
@@ -160,6 +166,7 @@ void USART2_IRQHandler(void) {
         }
     }
 
+    (void)USART2->ISR;
     __DSB();
 }
 
@@ -252,29 +259,207 @@ int main(void) {
 
 ### 6.2 Approach B — STM32Cube LL Comparison
 
+> **Build Scope:** *Complete STM32CubeG4 LL Program (requires STM32CubeG4 LL headers in include path; not built by bare-metal CMSIS Makefile — Statically Reviewed).*
+
 ```c
-/* stm32g4xx_ll_usart.h: thin zero-overhead wrappers over BRR/CR1/ISR/TDR */
-LL_USART_Disable(USART2);
-LL_USART_SetBaudRate(USART2, 170000000UL, LL_USART_PRESCALER_DIV1,
-                     LL_USART_OVERSAMPLING_16, 115200UL);
-LL_USART_ConfigCharacter(USART2, LL_USART_DATAWIDTH_8B, LL_USART_PARITY_NONE, LL_USART_STOPBITS_1);
-LL_USART_SetTransferDirection(USART2, LL_USART_DIRECTION_TX_RX);
-LL_USART_EnableIT_RXNE_RXFNE(USART2);
-LL_USART_Enable(USART2);
+/* Complete STM32CubeG4 LL Program (requires STM32CubeG4 LL headers in include path;
+ * not built by bare-metal CMSIS Makefile; assumes SystemCoreClock = 170 MHz via Clock_Init_170MHz()) */
+#include "stm32g4xx_ll_bus.h"
+#include "stm32g4xx_ll_gpio.h"
+#include "stm32g4xx_ll_usart.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+#define LL_UART_RX_BUF_SIZE (128U)
+#define LL_UART_RX_BUF_MASK (LL_UART_RX_BUF_SIZE - 1U)
+#define LL_UART_TX_TIMEOUT  (200000UL)
+
+extern uint32_t SystemCoreClock;
+extern void Clock_Init_170MHz(void); /* Same Range 1 Boost routine as Approach A */
+
+static volatile uint8_t  g_ll_rx_buf[LL_UART_RX_BUF_SIZE];
+static volatile uint32_t g_ll_rx_head = 0U;
+static volatile uint32_t g_ll_rx_tail = 0U;
+
+void USART2_IRQHandler(void) {
+    /* 1. Clear hardware RX error flags so ORE never stalls reception */
+    if (LL_USART_IsActiveFlag_ORE(USART2) != 0U) { LL_USART_ClearFlag_ORE(USART2); }
+    if (LL_USART_IsActiveFlag_FE(USART2)  != 0U) { LL_USART_ClearFlag_FE(USART2);  }
+    if (LL_USART_IsActiveFlag_NE(USART2)  != 0U) { LL_USART_ClearFlag_NE(USART2);  }
+    if (LL_USART_IsActiveFlag_PE(USART2)  != 0U) { LL_USART_ClearFlag_PE(USART2);  }
+
+    /* 2. Drain RX data register into lock-free SPSC ring buffer */
+    if (LL_USART_IsActiveFlag_RXNE_RXFNE(USART2) != 0U) {
+        uint8_t byte = LL_USART_ReceiveData8(USART2);
+        uint32_t next_head = (g_ll_rx_head + 1U) & LL_UART_RX_BUF_MASK;
+        if (next_head != g_ll_rx_tail) {
+            g_ll_rx_buf[g_ll_rx_head] = byte;
+            __DMB();
+            g_ll_rx_head = next_head;
+        }
+    }
+    (void)USART2->ISR;
+    __DSB();
+}
+
+static bool Lab08_LL_TxByte(uint8_t byte) {
+    uint32_t timeout = LL_UART_TX_TIMEOUT;
+    while (LL_USART_IsActiveFlag_TXE_TXFNF(USART2) == 0U) {
+        if (--timeout == 0U) {
+            return false;
+        }
+    }
+    LL_USART_TransmitData8(USART2, byte);
+    return true;
+}
+
+static void Lab08_LL_TxStr(const char *s) {
+    while (*s != '\0') {
+        if (!Lab08_LL_TxByte((uint8_t)(*s++))) {
+            break;
+        }
+    }
+}
+
+static void Lab08_LL_USART2_Init(uint32_t baud) {
+    LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
+    LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USART2);
+
+    /* PA2 (TX) & PA3 (RX) -> AF7, High Speed, Pull-Up on PA3 */
+    LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_2, LL_GPIO_MODE_ALTERNATE);
+    LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_3, LL_GPIO_MODE_ALTERNATE);
+    LL_GPIO_SetAFPin_0_7(GPIOA, LL_GPIO_PIN_2, LL_GPIO_AF_7);
+    LL_GPIO_SetAFPin_0_7(GPIOA, LL_GPIO_PIN_3, LL_GPIO_AF_7);
+    LL_GPIO_SetPinSpeed(GPIOA, LL_GPIO_PIN_2, LL_GPIO_SPEED_FREQ_HIGH);
+    LL_GPIO_SetPinSpeed(GPIOA, LL_GPIO_PIN_3, LL_GPIO_SPEED_FREQ_HIGH);
+    LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_2, LL_GPIO_PULL_NO);
+    LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_3, LL_GPIO_PULL_UP);
+
+    LL_USART_Disable(USART2);
+    LL_USART_SetBaudRate(USART2, SystemCoreClock, LL_USART_PRESCALER_DIV1,
+                         LL_USART_OVERSAMPLING_16, baud);
+    LL_USART_ConfigCharacter(USART2, LL_USART_DATAWIDTH_8B,
+                             LL_USART_PARITY_NONE, LL_USART_STOPBITS_1);
+    LL_USART_SetTransferDirection(USART2, LL_USART_DIRECTION_TX_RX);
+    LL_USART_ClearFlag_ORE(USART2);
+    LL_USART_EnableIT_RXNE_RXFNE(USART2);
+    LL_USART_Enable(USART2);
+
+    NVIC_SetPriorityGrouping(0U);
+    NVIC_SetPriority(USART2_IRQn, 5U);
+    NVIC_ClearPendingIRQ(USART2_IRQn);
+    NVIC_EnableIRQ(USART2_IRQn);
+}
+
+int main(void) {
+    Clock_Init_170MHz();
+    Lab08_LL_USART2_Init(115200UL);
+    Lab08_LL_TxStr("[STM32G474RE LL] USART2 Ready @ 115200 8N1\r\n");
+
+    while (1) {
+        if (g_ll_rx_tail != g_ll_rx_head) {
+            __DMB();
+            uint8_t ch = g_ll_rx_buf[g_ll_rx_tail];
+            g_ll_rx_tail = (g_ll_rx_tail + 1U) & LL_UART_RX_BUF_MASK;
+            (void)Lab08_LL_TxByte(ch);
+        }
+    }
+}
 ```
 
 ### 6.3 Approach C — STM32Cube HAL Comparison
 
+> **Build Scope:** *Complete STM32CubeG4 HAL Program (requires STM32CubeG4 HAL drivers & `SysTick_Handler -> HAL_IncTick()` — Statically Reviewed).*
+
 ```c
-/* stm32g4xx_hal_uart.h: stateful handle + DMA/IT state machine + callbacks */
-UART_HandleTypeDef huart2 = {
-    .Instance = USART2,
-    .Init = { .BaudRate = 115200U, .WordLength = UART_WORDLENGTH_8B,
-              .StopBits = UART_STOPBITS_1, .Parity = UART_PARITY_NONE,
-              .Mode = UART_MODE_TX_RX, .HwFlowCtl = UART_HWCONTROL_NONE }
-};
-HAL_UART_Init(&huart2);
-HAL_UART_Transmit(&huart2, (uint8_t *)"Hello\r\n", 7U, 100U); /* Built-in 100 ms timeout */
+/* Complete STM32CubeG4 HAL Program (requires STM32CubeG4 HAL drivers &
+ * SysTick_Handler -> HAL_IncTick(); not built by bare-metal CMSIS Makefile) */
+#include "stm32g4xx_hal.h"
+#include <stdint.h>
+
+#define HAL_RX_BUF_SIZE 64U /* Power-of-2 lock-free SPSC RX buffer */
+
+static UART_HandleTypeDef g_huart2 = {0};
+static volatile uint8_t   g_hal_rx_byte = 0U; /* Single-byte HAL IT staging slot */
+static uint8_t            g_hal_rx_buf[HAL_RX_BUF_SIZE];
+static volatile uint32_t  g_hal_rx_head = 0U;
+static volatile uint32_t  g_hal_rx_tail = 0U;
+static volatile uint32_t  g_hal_rx_overruns = 0U;
+
+void SysTick_Handler(void) {
+    HAL_IncTick();
+}
+
+void USART2_IRQHandler(void) {
+    HAL_UART_IRQHandler(&g_huart2);
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART2) {
+        /* Copy received byte into SPSC ring buffer BEFORE re-arming 1-byte IT RX
+         * so a back-to-back byte cannot overwrite g_hal_rx_byte before main() reads it. */
+        uint8_t  rx   = g_hal_rx_byte;
+        uint32_t head = g_hal_rx_head;
+        uint32_t next = (head + 1U) & (HAL_RX_BUF_SIZE - 1U);
+        if (next != g_hal_rx_tail) {
+            g_hal_rx_buf[head] = rx;
+            __DMB(); /* Publish byte before advancing head */
+            g_hal_rx_head = next;
+        } else {
+            g_hal_rx_overruns++;
+        }
+        (void)HAL_UART_Receive_IT(&g_huart2, (uint8_t *)&g_hal_rx_byte, 1U);
+    }
+}
+
+static void Lab08_HAL_USART2_Init(void) {
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_USART2_CLK_ENABLE();
+
+    /* PA2 (TX) & PA3 (RX) -> AF7 */
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin       = GPIO_PIN_2 | GPIO_PIN_3;
+    gpio.Mode      = GPIO_MODE_AF_PP;
+    gpio.Pull      = GPIO_PULLUP;
+    gpio.Speed     = GPIO_SPEED_FREQ_HIGH;
+    gpio.Alternate = GPIO_AF7_USART2;
+    HAL_GPIO_Init(GPIOA, &gpio);
+
+    g_huart2.Instance        = USART2;
+    g_huart2.Init.BaudRate   = 115200U;
+    g_huart2.Init.WordLength = UART_WORDLENGTH_8B;
+    g_huart2.Init.StopBits   = UART_STOPBITS_1;
+    g_huart2.Init.Parity     = UART_PARITY_NONE;
+    g_huart2.Init.Mode       = UART_MODE_TX_RX;
+    g_huart2.Init.HwFlowCtl  = UART_HWCONTROL_NONE;
+    g_huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+    (void)HAL_UART_Init(&g_huart2);
+
+    HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+    HAL_NVIC_SetPriority(USART2_IRQn, 5U, 0U);
+    HAL_NVIC_EnableIRQ(USART2_IRQn);
+}
+
+int main(void) {
+    HAL_Init();
+    /* SystemClock_Config() omitted for brevity: HAL_UART_Init() queries HAL_RCC_GetPCLK1Freq() */
+    Lab08_HAL_USART2_Init();
+
+    static const uint8_t banner[] = "[STM32G474RE HAL] USART2 Ready @ 115200 8N1\r\n";
+    (void)HAL_UART_Transmit(&g_huart2, (uint8_t *)banner, (uint16_t)(sizeof(banner) - 1U), 100U);
+    (void)HAL_UART_Receive_IT(&g_huart2, (uint8_t *)&g_hal_rx_byte, 1U);
+
+    while (1) {
+        if (g_hal_rx_head != g_hal_rx_tail) {
+            uint32_t tail = g_hal_rx_tail;
+            __DMB(); /* Acquire data written before head update */
+            uint8_t ch = g_hal_rx_buf[tail];
+            __DMB();
+            g_hal_rx_tail = (tail + 1U) & (HAL_RX_BUF_SIZE - 1U);
+            (void)HAL_UART_Transmit(&g_huart2, &ch, 1U, 100U);
+        }
+    }
+}
 ```
 
 ### 6.4 3-Way Comparison Summary
@@ -337,17 +522,32 @@ RX Echo: 'A' (0x41)
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` + Project 01 live `COM8` TX/RX on NUCLEO-G474RE; 3-way Register/LL/HAL complete)* |
 | **Objective** | Configure `USART2` (`PA2`/`PA3` `AF7`, onboard ST-LINK VCP `COM8`) at `115200 8N1` (`170 MHz` primary / `160 MHz` equivalent), implement bounded TX polling, retarget `_write()` for `printf()`, and drain RX via lock-free SPSC ring buffer ISR with `ORE`/`FE`/`NE`/`PE` recovery. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`2,140 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, Virtual COM Port `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, `USART2`, `NVIC`, `GPIOA` (`PA2`/`PA3` hardwired to onboard ST-LINK/V3E VCP per UM2505). Zero external wiring required. |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18)` |
 | **Pin Configuration** | `PA2` (`USART2_TX`, `AF7`, `OSPEEDR = 10b`, `PUPDR = 00b`), `PA3` (`USART2_RX`, `AF7`, `OSPEEDR = 10b`, `PUPDR = 01b` Pull-Up). |
 | **Expected Behavior** | Prints banner & periodic heartbeat over `COM8` at `115200 8N1`; echoes any host-transmitted characters via `USART2_IRQHandler` + SPSC ring buffer with `rx_overruns == 0` and `rx_hw_errors == 0`. |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` + Project 01, 2026-11-18):** Verified live `COM8` (`115200 8N1`) TX at both `160 MHz` (`USART2_BRR=1389`) and `170 MHz` (`USART2_BRR=1476`), AND live host-to-MCU RX (`'s'` transmitted at `t=1.8 s`, received in `USART2_IRQHandler` -> lock-free SPSC `ring_buffer_t` -> parsed `rx_cmds: 0 -> 1` with zero errors). *(Approaches B/C LL & HAL statically reviewed.)* |
 | **Register Values** | Reset: `USART2->CR1 = 0`, `USART2->BRR = 0`. Configured: `USART2->BRR = 0x05C4` (`1476` @ 170 MHz; `0x056D` = `1389` @ 160 MHz), `USART2->CR1 = 0x0000002D` (`UE\|RE\|TE\|RXNEIE`), `NVIC` `USART2_IRQn (38)` prio = `5`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; open `COM8` at `115200 8N1`; in `arm-none-eabi-gdb` check `p/x USART2->BRR`, `p/x USART2->CR1`, `p g_rx_rb.rx_overruns`, `p g_rx_rb.rx_hw_errors`. |
-| **Remaining Limitations** | Blocking `_write()` TX path polls `TXE` (bounded by `UART_TX_TIMEOUT`); high-throughput non-blocking TX requires `TXEIE` or DMA TX (Extension Exercises 1–2). Physical VCP echo verification pending Agent 4. |
+| **Remaining Limitations** | Blocking `_write()` TX path polls `TXE` (bounded by `UART_TX_TIMEOUT`); high-throughput non-blocking TX requires `TXEIE` or DMA TX (Extension Exercises 1–2). Approaches B (LL) and C (HAL) require STM32CubeG4 headers and are statically reviewed. |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | All 3 approaches (CMSIS Register, STM32CubeG4 LL, STM32CubeG4 HAL) independently complete with `PA2`/`PA3` `AF7`, `BRR`, race-free RX ISR/ring-buffer buffering, error handling, and `main()`; Approaches A & B include explicit `(void)USART2->ISR; __DSB();` before ISR exit (while Approach C delegates ISR flag clearing internally to `HAL_UART_IRQHandler()`). |
+| **Host test passed** | `PASS` | `tests/unit/test_ring_buffer.c` (104/104 assertions) + `tests/unit/test_drivers_math.c` (`usart_calc_brr` / `lpuart_calc_brr`) pass on host. |
+| **Cross-compilation passed** | `PASS` | Approach A bare-metal CMSIS, `usart_g4.c`, & `ring_buffer.c` compile cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE via `onboard_selftest.elf` and `smart_instrument_panel.elf`. |
+| **Physical behavior verified** | `PASS` | Live `COM8` TX streaming at `160`/`170 MHz` and interactive RX `'s'` command via SPSC `ring_buffer_t` (`rx_cmds: 0 -> 1`) verified. |
+| **Measurement verified** | `PASS` | Hardware registers verified: `USART2_BRR=1389` (`-0.008%` @ 160 MHz) and `USART2_BRR=1476` (`-0.021%` @ 170 MHz), zero framing/overrun errors. |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 07: TIM3 25 kHz RGB PWM](../lab-07-timer-pwm-rgb-led-fading/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 09: ADC1 Potentiometer](../lab-09-adc-single-channel-potentiometer/README.md) ➡️

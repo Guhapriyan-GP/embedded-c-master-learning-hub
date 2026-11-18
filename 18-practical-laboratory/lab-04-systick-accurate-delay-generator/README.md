@@ -1,6 +1,8 @@
 # Lab 04: SysTick Accurate Millisecond Delay & Non-Blocking Timer Generator
 
-> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+> ⬅️ **Prev Lab:** [Lab 03: RCC PLL 170/160 MHz Switch](../lab-03-rcc-pll-170mhz-clock-switch/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 05: EXTI13 Pushbutton Interrupt](../lab-05-exti-pushbutton-interrupt/README.md) ➡️
+
+> **Verification Status:** `ONBOARD HARDWARE TESTED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Evidence:** NUCLEO-G474RE `onboard_selftest` Test 3A/3B (`SysTick` vs `DWT->CYCCNT` `<0.001%` err @ 160/170 MHz) + Project 01 `500 ms` cadence
 
 > **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`SysTick->LOAD = 169,999`) | **Alternate = `160 MHz Range 1 Boost`** (`SysTick->LOAD = 159,999`) | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`, `Clock_GetSysClkHz()`, `Clock_DWT_Init()`, `Clock_DelayMs()`) & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
@@ -238,17 +240,32 @@ int main(void) {
 
 | Field | Record |
 |---|---|
-| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` Test 3A/3B + Project 01 `500 ms` SysTick cadence on NUCLEO-G474RE)* |
 | **Objective** | Configure `170 MHz` Range 1 Boost (with explicit `160 MHz` equivalent), program Cortex-M4 24-bit `SysTick` for exact `1.000 ms` interrupts, and verify wraparound-safe `delay_ms()` + drift-free `millis()` scheduling on `LD2` (`PA5`). |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,520 B` object file). |
 | **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
 | **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, Cortex-M4 `SysTick`, `GPIOA` (`PA5` `LD2`). Zero external wiring required. |
-| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Hardware Availability** | `ONBOARD — PHYSICALLY VERIFIED (Agent 4, 2026-11-18)` |
 | **Pin Configuration** | `PA5`: `MODER[11:10] = 01b` (Push-Pull Output), `LD2` Green LED. |
 | **Expected Behavior** | 3 startup blinks (`200 ms` ON / `200 ms` OFF), then exact `1.000 Hz` (`500 ms` ON / `500 ms` OFF) drift-free toggling; survives `0xFFFFFFFF -> 0x00000000` rollover injection cleanly. |
-| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` + Project 01, 2026-11-18):** `SysTick` 1 ms reference matched `DWT->CYCCNT` within `<0.001%` (`1,599,997` cycles/10 ms @ 160 MHz, `1,699,989` cycles/10 ms @ 170 MHz); Project 01 non-blocking scheduler emitted exact `500 ms` JSON telemetry (`tick_ms: 527, 1027, 1527, 2027, 2527, 3027, 3527, 4027`). |
 | **Register Values** | Reset: `SysTick->CTRL = 0x00000000`, `SysTick->LOAD = UNKNOWN`. Configured: `RCC->CFGR.SWS = 11b` (PLL), `SysTick->LOAD = 0x0002980F` (`169,999` @ 170 MHz; `0x000270FF` = `159,999` @ 160 MHz), `SysTick->CTRL = 0x00000007` (`CLKSOURCE\|TICKINT\|ENABLE`), `SHPR3` SysTick prio = `15`. |
 | **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` verify `p/x SysTick->LOAD`, `p/x SysTick->CTRL`, `p systick_ms`, and inject rollover via `set systick_ms = 0xFFFFFFF0` then `continue`. |
-| **Remaining Limitations** | Accuracy inherits HSI16 tolerance (`±1%`); use `Clock_Init_170MHz_HSE24()` (`clock_g4.h`) for `±50 ppm` timing. Physical hardware execution pending Agent 4. |
+| **Remaining Limitations** | 32-bit `ms` counter wraps every `49.71` days (handled safely by unsigned subtraction `(uint32_t)(now - start) >= period`). |
+
+### 12.1 6-State Granular Verification Breakdown
+
+| Verification Stage | Status | Evidence / Scope |
+|---|---|---|
+| **Static review** | `PASS` | SysTick `LOAD = SYSCLK/1000 - 1`, `CLKSOURCE=1`, `TICKINT=1`, and wraparound-safe unsigned subtraction verified against PM0214 §4.5. |
+| **Host test passed** | `N/A` | Cortex-M4 SysTick hardware timer (wraparound unsigned math verified in `tests/test_c_foundations.c`). |
+| **Cross-compilation passed** | `PASS` | Bare-metal CMSIS program compiles cleanly (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors). |
+| **On-target upload succeeded** | `PASS` | Flashed & verified on NUCLEO-G474RE via `onboard_selftest.elf` and `smart_instrument_panel.elf`. |
+| **Physical behavior verified** | `PASS` | Exact `1 ms` ticks and drift-free `500 ms` non-blocking periodic tasks verified live on `COM8`. |
+| **Measurement verified** | `PASS` | `SysTick` vs `DWT->CYCCNT` confirmed `1,599,997` cyc/10 ms (`160 MHz`) & `1,699,989` cyc/10 ms (`170 MHz`, `<0.001%`). |
+
+---
+
+> ⬅️ **Prev Lab:** [Lab 03: RCC PLL 170/160 MHz Switch](../lab-03-rcc-pll-170mhz-clock-switch/README.md) | ⬆️ **Parent Stage:** [18-practical-laboratory (All 20 Labs)](../README.md) | **Next Lab:** [Lab 05: EXTI13 Pushbutton Interrupt](../lab-05-exti-pushbutton-interrupt/README.md) ➡️
