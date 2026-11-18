@@ -1,17 +1,18 @@
-# Final Complete Remediation & Red-Team Sign-Off Report (`v3.1.0`)
+# Final Complete Remediation & Red-Team Sign-Off Report (`v3.2.0`)
 
 **Repository:** `embedded-c-master-learning-hub` (`feature/complete-remediation`, branched from `main` @ `585dc4fa`)  
 **Target Silicon / Board:** `STM32G474RET6` (LQFP64, ARM Cortex-M4F r0p1 `0x410FC241`, Device ID `0x469`, Rev X, 512 KB Dual-Bank Flash, 128 KB SRAM incl. 32 KB CCM-SRAM) on **ST NUCLEO-G474RE** (`MB1367 Rev C`, STLINK-V3E `V3J17M11`, `COM8` `115200 8N1`, `VDD = 3.28–3.29 V`)  
 **Source-of-Truth Schema:** [`AUDIT/concepts_sot.json`](concepts_sot.json) (`schema_version: 2.1.0`, `350` unique concepts, `27/27` domains, `0` cycles, `0` unknown prereqs, `0` inverted-level edges)  
+**Automated Gate:** [`scripts/validate_repo.py`](../scripts/validate_repo.py) (**v4.1.0**, `13/13` regression catches, `0 ERROR`, exit `0`)  
 **Sign-Off Date:** `2026-11-18`
 
 ---
 
 ## 1. Executive Final Sign-Off Verdict
 
-> **FINAL VERDICT: APPROVED FOR RELEASE ON `feature/complete-remediation` — ZERO CRITICAL / ZERO HIGH / ZERO MEDIUM / ZERO LOW OPEN DEFECTS (`12/12` AGENT 11 PHASE 8 RED-TEAM FINDINGS RESOLVED); EXTERNAL HARDWARE & BENCH-INSTRUMENT MEASUREMENTS CLEANLY DEFERRED.**
+> **FINAL VERDICT: APPROVED FOR RELEASE ON `feature/complete-remediation` — ZERO CRITICAL / ZERO HIGH / ZERO MEDIUM / ZERO LOW OPEN DEFECTS (`17/17` AGENT 10 PART 4 + `12/12` AGENT 11 PHASE 8 + `10/10` AGENT 12 PART III RED-TEAM FINDINGS = `39/39` RESOLVED); EXTERNAL HARDWARE & BENCH-INSTRUMENT MEASUREMENTS CLEANLY DEFERRED.**
 
-All **17 / 17** Part 4 Agent 10 findings and all **12 / 12** Phase 8 Agent 11 adversarial red-team findings (`P8-HIGH-01..04`, `P8-MED-01..05`, `P8-LOW-01..03`) have been empirically resolved and verified. Every metric below is deterministically computed from [`AUDIT/concepts_sot.json`](concepts_sot.json) (`v2.1.0`), live local execution (`arm-none-eabi-gcc 14.3.1`, host `gcc 15.2.0` + `gcov 15.2.0`, `scripts/validate_repo.py`), and physical **ST NUCLEO-G474RE** onboard telemetry captures ([`AUDIT/HARDWARE_VALIDATION_SUMMARY.md`](HARDWARE_VALIDATION_SUMMARY.md)).
+All **17 / 17** Part 4 Agent 10 findings, all **12 / 12** Phase 8 Agent 11 adversarial red-team findings (`P8-HIGH-01..04`, `P8-MED-01..05`, `P8-LOW-01..03`), and all **10 / 10** Part III Agent 12 final post-remediation red-team findings (`R12-HIGH-01..03`, `R12-MED-01..04`, `R12-LOW-01..03`) have been empirically resolved and verified. Every metric below is deterministically computed from [`AUDIT/concepts_sot.json`](concepts_sot.json) (`v2.1.0`), live local execution (`arm-none-eabi-gcc 14.3.1`, host `gcc 15.2.0` + `gcov 15.2.0`, `scripts/validate_repo.py` **v4.1.0**), and physical **ST NUCLEO-G474RE** onboard telemetry captures ([`AUDIT/HARDWARE_VALIDATION_SUMMARY.md`](HARDWARE_VALIDATION_SUMMARY.md)).
 
 ---
 
@@ -50,6 +51,25 @@ Every single finding raised in [`AUDIT/INDEPENDENT_RED_TEAM_REPORT.md`](INDEPEND
 | **`[P8-LOW-01]`** | **LOW** | `.gitignore` | Omitted `*.gcda`, `*.gcno`, `*.gcov`, `*.info` coverage artifact patterns | Added `*.gcda`, `*.gcno`, `*.gcov`, `*.info` to root `.gitignore` | **RESOLVED** |
 | **`[P8-LOW-02]`** | **LOW** | `23-code-library/templates/Src/startup_stm32g474re.c` | Unguarded `bkpt #0` if `main()` ever returned standalone (without debugger attached) | Routed post-`main()` return through debugger-guarded `Default_Handler()` / `CoreDebug->DHCSR.C_DEBUGEN` check | **RESOLVED** |
 | **`[P8-LOW-03]`** | **LOW** | `LEARNERS/BEGINNER_SETUP_WINDOWS11.md` | Local workspace drive path (`D:\General_ant\...`) in learner-facing setup guide (zero PII/usernames) | Replaced local path in `LEARNERS/BEGINNER_SETUP_WINDOWS11.md` with generic placeholder path | **RESOLVED** |
+
+---
+
+## 3.5 Final Post-Remediation Agent 12 Part III Red-Team Findings Disposition (`10 / 10` Resolved)
+
+Every single finding raised in [`AUDIT/INDEPENDENT_RED_TEAM_REPORT.md`](INDEPENDENT_RED_TEAM_REPORT.md) Part III (`0` CRITICAL, `3` HIGH, `4` MEDIUM, `3` LOW) has been closed and empirically verified under `scripts/validate_repo.py` **v4.1.0**:
+
+| Finding ID | Severity | Target File(s) | Original Agent 12 Part III Finding | Verified Final Closure Resolution | Disposition |
+|---|---|---|---|---|---|
+| **`[R12-HIGH-01]`** | **HIGH** | `LEARNERS/FORMULA_AND_CALCULATION_SHEET.md` L95 | Stale spec-violating `I2C TIMINGR = 0x30612144` still published as `"Verified Lab 12"` | Updated L95 to verified `0x70811021` (170 MHz: `396.3 kHz`, `t_SCLDEL = 423.5 ns >= 400 ns`), `0x70710F1F` (160 MHz: `396.0 kHz`, `t_SCLDEL = 400.0 ns`), and `0x30420F13` (16 MHz 100 kHz, RM0440 Table 384) | **RESOLVED** |
+| **`[R12-HIGH-02]`** | **HIGH** | `AUDIT/concepts_sot.json`, `COMPLETE_CONCEPT_INVENTORY.md`, `MISSING_CONCEPTS_AND_GAPS.md`, `TECHNICAL_VERIFICATION_REPORT.md` | Residual `JP5` IDD hazard in `ARM-PWR-001`, 5 remaining MathJax/truncated-math defects (`t_{S\_temp}`, `t_{S\_\text{temp}}`, unclosed `$`/`{` in table cells), and unmatched backticks/truncations | Fixed `ARM-PWR-001` (`JP5 -> JP6`), fixed `PERIPH-ADC-002` (`t_{S,\text{temp}}`), closed unmatched backticks (`PERIPH-BDTR-001`, `TOOL-DBG-003`) & truncated explanations, regenerated `COMPLETE_CONCEPT_INVENTORY.md` cleanly, and repaired `MISSING_CONCEPTS_AND_GAPS.md` L315/316/385/400 & `TECHNICAL_VERIFICATION_REPORT.md` L25 | **RESOLVED** |
+| **`[R12-HIGH-03]`** | **HIGH** | `scripts/validate_repo.py` (`v4.0.0 -> v4.1.0`), `AUDIT/VALIDATOR_QUALITY_REPORT.md` | 5 empirically proven validator blind spots (`M2` table bitfields, `M4` `#anchor` links, `M5` `\texttt`/`\textbf`/`\textit`/`\mbox`, `M6` bare `\_` / unclosed `$` / unbalanced `{}`, `M7` register-map C-snippet compilation) + missing Section 9 reports in `REQUIRED_AUDIT_FILES` | Upgraded `scripts/validate_repo.py` to **v4.1.0** closing all 5 blind spots + adding all 7 audit reports (`29` total); verified **`13 / 13`** synthetic regressions caught (`5/5` Agent 12 mutations + `8/8` baseline) and **`0 ERROR`** live exit `0` | **RESOLVED** |
+| **`[R12-MED-01]`** | **MEDIUM** | `18-practical-laboratory/lab-08-usart-baremetal-driver-printf/README.md` | Approach C (HAL) non-`volatile` `g_hal_rx_byte` & 1-byte premature `HAL_UART_Receive_IT()` re-arm race + L525 overstatement | Made `g_hal_rx_byte` `volatile`, buffered received bytes into a lock-free SPSC ring buffer inside `HAL_UART_RxCpltCallback()` before re-arming `HAL_UART_Receive_IT()`, and qualified L525 accurately | **RESOLVED** |
+| **`[R12-MED-02]`** | **MEDIUM** | `learning-sequence.md` L76, `lab-05/README.md` L70/L324, `exti_g4.h` L7–8, `tim_g4.h` L11–12 | Residual Finding A conflation between ARM AN321 §4.9 (`(void)REG;`) and ARM Erratum 838869 / ST ES0430 §2.1.3 (`__DSB();`) | Separated `(void)REG;` (APB bridge commit, AN321 §4.9) from `__DSB();` (write-buffer drain + ARM 838869 / ES0430 §2.1.3) cleanly across all 4 files | **RESOLVED** |
+| **`[R12-MED-03]`** | **MEDIUM** | `AUDIT/TECHNICAL_DEFECTS.md` L52 (`DEF-C-002`) | Unescaped pipe characters inside inline code split `DEF-C-002` into 11 columns | Escaped pipes via `&#124;` so all `35/35` rows parse strictly as 9/9 columns and appended all 10 Agent 12 findings as `RESOLVED` | **RESOLVED** |
+| **`[R12-MED-04]`** | **MEDIUM** | `AUDIT/EDUCATIONAL_QUALITY_REPORT.md` L79–80/130–133, `01-master-concept-map/learning-sequence.md` | Stale pre-merge notes in `EDUCATIONAL_QUALITY_REPORT.md` + off-by-one stage numbering in `learning-sequence.md` | Updated `EDUCATIONAL_QUALITY_REPORT.md` to post-Wave-2 reality (`17/17` nav, `v4.1.0` MathJax guard, `13/20` onboard labs) and reconciled `learning-sequence.md` headings (`Step 01..17 — Stage 01b..16`) 1:1 with stage README titles | **RESOLVED** |
+| **`[R12-LOW-01]`** | **LOW** | `20-technical-diagrams/registers/exti-syscfg-register-map.md` L61 | L61 `Statically Reviewed` mismatched L9 `Compile-Verified` | Updated L61 to `Compile-Verified (arm-none-eabi-gcc 14.3.1, -Wall -Wextra -Werror; Not Tested on Physical Hardware)` | **RESOLVED** |
+| **`[R12-LOW-02]`** | **LOW** | `21-reference-library/official-st-documentation.md` L30 | Cited `RTC (Ch 34)` instead of RM0440 **Ch 37** | Updated L30 to `RTC (Ch 37)` | **RESOLVED** |
+| **`[R12-LOW-03]`** | **LOW** | `10-interrupts/README.md` L85 | Clarify ARM AN321 §4.9 asynchronous clock-domain IRQ-wire synchronizer latency beyond register commit | Added 1-sentence clarification on slower APB prescaler / asynchronous wakeup domain IRQ-wire synchronizer latency | **RESOLVED** |
 
 ---
 

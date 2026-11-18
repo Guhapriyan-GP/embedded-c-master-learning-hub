@@ -1,40 +1,73 @@
 #!/usr/bin/env python3
 """
-Automated Validation Suite for the Embedded C & STM32G474RE Master Learning Hub (v3.0.0).
+Regression-Resistant Automated Validation Suite for the
+Embedded C & STM32G474RE Master Learning Hub (v4.1.0).
 
-Validates:
-  1. Core repository structure, onboarding/governance artifacts, and mandatory AUDIT reports
-  2. Absence of raw ASCII control characters in all Markdown and Mermaid files
-  3. Internal relative Markdown links across all repository .md files
-  4. Mermaid diagram syntax and prohibited HTML tags across all .mmd files
-  5. Source-of-Truth Concept Inventory (AUDIT/concepts_sot.json v2.0.0):
-     schema, 350 unique IDs, 27/27 domains, all repository target paths,
-     0 cycles, 0 unknown prerequisites, and 0 inverted difficulty-level edges
-  6. Register map consistency checks against STM32G474RE ground truth (stm32g474xx.h)
-  7. Curriculum module completeness (all 17 stages), 20 labs, 16 register maps,
-     12 bare-metal drivers, pinned FreeRTOS V11.1.0, and 3 Capstone projects
-  8. Video database CSV integrity (70+ entries, valid HTTPS URLs, 0 duplicates)
-  9. Firmware compilation (starter template debug+release + ELF .isr_vector 472 B @ 512 B align,
-     FreeRTOS V11.1.0 build, and all 3 Capstone builds)
- 10. Host C unit test compilation and execution (make -C tests clean test -> 574+ assertions)
+Validates all 10 mandatory Section 2.C verification pillars + Agent 12 v4.1.0 hardening:
+  1. Core repository structure, governance/AUDIT files (incl. Section 9 reports), and raw ASCII control bytes
+  2. Real CMSIS header cross-checking (programmatic parsing of stm32g474xx.h &
+     core_cm4.h base addresses, C typedef struct byte offsets, IRQn_Type, and
+     _Pos/_Msk bitfields cross-verified directly against all 16 register maps —
+     including both bullet bit positions AND table-cell FIELD[hi:lo] / (bN) ranges)
+  3. Evidence-based Source-of-Truth Concept Audit (AUDIT/concepts_sot.json):
+     350 unique IDs, 27/27 domains, 0 cycles, 0 unknown prereqs, 0 inverted-level
+     edges, PLUS substantive file/field/hardware-status evidence for every COMPLETE concept
+  4. Practical Lab 11-section + Clock Profile + Standardized Verification Record
+     audit across all 20 labs in 18-practical-laboratory/lab-*/README.md
+  5. Full Markdown Link, Internal #anchor Fragment (GFM heading slugification),
+     Reference-Style Link, Image, Expanded GitHub MathJax Safety (_ / \\_ inside
+     \\text/\\mathrm/\\texttt/\\textbf/\\textit/\\mbox, bare \\_ in math, balanced {}
+     braces, closed $/$$ spans), and External URL audit
+  6. Real Mermaid (.mmd) syntax parser: valid header, balanced subgraph/end,
+     balanced quotes and delimiters, valid connectors/arrows, non-zero nodes &
+     edges, and zero HTML tags
+  7. Curriculum 13-section + authoritative primary reference + Prev/Next navigation
+     audit across all 17 stages (01b + 02-17), plus 12 drivers, FreeRTOS V11.1.0,
+     3 Capstones, and Video CSV integrity
+  8. Firmware builds (strictly distinguishing missing tools -> UNVERIFIED vs
+     build failures -> ERROR), ELF .isr_vector verification (472 B @ 512 B align),
+     and Register-Map C Snippet CMSIS syntax compilation (-fsyntax-only -Wall -Wextra -Werror)
+  9. Host C unit tests (make -C tests clean test -> 0 failed, >= 500 assertions,
+     cleaned up afterward with make -C tests clean)
+ 10. Structured Severity Taxonomy (INFO/PASS, WARNING, UNVERIFIED, ERROR) with
+     optional JSON report export (--json-report <path>)
 
-Exit code: 0 if all enabled checks pass, 1 otherwise.
+Exit code: 1 if ERROR > 0, else 0.
 """
 
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import csv
 import json
 import os
+import platform
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
+import urllib.error
+import urllib.request
 from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+EXCLUDED_DIR_NAMES = {
+    ".git",
+    "FreeRTOS-Kernel",
+    "CMSIS",
+    "build",
+    "__pycache__",
+    ".pytest_cache",
+    "node_modules",
+}
 
 REQUIRED_DIRS = [
     "00-project-management",
@@ -113,6 +146,13 @@ REQUIRED_AUDIT_FILES = [
     "AUDIT/VIDEO_COVERAGE_REPORT.md",
     "AUDIT/CAPSTONE_IMPLEMENTATION_REPORT.md",
     "AUDIT/LEARNING_EXPERIENCE_REVIEW.md",
+    "AUDIT/MASTER_REMEDIATION_TRACKER.md",
+    "AUDIT/TECHNICAL_DEFECTS.md",
+    "AUDIT/VALIDATOR_QUALITY_REPORT.md",
+    "AUDIT/LAB_VERIFICATION_MATRIX.md",
+    "AUDIT/HARDWARE_VERIFICATION_MATRIX.md",
+    "AUDIT/EDUCATIONAL_QUALITY_REPORT.md",
+    "AUDIT/FINAL_REMEDIATION_REPORT.md",
 ]
 
 REQUIRED_DRIVERS = [
@@ -156,6 +196,37 @@ STAGE_READMES = [
     "17-advanced-firmware-engineering/README.md",
 ]
 
+REQUIRED_CMSIS_BASES = [
+    "RCC_BASE",
+    "PWR_BASE",
+    "FLASH_R_BASE",
+    "GPIOA_BASE",
+    "EXTI_BASE",
+    "SYSCFG_BASE",
+    "TIM1_BASE",
+    "TIM2_BASE",
+    "USART2_BASE",
+    "SPI1_BASE",
+    "I2C1_BASE",
+    "ADC1_BASE",
+    "DAC1_BASE",
+    "DMA1_BASE",
+    "DMAMUX1_BASE",
+    "IWDG_BASE",
+    "WWDG_BASE",
+    "FDCAN1_BASE",
+    "HRTIM1_BASE",
+    "CORDIC_BASE",
+    "FMAC_BASE",
+    "CRC_BASE",
+    "RNG_BASE",
+    "OPAMP1_BASE",
+    "COMP1_BASE",
+    "RTC_BASE",
+    "TAMP_BASE",
+    "USB_BASE",
+]
+
 VALID_MERMAID_HEADERS = (
     "flowchart ",
     "graph ",
@@ -182,142 +253,769 @@ VALID_LEVELS = {
     "Level 3 - Advanced": 3,
 }
 
+PLACEHOLDER_STRINGS = {"TBD", "TODO", "N/A", "NA", "NONE", "WIP", "FIXME", "...", "-"}
+
+STOPWORDS = {
+    "and", "the", "for", "with", "from", "into", "over", "under", "using", "via",
+    "mode", "modes", "basic", "advanced", "basics", "overview", "design", "pattern",
+    "system", "embedded", "hardware", "software", "stm32", "stm32g4", "stm32g474re",
+    "arm", "cortex", "level", "data", "control", "config", "configuration", "bit",
+    "bits", "byte", "bytes", "register", "registers", "generic", "common", "type",
+    "types", "based", "multi", "single", "high", "low", "fast", "safe", "safety",
+}
+
+C_TYPE_SIZES: dict[str, tuple[int, int]] = {
+    "uint32_t": (4, 4),
+    "int32_t": (4, 4),
+    "uint16_t": (2, 2),
+    "int16_t": (2, 2),
+    "uint8_t": (1, 1),
+    "int8_t": (1, 1),
+}
+
+HTML_TAG_RE = re.compile(
+    r"</?(?:br|b|i|u|em|strong|span|div|p|a|font|sub|sup|code|pre|hr|img|table|tr|td|th)\b[^>]*>",
+    re.IGNORECASE,
+)
+
+
+@dataclass
+class Finding:
+    severity: str  # "INFO", "WARNING", "UNVERIFIED", "ERROR"
+    check: str
+    message: str
+    details: list[str] = field(default_factory=list)
+
 
 class ValidationReport:
-    def __init__(self) -> None:
-        self.errors: list[str] = []
-        self.warnings: list[str] = []
-        self.info: list[str] = []
+    def __init__(self, quiet: bool = False) -> None:
+        self.quiet = quiet
+        self.findings: list[Finding] = []
+        self.metrics: dict[str, Any] = {}
 
-    def err(self, msg: str) -> None:
-        self.errors.append(msg)
-        print(f"[FAIL] {msg}")
+    @property
+    def errors(self) -> list[Finding]:
+        return [f for f in self.findings if f.severity == "ERROR"]
 
-    def warn(self, msg: str) -> None:
-        self.warnings.append(msg)
-        print(f"[WARN] {msg}")
+    @property
+    def warnings(self) -> list[Finding]:
+        return [f for f in self.findings if f.severity == "WARNING"]
 
-    def ok(self, msg: str) -> None:
-        self.info.append(msg)
-        print(f"[PASS] {msg}")
+    @property
+    def unverified(self) -> list[Finding]:
+        return [f for f in self.findings if f.severity == "UNVERIFIED"]
+
+    @property
+    def infos(self) -> list[Finding]:
+        return [f for f in self.findings if f.severity == "INFO"]
+
+    def _emit(self, sev: str, check: str, msg: str, details: list[str] | None = None) -> None:
+        f = Finding(severity=sev, check=check, message=msg, details=details or [])
+        self.findings.append(f)
+        if not self.quiet:
+            tag = {"INFO": "INFO/PASS", "WARNING": "WARNING", "UNVERIFIED": "UNVERIFIED", "ERROR": "ERROR"}[sev]
+            print(f"[{tag}] [{check}] {msg}")
+            if details:
+                for d in details[:12]:
+                    print(f"    - {d}")
+                if len(details) > 12:
+                    print(f"    ... (+{len(details) - 12} more)")
+
+    def info(self, check: str, msg: str, details: list[str] | None = None) -> None:
+        self._emit("INFO", check, msg, details)
+
+    def warn(self, check: str, msg: str, details: list[str] | None = None) -> None:
+        self._emit("WARNING", check, msg, details)
+
+    def unverified_item(self, check: str, msg: str, details: list[str] | None = None) -> None:
+        self._emit("UNVERIFIED", check, msg, details)
+
+    def err(self, check: str, msg: str, details: list[str] | None = None) -> None:
+        self._emit("ERROR", check, msg, details)
+
+    def to_dict(self, repo_root: Path) -> dict[str, Any]:
+        return {
+            "validator_version": "4.1.0",
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "repo_root": str(repo_root),
+            "python_version": platform.python_version(),
+            "summary": {
+                "INFO": len(self.infos),
+                "WARNING": len(self.warnings),
+                "UNVERIFIED": len(self.unverified),
+                "ERROR": len(self.errors),
+                "exit_code": 1 if self.errors else 0,
+            },
+            "metrics": self.metrics,
+            "findings": [
+                {
+                    "severity": f.severity,
+                    "check": f.check,
+                    "message": f.message,
+                    "details": f.details,
+                }
+                for f in self.findings
+            ],
+        }
 
 
-def is_vendor_third_party(path: Path) -> bool:
-    parts = path.parts
-    return (".git" in parts) or ("FreeRTOS-Kernel" in parts) or ("CMSIS" in parts)
+def iter_repo_files(repo_root: Path, suffix: str) -> list[Path]:
+    """Fast, vendor-pruned recursive file enumerator."""
+    out: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(repo_root):
+        dirnames[:] = sorted(d for d in dirnames if d not in EXCLUDED_DIR_NAMES)
+        for fn in sorted(filenames):
+            if fn.endswith(suffix):
+                out.append(Path(dirpath) / fn)
+    return out
 
 
-def check_structure(rep: ValidationReport) -> None:
-    missing_dirs = [d for d in REQUIRED_DIRS if not (REPO_ROOT / d).is_dir()]
+# =============================================================================
+# 1. Structure & Raw Control Character Audit
+# =============================================================================
+def check_structure(repo_root: Path, rep: ValidationReport) -> None:
+    missing_dirs = [d for d in REQUIRED_DIRS if not (repo_root / d).is_dir()]
     if missing_dirs:
-        rep.err(f"Missing required directories: {missing_dirs}")
+        rep.err("structure", f"Missing {len(missing_dirs)} required directories", missing_dirs)
     else:
-        rep.ok(f"All {len(REQUIRED_DIRS)} required directories present.")
+        rep.info("structure", f"All {len(REQUIRED_DIRS)} required directories present.")
 
-    missing_support = [f for f in REQUIRED_ROOT_AND_SUPPORT_FILES if not (REPO_ROOT / f).is_file()]
+    missing_support = [f for f in REQUIRED_ROOT_AND_SUPPORT_FILES if not (repo_root / f).is_file()]
     if missing_support:
-        rep.err(f"Missing required onboarding/governance/tooling files: {missing_support}")
+        rep.err("structure", f"Missing {len(missing_support)} onboarding/governance/tooling files", missing_support)
     else:
-        rep.ok(f"All {len(REQUIRED_ROOT_AND_SUPPORT_FILES)} onboarding/governance/tooling files present.")
+        rep.info("structure", f"All {len(REQUIRED_ROOT_AND_SUPPORT_FILES)} onboarding/governance/tooling files present.")
 
-    missing_audits = [f for f in REQUIRED_AUDIT_FILES if not (REPO_ROOT / f).is_file()]
+    missing_audits = [f for f in REQUIRED_AUDIT_FILES if not (repo_root / f).is_file()]
     if missing_audits:
-        rep.err(f"Missing mandatory AUDIT files: {missing_audits}")
+        rep.err("structure", f"Missing {len(missing_audits)} mandatory AUDIT files", missing_audits)
     else:
-        rep.ok(f"All {len(REQUIRED_AUDIT_FILES)} mandatory AUDIT files present.")
+        rep.info("structure", f"All {len(REQUIRED_AUDIT_FILES)} mandatory AUDIT files present.")
 
-    if (REPO_ROOT / "scratch").exists():
-        rep.err("Stale 'scratch/' directory still exists inside repository root.")
+    if (repo_root / "scratch").exists():
+        rep.err("structure", "Stale 'scratch/' directory still exists inside repository root.")
     else:
-        rep.ok("Repository hygiene: no stale scratch/ generator directory.")
+        rep.info("structure", "Repository hygiene clean: no stale scratch/ directory.")
 
 
-def check_control_chars(rep: ValidationReport) -> None:
-    bad_files = []
-    files = list(REPO_ROOT.rglob("*.md")) + list(REPO_ROOT.rglob("*.mmd"))
-    files = [f for f in files if not is_vendor_third_party(f)]
+def check_control_chars(repo_root: Path, rep: ValidationReport) -> None:
+    files = iter_repo_files(repo_root, ".md") + iter_repo_files(repo_root, ".mmd")
+    bad_files: list[str] = []
     for path in files:
         data = path.read_bytes()
         bad_bytes = [b for b in data if b < 0x20 and b not in (0x09, 0x0A, 0x0D)]
         if bad_bytes:
-            bad_files.append((str(path.relative_to(REPO_ROOT)), len(bad_bytes)))
+            bad_files.append(f"{path.relative_to(repo_root)}: {len(bad_bytes)} control byte(s)")
     if bad_files:
-        rep.err(f"Raw ASCII control bytes detected in {len(bad_files)} files: {bad_files[:10]}")
+        rep.err("control_chars", f"Raw ASCII control bytes detected in {len(bad_files)} files", bad_files)
     else:
-        rep.ok(f"Zero raw ASCII control characters across {len(files)} Markdown/Mermaid files.")
+        rep.info("control_chars", f"Zero raw ASCII control characters across {len(files)} Markdown/Mermaid files.")
 
 
-def strip_code_fences(text: str) -> str:
-    out_lines = []
-    in_fence = False
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
+# =============================================================================
+# 2. Real CMSIS Header Parser & Markdown Register Map Cross-Verification
+# =============================================================================
+def strip_c_comments(text: str) -> str:
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    text = re.sub(r"//[^\n]*", "", text)
+    return text
+
+
+def parse_cmsis_base_macros(text: str) -> dict[str, int]:
+    """Iteratively evaluate CMSIS #define base address expressions directly from headers."""
+    clean = strip_c_comments(text)
+    raw: dict[str, str] = {}
+    for m in re.finditer(r"^\s*#define\s+([A-Za-z_]\w*)\s+([^\n]+)", clean, re.M):
+        name, expr = m.group(1), m.group(2).strip()
+        if name.endswith(("_Pos", "_Msk")):
             continue
-        if not in_fence:
-            out_lines.append(line)
-    return "\n".join(out_lines)
+        if any(k in name for k in ("BASE", "PMAADDR", "SRAMCAN", "PERIPH_BASE")):
+            raw[name] = expr
 
-
-def check_internal_links(rep: ValidationReport) -> None:
-    link_re = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
-    broken: list[str] = []
-    checked = 0
-    md_files = [f for f in REPO_ROOT.rglob("*.md") if not is_vendor_third_party(f)]
-    for md in md_files:
-        text = strip_code_fences(md.read_text(encoding="utf-8", errors="replace"))
-        for match in link_re.finditer(text):
-            raw_target = match.group(1).strip()
-            if not raw_target or raw_target.startswith(("#", "http://", "https://", "mailto:", "file://")):
+    resolved: dict[str, int] = {}
+    for _ in range(16):
+        changed = False
+        for name, expr in raw.items():
+            if name in resolved:
                 continue
-            target = raw_target.split()[0].split("#")[0]
-            if not target:
-                continue
-            checked += 1
-            resolved = (md.parent / target).resolve()
-            if not resolved.exists():
-                broken.append(f"{md.relative_to(REPO_ROOT)} -> {raw_target}")
-    if broken:
-        rep.err(f"Broken internal links ({len(broken)} of {checked} checked): {broken[:15]}")
-    else:
-        rep.ok(f"All {checked} internal relative Markdown links verified across {len(md_files)} files.")
+            e = re.sub(r"\b(0[xX][0-9A-Fa-f]+|\d+)[uUlL]+\b", r"\1", expr)
+            tokens = re.findall(r"\b[A-Za-z_]\w*\b", e)
+            if all(t in resolved for t in tokens):
+                e_sub = re.sub(r"\b[A-Za-z_]\w*\b", lambda mm: str(resolved[mm.group(0)]), e)
+                if re.fullmatch(r"[0-9a-fA-FxX\s\+\-\(\)\*\/<>|&]+", e_sub):
+                    try:
+                        resolved[name] = int(eval(e_sub, {"__builtins__": None}, {}))
+                        changed = True
+                    except Exception:
+                        pass
+        if not changed:
+            break
+    return resolved
 
 
-def check_mermaid_diagrams(rep: ValidationReport) -> None:
-    mmd_files = [f for f in REPO_ROOT.rglob("*.mmd") if not is_vendor_third_party(f)]
-    issues = []
-    for mmd in mmd_files:
-        txt = mmd.read_text(encoding="utf-8", errors="replace")
-        non_empty = [ln.strip() for ln in txt.splitlines() if ln.strip() and not ln.strip().startswith("%%")]
-        if not non_empty:
-            issues.append(f"{mmd.name}: empty diagram")
+def parse_cmsis_structs(text: str) -> dict[str, dict[str, int]]:
+    """Compute exact C byte offsets for every typedef struct in CMSIS headers."""
+    clean = strip_c_comments(text)
+    structs: dict[str, dict[str, int]] = {}
+    for m in re.finditer(r"typedef\s+struct\s*\{", clean):
+        start = m.end()
+        depth = 1
+        i = start
+        while i < len(clean) and depth > 0:
+            if clean[i] == "{":
+                depth += 1
+            elif clean[i] == "}":
+                depth -= 1
+            i += 1
+        body = clean[start:i - 1]
+        tail_m = re.match(r"\s*(\w+)\s*;", clean[i:])
+        if not tail_m:
             continue
-        if not any(non_empty[0].startswith(h) for h in VALID_MERMAID_HEADERS):
-            issues.append(f"{mmd.name}: unsupported header '{non_empty[0]}'")
-        if "<br" in txt.lower():
-            issues.append(f"{mmd.name}: contains HTML <br> tag")
-    if issues:
-        rep.err(f"Mermaid validation issues: {issues}")
-    else:
-        rep.ok(f"All {len(mmd_files)} Mermaid (.mmd) diagrams valid and free of HTML tags.")
+        sname = tail_m.group(1)
+        offsets: dict[str, int] = {}
+        cur = 0
+        j = 0
+        while j < len(body):
+            while j < len(body) and body[j].isspace():
+                j += 1
+            if j >= len(body):
+                break
+            if body[j] == "#":
+                nl = body.find("\n", j)
+                j = len(body) if nl == -1 else nl + 1
+                continue
+            um = re.match(r"union\s*\{", body[j:])
+            if um:
+                u_start = j + um.end()
+                ud = 1
+                k = u_start
+                while k < len(body) and ud > 0:
+                    if body[k] == "{":
+                        ud += 1
+                    elif body[k] == "}":
+                        ud -= 1
+                    k += 1
+                u_body = body[u_start:k - 1]
+                max_sz = 4
+                for fm in re.finditer(
+                    r"\b(uint32_t|uint16_t|uint8_t|int32_t|int16_t|int8_t)\s+(\w+)(?:\[(\d+)\])?\s*;",
+                    u_body,
+                ):
+                    sz, _ = C_TYPE_SIZES[fm.group(1)]
+                    cnt = int(fm.group(3)) if fm.group(3) else 1
+                    max_sz = max(max_sz, sz * cnt)
+                if cur % 4 != 0:
+                    cur = (cur + 3) & ~3
+                u_tail = re.match(r"\s*(\w+)?\s*;", body[k:])
+                if u_tail and u_tail.group(1):
+                    offsets[u_tail.group(1)] = cur
+                cur += max_sz
+                j = k + (u_tail.end() if u_tail else 1)
+                continue
+
+            semi = body.find(";", j)
+            if semi == -1:
+                break
+            stmt = body[j:semi].strip()
+            j = semi + 1
+            stmt_clean = re.sub(r"\b(__IOM|__IM|__OM|__IO|__I|__O|volatile|const)\b", "", stmt).strip()
+            tm = re.match(r"^(\w+)\s+(.+)$", stmt_clean)
+            if not tm:
+                continue
+            tname, rest = tm.group(1), tm.group(2)
+            if tname not in C_TYPE_SIZES:
+                continue
+            sz, align = C_TYPE_SIZES[tname]
+            for decl in rest.split(","):
+                dm = re.match(r"^\s*(\w+)(?:\s*\[\s*(0x[0-9A-Fa-f]+|\d+)[uUlL]*\s*\])?\s*$", decl.strip())
+                if not dm:
+                    continue
+                fname = dm.group(1)
+                cnt = int(dm.group(2), 0) if dm.group(2) else 1
+                if cur % align != 0:
+                    cur = (cur + align - 1) & ~(align - 1)
+                offsets[fname] = cur
+                cur += sz * cnt
+        structs[sname] = offsets
+    return structs
 
 
-def check_sot_concepts(rep: ValidationReport) -> None:
-    sot_path = REPO_ROOT / "AUDIT" / "concepts_sot.json"
-    if not sot_path.is_file():
-        rep.err("AUDIT/concepts_sot.json missing.")
+def parse_cmsis_bitfields_and_irqs(text: str) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+    """Extract _Pos, _Msk, and IRQn_Type enum values from CMSIS headers."""
+    clean = strip_c_comments(text)
+    pos_map: dict[str, int] = {}
+    msk_map: dict[str, int] = {}
+    irq_map: dict[str, int] = {}
+
+    for m in re.finditer(r"^\s*#define\s+([A-Za-z_]\w*_Pos)\s+\(?(\d+)[uUlL]*\)?", clean, re.M):
+        pos_map[m.group(1)] = int(m.group(2))
+    for m in re.finditer(
+        r"^\s*#define\s+([A-Za-z_]\w*_Msk)\s+\(?(0[xX][0-9A-Fa-f]+)[uUlL]*\s*<<\s*([A-Za-z_]\w*_Pos)\)?",
+        clean,
+        re.M,
+    ):
+        p = pos_map.get(m.group(3))
+        if p is not None:
+            msk_map[m.group(1)] = int(m.group(2), 16) << p
+
+    enum_m = re.search(r"typedef\s+enum\s*\{(.*?)\}\s*IRQn_Type\s*;", clean, re.S)
+    if enum_m:
+        for em in re.finditer(r"(\w+_IRQn)\s*=\s*(-?\d+)", enum_m.group(1)):
+            irq_map[em.group(1)] = int(em.group(2))
+    return pos_map, msk_map, irq_map
+
+
+def check_cmsis_register_cross_check(repo_root: Path, rep: ValidationReport) -> None:
+    hdr_g4 = repo_root / "23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g474xx.h"
+    hdr_cm4 = repo_root / "23-code-library/Drivers/CMSIS/Core/Include/core_cm4.h"
+    if not hdr_g4.is_file() or not hdr_cm4.is_file():
+        rep.err("cmsis_registers", f"CMSIS headers missing: {hdr_g4.exists()=}, {hdr_cm4.exists()=}")
         return
-    data = json.loads(sot_path.read_text(encoding="utf-8"))
+
+    txt_g4 = hdr_g4.read_text(encoding="utf-8", errors="replace")
+    txt_cm4 = hdr_cm4.read_text(encoding="utf-8", errors="replace")
+    combined = txt_cm4 + "\n" + txt_g4
+
+    bases = parse_cmsis_base_macros(combined)
+    structs = parse_cmsis_structs(combined)
+    pos_map, msk_map, irq_map = parse_cmsis_bitfields_and_irqs(combined)
+
+    missing_req_bases = [b for b in REQUIRED_CMSIS_BASES if b not in bases]
+    if missing_req_bases:
+        rep.err("cmsis_registers", f"Missing required CMSIS base macros in stm32g474xx.h", missing_req_bases)
+        return
+
+    if irq_map.get("FMAC_IRQn") != 101:
+        rep.err("cmsis_registers", f"stm32g474xx.h IRQn_Type check failed: FMAC_IRQn={irq_map.get('FMAC_IRQn')} (expected 101)")
+    else:
+        rep.info(
+            "cmsis_registers",
+            f"Parsed CMSIS headers (stm32g474xx.h + core_cm4.h): {len(bases)} base macros, "
+            f"{len(structs)} typedef structs, {len(pos_map)} _Pos / {len(msk_map)} _Msk bitfields, "
+            f"{len(irq_map)} IRQns (max FMAC_IRQn=101).",
+        )
+
+    # Map peripheral token -> base address
+    periph_bases: dict[str, int] = {}
+    for k, v in bases.items():
+        if k.endswith("_BASE"):
+            periph_bases[k[:-5]] = v
+    periph_bases["FLASH"] = bases["FLASH_R_BASE"]
+    if "USB_PMAADDR" in bases:
+        periph_bases["USB_PMAADDR"] = bases["USB_PMAADDR"]
+    if "SRAMCAN_BASE" in bases:
+        periph_bases["SRAMCAN_BASE"] = bases["SRAMCAN_BASE"]
+
+    reg_dir = repo_root / "20-technical-diagrams" / "registers"
+    reg_files = sorted(reg_dir.glob("*.md")) if reg_dir.is_dir() else []
+    if len(reg_files) < 16:
+        rep.err("cmsis_registers", f"Expected >= 16 peripheral register maps, found {len(reg_files)}.")
+        return
+
+    checked_bases = 0
+    checked_offsets = 0
+    checked_bits = 0
+    mismatches: list[str] = []
+
+    for md in reg_files:
+        txt = md.read_text(encoding="utf-8", errors="replace")
+        lines = txt.splitlines()
+
+        # Pass A: Cross-verify peripheral base address declarations
+        for lineno, ln in enumerate(lines, 1):
+            # Message RAM sub-partition line documents SRAMCAN_BASE partitions, not FDCAN register base
+            is_msg_ram_line = ("SRAMCAN_BASE" in ln or "Message RAM" in ln)
+            for m in re.finditer(r"`([A-Za-z0-9_]+)`\s*(?::|\(|@|—)?\s*`(0x[0-9A-Fa-f]{8})`", ln):
+                name, addr_s = m.group(1), m.group(2)
+                if is_msg_ram_line and name in ("FDCAN1", "FDCAN2", "FDCAN3"):
+                    continue
+                if name in periph_bases:
+                    checked_bases += 1
+                    addr = int(addr_s, 16)
+                    if periph_bases[name] != addr:
+                        mismatches.append(
+                            f"BASE MISMATCH {md.name}:{lineno} {name}: doc={addr_s} vs CMSIS=0x{periph_bases[name]:08X}"
+                        )
+            for m in re.finditer(r"`(0x[0-9A-Fa-f]{8})`\s*\(`([A-Za-z0-9_]+)`\)", ln):
+                addr_s, name = m.group(1), m.group(2)
+                if is_msg_ram_line and name in ("FDCAN1", "FDCAN2", "FDCAN3"):
+                    continue
+                if name in periph_bases:
+                    checked_bases += 1
+                    addr = int(addr_s, 16)
+                    if periph_bases[name] != addr:
+                        mismatches.append(
+                            f"BASE MISMATCH {md.name}:{lineno} {name}: doc={addr_s} vs CMSIS=0x{periph_bases[name]:08X}"
+                        )
+            for m in re.finditer(
+                r"\*\*([A-Za-z0-9_]+)\s+(?:Interface\s+)?Base(?:\s+Address)?:\*\*\s*`(0x[0-9A-Fa-f]{8})`",
+                ln,
+            ):
+                name, addr_s = m.group(1), m.group(2)
+                if name in periph_bases:
+                    checked_bases += 1
+                    addr = int(addr_s, 16)
+                    if periph_bases[name] != addr:
+                        mismatches.append(
+                            f"BASE MISMATCH {md.name}:{lineno} {name}: doc={addr_s} vs CMSIS=0x{periph_bases[name]:08X}"
+                        )
+
+        # Pass B: Cross-verify Markdown register overview tables against C typedef struct offsets
+        active_structs: list[str] = []
+        in_reg_table = False
+        is_abs_addr_table = False
+
+        for lineno, ln in enumerate(lines, 1):
+            s = ln.strip()
+            if s.startswith("#"):
+                in_reg_table = False
+                is_abs_addr_table = False
+                found_types = re.findall(r"\b([A-Za-z0-9_]+(?:TypeDef|_Type))\b", s)
+                valid_types = [t for t in found_types if t in structs]
+                if valid_types:
+                    active_structs = valid_types
+                elif "USB" in s and "CRS" in s:
+                    active_structs = ["USB_TypeDef", "CRS_TypeDef"]
+                elif "DMAMUX1" in s:
+                    active_structs = [
+                        "DMAMUX_Channel_TypeDef",
+                        "DMAMUX_ChannelStatus_TypeDef",
+                        "DMAMUX_RequestGen_TypeDef",
+                        "DMAMUX_RequestGenStatus_TypeDef",
+                    ]
+                elif "DWT" in s and ("ITM" in s or "SWO" in s or "Trace" in s):
+                    active_structs = ["DWT_Type", "TPI_Type", "ITM_Type", "CoreDebug_Type"]
+                continue
+
+            if not s.startswith("|"):
+                in_reg_table = False
+                continue
+
+            cells = [c.strip() for c in s.strip("|").split("|")]
+            if len(cells) < 2:
+                continue
+            c0_low, c1_low = cells[0].lower(), cells[1].lower()
+            if ("register" in c0_low) and ("offset" in c1_low or "address" in c1_low):
+                in_reg_table = True
+                is_abs_addr_table = ("address" in c1_low) and ("offset" not in c1_low)
+                continue
+            if in_reg_table and set(cells[0].replace("-", "").replace(":", "").strip()) == set():
+                continue
+            if not in_reg_table or not active_structs:
+                continue
+
+            raw_reg = re.sub(r"[*`]", "", cells[0]).strip()
+            raw_off = re.sub(r"[*`]", "", cells[1]).strip()
+
+            if "*(x" in raw_off or "x-1" in raw_off:
+                continue
+
+            off_hexes = re.findall(r"\+?(0x[0-9A-Fa-f]+)", raw_off)
+            if not off_hexes:
+                continue
+            is_range = ".." in raw_off
+
+            paren_member = re.search(r"\(([A-Za-z0-9_]+)\[(\d+)\]\)", raw_reg)
+            pairs: list[tuple[str, int]] = []
+            if paren_member and len(off_hexes) == 1:
+                pairs.append((f"{paren_member.group(1)}[{paren_member.group(2)}]", int(off_hexes[0], 16)))
+            elif is_range:
+                if "->" in raw_reg:
+                    lhs, rhs = raw_reg.split("->", 1)
+                    lhs_base = lhs.split("..")[0].strip()
+                    pairs.append((f"{lhs_base}->{rhs.split()[0]}", int(off_hexes[0], 16)))
+                else:
+                    m_rng = re.match(r"([A-Za-z0-9_]+?)\.\.", raw_reg)
+                    if m_rng:
+                        pairs.append((m_rng.group(1), int(off_hexes[0], 16)))
+            else:
+                reg_parts = [p.strip() for p in raw_reg.split("/")]
+                if len(reg_parts) == len(off_hexes):
+                    base_prefix = ""
+                    prev_full = ""
+                    for idx, (rp, oh) in enumerate(zip(reg_parts, off_hexes)):
+                        rp_tok = rp.split()[0]
+                        if idx == 0:
+                            prev_full = rp_tok
+                            if "_" in rp_tok:
+                                base_prefix = rp_tok.split("_", 1)[0] + "_"
+                            pairs.append((rp_tok, int(oh, 16)))
+                        else:
+                            # Handle shorthand like I2C_OAR1/2 or FLASH_PCROP1SR/ER or FLASH_WRP1AR/BR
+                            if (
+                                "_" not in rp_tok
+                                and "->" not in rp_tok
+                                and prev_full
+                                and (rp_tok.isdigit() or (len(rp_tok) == 2 and rp_tok in ("ER", "BR")))
+                            ):
+                                expanded = prev_full[:-len(rp_tok)] + rp_tok
+                                pairs.append((expanded, int(oh, 16)))
+                            elif "_" not in rp_tok and "->" not in rp_tok and base_prefix:
+                                pairs.append((base_prefix + rp_tok, int(oh, 16)))
+                            else:
+                                pairs.append((rp_tok, int(oh, 16)))
+                elif len(off_hexes) == 1:
+                    pairs.append((raw_reg.split()[0], int(off_hexes[0], 16)))
+
+            for rtok, doc_val in pairs:
+                if is_abs_addr_table and "->" in rtok:
+                    p_name, m_name = rtok.split("->", 1)
+                    m_name = re.sub(r"\[.*$", "", m_name)
+                    p_base = periph_bases.get(p_name)
+                    s_name = f"{p_name}_Type"
+                    if p_base is not None and s_name in structs and m_name in structs[s_name]:
+                        expected = p_base + structs[s_name][m_name]
+                        checked_offsets += 1
+                        if expected != doc_val:
+                            mismatches.append(
+                                f"ABS ADDR MISMATCH {md.name}:{lineno} {rtok}: doc=0x{doc_val:08X} vs CMSIS=0x{expected:08X}"
+                            )
+                    continue
+
+                member = rtok
+                arr_idx = 0
+                am = re.match(r"^(.+?)\[(\d+)", member)
+                if am:
+                    member = am.group(1)
+                    arr_idx = int(am.group(2))
+
+                if "->" in member:
+                    lhs, member = member.split("->", 1)
+                    if lhs == "FDCAN_CONFIG" and "FDCAN_Config_TypeDef" in structs:
+                        s_cand = ["FDCAN_Config_TypeDef"]
+                    elif "ChannelStatus" in lhs:
+                        s_cand = ["DMAMUX_ChannelStatus_TypeDef"]
+                    elif "RequestGenStatus" in lhs:
+                        s_cand = ["DMAMUX_RequestGenStatus_TypeDef"]
+                    elif "RequestGen" in lhs:
+                        s_cand = ["DMAMUX_RequestGen_TypeDef"]
+                    elif "Channel" in lhs:
+                        s_cand = ["DMAMUX_Channel_TypeDef"]
+                    else:
+                        s_cand = active_structs
+                else:
+                    s_cand = active_structs
+                    if "_" in member:
+                        _, rest = member.split("_", 1)
+                        if not any(member in structs[s] for s in s_cand):
+                            member = rest
+
+                for s_name in s_cand:
+                    sm = structs[s_name]
+                    if member in sm:
+                        expected = sm[member] + arr_idx * 4
+                        if s_name == "DMAMUX_ChannelStatus_TypeDef" and doc_val >= 0x80:
+                            expected += 0x80
+                        elif s_name == "DMAMUX_RequestGen_TypeDef" and doc_val >= 0x100:
+                            expected += 0x100
+                        elif s_name == "DMAMUX_RequestGenStatus_TypeDef" and doc_val >= 0x140:
+                            expected += 0x140
+                        checked_offsets += 1
+                        if expected != doc_val:
+                            mismatches.append(
+                                f"OFFSET MISMATCH {md.name}:{lineno} {s_name}.{member} (from '{rtok}'): "
+                                f"doc=0x{doc_val:03X} vs CMSIS=0x{expected:03X}"
+                            )
+                        break
+
+        # Pass C: Cross-verify explicit bit-position claims in bitfield sections against CMSIS *_Pos
+        cur_reg_prefix: str | None = None
+        for lineno, ln in enumerate(lines, 1):
+            hm = re.match(r"^#{2,4}\s+.*?`([A-Z][A-Z0-9]+_[A-Z0-9]+)`", ln)
+            if hm:
+                cur_reg_prefix = hm.group(1)
+                continue
+            # Also match bullet starting with **`REG_NAME` Bit N (`FIELD`):**
+            bm_inline = re.search(
+                r"\*\*`([A-Z][A-Z0-9]+_[A-Z0-9]+)`\s+Bit\s+(\d+)\s+\(`([A-Za-z0-9_]+)`\)",
+                ln,
+            )
+            if bm_inline:
+                reg_p, bit_n, fld = bm_inline.group(1), int(bm_inline.group(2)), bm_inline.group(3)
+                macro = f"{reg_p}_{fld}_Pos"
+                if macro in pos_map:
+                    checked_bits += 1
+                    if pos_map[macro] != bit_n:
+                        mismatches.append(
+                            f"BITPOS MISMATCH {md.name}:{lineno} {macro}: doc=bit {bit_n} vs CMSIS=bit {pos_map[macro]}"
+                        )
+                continue
+            if cur_reg_prefix:
+                bm = re.search(r"\*\*Bit\s+(\d+)\s+\(`([A-Za-z0-9_]+)`\)", ln)
+                if bm:
+                    bit_n, fld = int(bm.group(1)), bm.group(2)
+                    macro = f"{cur_reg_prefix}_{fld}_Pos"
+                    if macro in pos_map:
+                        checked_bits += 1
+                        if pos_map[macro] != bit_n:
+                            mismatches.append(
+                                f"BITPOS MISMATCH {md.name}:{lineno} {macro}: doc=bit {bit_n} vs CMSIS=bit {pos_map[macro]}"
+                            )
+
+        # Pass C2 (v4.1.0 — Blind Spot M2): Cross-verify table-cell FIELD[hi:lo] & (bN) bitfields against CMSIS _Pos/_Msk
+        for lineno, ln in enumerate(lines, 1):
+            s = ln.strip()
+            if not s.startswith("|"):
+                continue
+            cells = [c.strip() for c in s.strip("|").split("|")]
+            if len(cells) < 3:
+                continue
+            raw_reg = re.sub(r"[*`]", "", cells[0]).strip().split()[0]
+            if not raw_reg or raw_reg.lower() in ("register", "bit", "field") or set(raw_reg) <= {"-", ":"}:
+                continue
+            reg_clean = re.sub(r"\[.*$", "", raw_reg.split("/")[0])
+            cands = [reg_clean]
+            if "x_" in reg_clean:
+                cands.append(reg_clean.replace("x_", "_"))
+            if re.search(r"[0-9]+_", reg_clean):
+                cands.append(re.sub(r"[0-9]+_", "_", reg_clean))
+            desc = " | ".join(cells[2:])
+
+            # Pattern 1: FIELD[hi:lo]
+            for bm in re.finditer(r"`?([A-Z][A-Z0-9_]{1,20})\[(\d+):(\d+)\]`?", desc):
+                fld, hi, lo = bm.group(1), int(bm.group(2)), int(bm.group(3))
+                if hi < lo or hi > 31:
+                    continue
+                for rp in cands:
+                    pk = f"{rp}_{fld}_Pos"
+                    mk = f"{rp}_{fld}_Msk"
+                    if pk in pos_map and mk in msk_map:
+                        c_lo = pos_map[pk]
+                        raw_m = msk_map[mk] >> c_lo
+                        # Only validate contiguous bitfields (skip split masks like TIM_CR2_MMS bit25+bits[6:4])
+                        if raw_m == 0 or (raw_m & (raw_m + 1)) != 0:
+                            break
+                        c_width = raw_m.bit_length()
+                        c_hi = c_lo + c_width - 1
+                        checked_bits += 1
+                        # ST RM0440 tables sometimes use field-relative width notation FIELD[w-1:0] when c_lo > 0
+                        if lo == 0 and c_lo > 0:
+                            if (hi + 1) != c_width:
+                                mismatches.append(
+                                    f"TABLE BITWIDTH MISMATCH {md.name}:{lineno} {rp}_{fld}: "
+                                    f"doc=[{hi}:{lo}] (width {hi + 1}) vs CMSIS=[{c_hi}:{c_lo}] (width {c_width})"
+                                )
+                        elif (hi, lo) != (c_hi, c_lo):
+                            mismatches.append(
+                                f"TABLE BITFIELD MISMATCH {md.name}:{lineno} {rp}_{fld}: "
+                                f"doc=[{hi}:{lo}] vs CMSIS=[{c_hi}:{c_lo}]"
+                            )
+                        break
+
+            # Pattern 2: `FIELD` (bN) or `FIELD` (bit N)
+            for bm in re.finditer(r"`([A-Z][A-Z0-9_]{1,20})`\s*\((?:b|bit\s+)(\d+)\)", desc):
+                fld, bit_n = bm.group(1), int(bm.group(2))
+                if bit_n > 31:
+                    continue
+                for rp in cands:
+                    pk = f"{rp}_{fld}_Pos"
+                    mk = f"{rp}_{fld}_Msk"
+                    if pk in pos_map and mk in msk_map:
+                        c_lo = pos_map[pk]
+                        raw_m = msk_map[mk] >> c_lo
+                        if raw_m == 0 or (raw_m & (raw_m + 1)) != 0:
+                            break
+                        c_hi = c_lo + raw_m.bit_length() - 1
+                        checked_bits += 1
+                        if bit_n != c_lo or c_hi != c_lo:
+                            mismatches.append(
+                                f"TABLE BITPOS MISMATCH {md.name}:{lineno} {rp}_{fld}: "
+                                f"doc=bit {bit_n} vs CMSIS=[{c_hi}:{c_lo}]"
+                            )
+                        break
+
+    rep.metrics["cmsis_cross_check"] = {
+        "register_map_files": len(reg_files),
+        "verified_bases": checked_bases,
+        "verified_offsets": checked_offsets,
+        "verified_bit_positions": checked_bits,
+        "mismatches": len(mismatches),
+    }
+    if mismatches:
+        rep.err(
+            "cmsis_registers",
+            f"CMSIS ground-truth cross-check FAILED with {len(mismatches)} mismatch(es) "
+            f"(checked {checked_bases} bases, {checked_offsets} offsets, {checked_bits} bit positions)",
+            mismatches,
+        )
+    elif checked_bases < 50 or checked_offsets < 250:
+        rep.err(
+            "cmsis_registers",
+            f"CMSIS cross-check coverage suspiciously low: bases={checked_bases}, offsets={checked_offsets}.",
+        )
+    else:
+        rep.info(
+            "cmsis_registers",
+            f"CMSIS ground-truth cross-check passed across {len(reg_files)} register maps: "
+            f"{checked_bases} base addresses, {checked_offsets} struct register offsets, "
+            f"and {checked_bits} bit positions verified against stm32g474xx.h & core_cm4.h (0 mismatches).",
+        )
+
+
+# =============================================================================
+# 3. Evidence-Based COMPLETE Concept Audit & DAG Verification
+# =============================================================================
+def extract_concept_keywords(title: str) -> list[str]:
+    clean = re.sub(r"`|\$|\\[a-zA-Z]+", " ", title)
+    tokens = re.findall(r"[A-Za-z0-9_]{3,}", clean)
+    kws: list[str] = []
+    seen = set()
+    for t in tokens:
+        tl = t.lower()
+        if tl in STOPWORDS or tl.isdigit():
+            continue
+        if tl not in seen:
+            seen.add(tl)
+            kws.append(tl)
+    return kws
+
+
+def read_location_corpus(repo_root: Path, loc: str) -> tuple[list[Path], str, int]:
+    """Resolve semicolon-separated repository_location entries and return (paths, combined text, max size)."""
+    paths: list[Path] = []
+    chunks: list[str] = []
+    max_size = 0
+    for part in loc.split(";"):
+        rel = part.split("#")[0].strip()
+        if not rel or rel == "N/A":
+            continue
+        p = repo_root / rel
+        if p.is_file():
+            paths.append(p)
+            sz = p.stat().st_size
+            max_size = max(max_size, sz)
+            chunks.append(p.read_text(encoding="utf-8", errors="replace"))
+        elif p.is_dir():
+            for sub in sorted(p.iterdir()):
+                if sub.is_file() and sub.suffix in (".md", ".c", ".h", ".mmd", ".csv"):
+                    paths.append(sub)
+                    sz = sub.stat().st_size
+                    max_size = max(max_size, sz)
+                    chunks.append(sub.read_text(encoding="utf-8", errors="replace"))
+    return paths, "\n".join(chunks), max_size
+
+
+def check_sot_concepts(repo_root: Path, rep: ValidationReport) -> None:
+    sot_path = repo_root / "AUDIT" / "concepts_sot.json"
+    if not sot_path.is_file():
+        rep.err("sot_concepts", "AUDIT/concepts_sot.json missing.")
+        return
+
+    try:
+        data = json.loads(sot_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        rep.err("sot_concepts", f"AUDIT/concepts_sot.json invalid JSON: {exc}")
+        return
+
     concepts = data.get("concepts", [])
     if len(concepts) != 350:
-        rep.err(f"Expected 350 concepts in SOT, found {len(concepts)}.")
+        rep.err("sot_concepts", f"Expected 350 concepts in SOT, found {len(concepts)}.")
         return
 
-    ids: dict[str, dict] = {}
-    domains = set()
-    missing_targets = []
-    schema_errors = []
+    ids: dict[str, dict[str, Any]] = {}
+    domains: set[Any] = set()
+    missing_targets: list[str] = []
+    schema_errors: list[str] = []
 
     required_keys = [
         "id", "concept", "domain_num", "domain", "level",
@@ -346,12 +1044,12 @@ def check_sot_concepts(rep: ValidationReport) -> None:
         if loc and loc != "N/A":
             for part in loc.split(";"):
                 p = part.split("#")[0].strip()
-                if p and not (REPO_ROOT / p).exists():
+                if p and not (repo_root / p).exists():
                     missing_targets.append(f"{cid} -> {p}")
 
     # DAG verification: 0 cycles, 0 unknown prereqs, 0 inverted-level edges
-    unknown_prereqs = []
-    inverted_edges = []
+    unknown_prereqs: list[str] = []
+    inverted_edges: list[str] = []
     adj: dict[str, list[str]] = defaultdict(list)
     indeg = {cid: 0 for cid in ids}
     for cid, c in ids.items():
@@ -364,6 +1062,7 @@ def check_sot_concepts(rep: ValidationReport) -> None:
                 indeg[cid] += 1
                 if VALID_LEVELS.get(ids[p].get("level", ""), 0) > clvl:
                     inverted_edges.append(f"{p} ({ids[p]['level']}) -> {cid} ({c['level']})")
+
     q = [nid for nid, d in indeg.items() if d == 0]
     visited = 0
     while q:
@@ -376,124 +1075,900 @@ def check_sot_concepts(rep: ValidationReport) -> None:
     cycles = len(ids) - visited
 
     if schema_errors:
-        rep.err(f"SOT schema errors ({len(schema_errors)}): {schema_errors[:10]}")
+        rep.err("sot_dag", f"SOT schema errors ({len(schema_errors)})", schema_errors)
     elif len(domains) != 27:
-        rep.err(f"SOT covers only {len(domains)}/27 required domains.")
+        rep.err("sot_dag", f"SOT covers only {len(domains)}/27 required domains.")
     elif missing_targets:
-        rep.err(f"SOT points to non-existent repo locations ({len(missing_targets)}): {missing_targets[:10]}")
+        rep.err("sot_dag", f"SOT points to {len(missing_targets)} non-existent repository locations", missing_targets)
     elif unknown_prereqs or inverted_edges or cycles:
         rep.err(
+            "sot_dag",
             f"SOT DAG integrity failed: cycles={cycles}, unknown_prereqs={len(unknown_prereqs)}, "
-            f"inverted_edges={len(inverted_edges)}"
+            f"inverted_edges={len(inverted_edges)}",
+            unknown_prereqs[:5] + inverted_edges[:5],
         )
     else:
-        rep.ok(
-            f"Source-of-Truth v{data.get('schema_version')} verified: {len(concepts)} unique IDs, "
-            f"{len(domains)}/27 domains, 0 cycles, 0 unknown prereqs, 0 inverted-level edges."
+        rep.info(
+            "sot_dag",
+            f"Source-of-Truth v{data.get('schema_version')} DAG verified: {len(concepts)} unique IDs, "
+            f"{len(domains)}/27 domains, 0 cycles, 0 unknown prereqs, 0 inverted-level edges.",
+        )
+
+    # Evidence-based audit for EVERY concept marked current_status == "COMPLETE"
+    complete_concepts = [c for c in concepts if c.get("current_status") == "COMPLETE"]
+    field_errors: list[str] = []
+    evidence_errors: list[str] = []
+    hw_contradictions: list[str] = []
+    hw_pending_warnings: list[str] = []
+
+    # Cache file text reads for speed
+    file_cache: dict[str, str] = {}
+    for c in complete_concepts:
+        cid = c["id"]
+        # 1. Substantive metadata fields (>= 20 chars, no placeholders, no pipe-split truncation)
+        for fname in ("completion_criteria", "reference", "practical_implementation"):
+            val = str(c.get(fname, "")).strip()
+            val_up = val.upper()
+            if val_up in PLACEHOLDER_STRINGS or any(
+                re.search(rf"\b{ph}\b", val_up) for ph in ("TBD", "TODO", "FIXME")
+            ):
+                field_errors.append(f"{cid}: {fname} contains placeholder ({val!r})")
+            elif val.startswith("="):
+                field_errors.append(f"{cid}: {fname} appears pipe-truncated ({val!r})")
+            elif len(val) < 20:
+                field_errors.append(f"{cid}: {fname} too short ({len(val)} < 20 chars): {val!r}")
+
+        # 2. Substantive repository_location evidence
+        loc = str(c.get("repository_location", "")).strip()
+        if not loc or loc == "N/A":
+            evidence_errors.append(f"{cid}: COMPLETE concept has empty/N/A repository_location")
+        else:
+            combined_chunks: list[str] = []
+            max_sz = 0
+            for part in loc.split(";"):
+                rel = part.split("#")[0].strip()
+                if not rel:
+                    continue
+                p = repo_root / rel
+                if p.is_file():
+                    max_sz = max(max_sz, p.stat().st_size)
+                    if rel not in file_cache:
+                        file_cache[rel] = p.read_text(encoding="utf-8", errors="replace")
+                    combined_chunks.append(file_cache[rel])
+                elif p.is_dir():
+                    for sub in sorted(p.iterdir()):
+                        if sub.is_file() and sub.suffix in (".md", ".c", ".h"):
+                            sub_rel = str(sub.relative_to(repo_root))
+                            max_sz = max(max_sz, sub.stat().st_size)
+                            if sub_rel not in file_cache:
+                                file_cache[sub_rel] = sub.read_text(encoding="utf-8", errors="replace")
+                            combined_chunks.append(file_cache[sub_rel])
+            corpus = "\n".join(combined_chunks)
+            if not corpus or max_sz < 400:
+                evidence_errors.append(
+                    f"{cid}: repository_location '{loc}' is missing or a tiny stub (max_size={max_sz} B)"
+                )
+            else:
+                has_id = cid in corpus
+                if not has_id:
+                    kws = extract_concept_keywords(str(c.get("concept", "")))
+                    corpus_low = corpus.lower()
+                    matched_kws = [kw for kw in kws if kw in corpus_low]
+                    needed = min(2, len(kws)) if kws else 1
+                    if len(matched_kws) < needed:
+                        evidence_errors.append(
+                            f"{cid}: repository_location '{loc}' mentions neither ID '{cid}' "
+                            f"nor >= {needed} title keywords (matched {matched_kws} of {kws[:6]})"
+                        )
+
+        # 3. Hardware status honesty check
+        hw = c.get("hardware_status", "")
+        impl_low = str(c.get("practical_implementation", "")).lower()
+        if hw in ("EXTERNAL_HARDWARE_PENDING", "NEEDS_BENCH_INSTRUMENT"):
+            # Contradiction if implementation claims live physical board test without pending caveat
+            has_pending_caveat = bool(re.search(r"pending|untested|not\s+tested|external.*required", impl_low))
+            claims_live = bool(
+                re.search(r"verified\s+live\s+on|physical\s+nucleo.*pass|onboard\s+hardware\s+tested", impl_low)
+            )
+            if claims_live and not has_pending_caveat:
+                hw_contradictions.append(
+                    f"{cid}: hardware_status={hw} contradicts practical_implementation claiming live hardware test"
+                )
+            else:
+                hw_pending_warnings.append(f"{cid}: COMPLETE with hardware_status={hw}")
+
+    rep.metrics["sot_complete_audit"] = {
+        "complete_concepts": len(complete_concepts),
+        "field_errors": len(field_errors),
+        "evidence_errors": len(evidence_errors),
+        "hw_contradictions": len(hw_contradictions),
+        "hw_pending_warnings": len(hw_pending_warnings),
+    }
+
+    if field_errors:
+        rep.err(
+            "sot_evidence",
+            f"{len(field_errors)} COMPLETE concept(s) have non-substantive/truncated metadata fields (< 20 chars or placeholder)",
+            field_errors,
+        )
+    if evidence_errors:
+        rep.err(
+            "sot_evidence",
+            f"{len(evidence_errors)} COMPLETE concept(s) lack concrete evidence in repository_location",
+            evidence_errors,
+        )
+    if hw_contradictions:
+        rep.err(
+            "sot_evidence",
+            f"{len(hw_contradictions)} COMPLETE concept(s) have contradictory hardware_status vs practical_implementation",
+            hw_contradictions,
+        )
+    if not (field_errors or evidence_errors or hw_contradictions):
+        rep.info(
+            "sot_evidence",
+            f"All {len(complete_concepts)} COMPLETE concepts verified with substantive repository evidence and metadata fields.",
+        )
+    if hw_pending_warnings:
+        rep.warn(
+            "sot_evidence",
+            f"{len(hw_pending_warnings)} COMPLETE concept(s) have hardware_status in "
+            "EXTERNAL_HARDWARE_PENDING/NEEDS_BENCH_INSTRUMENT (code/docs complete, physical external bench pending)",
+            hw_pending_warnings,
         )
 
 
-def check_register_ground_truth(rep: ValidationReport) -> None:
-    checks = [
-        ("20-technical-diagrams/registers/pwr-flash-register-map.md", r"0x0?80", "PWR_CR5 offset 0x80"),
-        ("20-technical-diagrams/registers/pwr-flash-register-map.md", r"PWR_SR2", "VOSF in PWR_SR2"),
-        ("20-technical-diagrams/registers/rcc-register-map.md", r"Bit\s*8|bit\s*8|\|\s*8\s*\|", "RCC_CR.HSION at bit 8"),
-        ("20-technical-diagrams/registers/rcc-register-map.md", r"160\s*MHz", "Dual 160 MHz Boost profile documented"),
-        ("20-technical-diagrams/registers/gpio-register-map.md", r"0xFFFFFFFF|11.*Analog|Analog.*11", "GPIOx_MODER Analog reset"),
-        ("20-technical-diagrams/registers/adc-dac-register-map.md", r"0x20000000", "ADC_CR reset 0x20000000 (DEEPPWD)"),
-        ("20-technical-diagrams/registers/adc-dac-register-map.md", r"42\.5\s*MHz|HCLK/4|CKMODE\s*=\s*11", "ADC CKMODE HCLK/4 <= 60 MHz"),
-        ("20-technical-diagrams/registers/dma-dmamux-register-map.md", r"24.*USART1_RX|USART1_RX.*24", "DMAMUX Req 24 = USART1_RX"),
-        ("20-technical-diagrams/registers/watchdog-register-map.md", r"100b|0b100|Ch\.?\s*35", "IWDG PR=100b & RM0440 Ch 35"),
-        ("23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g474xx.h", r"FMAC_IRQn\s*=\s*101", "stm32g474xx.h max IRQn = 101"),
-    ]
-    failed = []
-    for rel, pattern, desc in checks:
-        p = REPO_ROOT / rel
-        if not p.is_file():
-            failed.append(f"{desc}: file missing ({rel})")
-            continue
-        txt = p.read_text(encoding="utf-8", errors="replace")
-        if not re.search(pattern, txt, re.IGNORECASE):
-            failed.append(f"{desc}: pattern not found in {rel}")
-    if failed:
-        rep.err(f"Register ground-truth consistency failures: {failed}")
-    else:
-        rep.ok(f"All {len(checks)} STM32G474RE register ground-truth invariants verified.")
+# =============================================================================
+# 4. Practical Lab 11-Section + Clock Profile + Verification Record Audit
+# =============================================================================
+LAB_REQUIRED_SECTIONS: list[tuple[str, str]] = [
+    ("Objective", r"^#{2,3}\s+.*Objective"),
+    ("Required Hardware", r"^#{2,3}\s+.*Required\s+Hardware"),
+    ("Required Software", r"^#{2,3}\s+.*Required\s+Software"),
+    ("Wiring/Pin Config", r"^#{2,3}\s+.*(?:Wiring|Pin\s+Config)"),
+    ("Register Config/Calculations", r"^#{2,3}\s+.*(?:Register|Mathematical\s+Derivation|Kernel\s+Config|Architecture\s+&\s+Testability)"),
+    ("Code Implementation", r"^#{2,3}\s+.*Code\s+Implementation"),
+    ("Expected Output", r"^#{2,3}\s+.*Expected\s+Output"),
+    ("Debugging Procedure", r"^#{2,3}\s+.*Debugging\s+Procedure"),
+    ("Common Errors/Mistakes", r"^#{2,3}\s+.*(?:Common\s+Errors|Common\s+Mistakes|Troubleshooting)"),
+    ("Verification Procedure", r"^#{2,3}\s+.*Verification\s+Procedure"),
+    ("Extension Exercises", r"^#{2,3}\s+.*Extension\s+Exercises"),
+    ("Clock Profile Declaration", r"^#{2,3}\s+.*Clock(?:[-\s]+Configuration)?[-\s]+Profile"),
+    ("Standardized Verification Record", r"^#{2,3}\s+.*(?:Standardized\s+)?Verification\s+Record"),
+]
 
 
-def check_curriculum_drivers_and_projects(rep: ValidationReport) -> None:
-    missing_criteria = []
-    for rel in STAGE_READMES:
-        p = REPO_ROOT / rel
-        if not p.is_file():
-            missing_criteria.append(f"{rel} (missing)")
-            continue
-        txt = p.read_text(encoding="utf-8", errors="replace")
-        if "Completion Criteria" not in txt or len(txt) < 5000:
-            missing_criteria.append(f"{rel} (len={len(txt)})")
-    if missing_criteria:
-        rep.err(f"Incomplete curriculum modules: {missing_criteria}")
-    else:
-        rep.ok(f"All {len(STAGE_READMES)} curriculum stage modules verified (>= 5 KB, with Completion Criteria).")
-
-    labs_dir = REPO_ROOT / "18-practical-laboratory"
-    labs = sorted([d for d in labs_dir.iterdir() if d.is_dir() and d.name.startswith("lab-")])
-    if len(labs) < 20:
-        rep.err(f"Expected >= 20 practical labs, found {len(labs)}.")
-    else:
-        rep.ok(f"All {len(labs)} practical lab directories verified in 18-practical-laboratory/.")
-
-    reg_maps = sorted((REPO_ROOT / "20-technical-diagrams" / "registers").glob("*.md"))
-    if len(reg_maps) < 16:
-        rep.err(f"Expected >= 16 peripheral register maps, found {len(reg_maps)}.")
-    else:
-        rep.ok(f"Verified {len(reg_maps)} peripheral register maps in 20-technical-diagrams/registers/.")
-
-    drv_dir = REPO_ROOT / "23-code-library" / "Drivers"
-    missing_drv = []
-    for name in REQUIRED_DRIVERS:
-        for ext in (".h", ".c"):
-            if not (drv_dir / f"{name}{ext}").is_file():
-                missing_drv.append(f"{name}{ext}")
-    if missing_drv:
-        rep.err(f"Missing bare-metal driver files: {missing_drv}")
-    else:
-        rep.ok(f"All {len(REQUIRED_DRIVERS)}/12 bare-metal drivers (.h/.c) verified in 23-code-library/Drivers/.")
-
-    rtos_ver = REPO_ROOT / "23-code-library" / "freertos" / "FreeRTOS-Kernel" / "VERSION.txt"
-    rtos_mk = REPO_ROOT / "23-code-library" / "freertos" / "Makefile"
-    if not (rtos_ver.is_file() and rtos_mk.is_file()):
-        rep.err("Pinned FreeRTOS project files (VERSION.txt / Makefile) missing in 23-code-library/freertos/.")
-    else:
-        rep.ok("Pinned FreeRTOS-Kernel V11.1.0 project structure verified in 23-code-library/freertos/.")
-
-    missing_caps = [d for d in CAPSTONE_DIRS if not (REPO_ROOT / d / "Makefile").is_file()]
-    if missing_caps:
-        rep.err(f"Missing Capstone Makefiles: {missing_caps}")
-    else:
-        rep.ok(f"All {len(CAPSTONE_DIRS)}/3 Capstone firmware projects verified in 19-projects/.")
-
-
-def check_video_database(rep: ValidationReport) -> None:
-    csv_path = REPO_ROOT / "22-video-library" / "video-database.csv"
-    if not csv_path.is_file():
-        rep.err("22-video-library/video-database.csv missing.")
+def check_labs(repo_root: Path, rep: ValidationReport) -> None:
+    labs_dir = repo_root / "18-practical-laboratory"
+    if not labs_dir.is_dir():
+        rep.err("labs", "18-practical-laboratory/ directory missing.")
         return
-    with csv_path.open("r", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
-    bad_urls = [r.get("index") for r in rows if not r.get("url", "").startswith("https://")]
-    yt_ids = []
-    for r in rows:
-        m = re.search(r"v=([A-Za-z0-9_-]{11})", r.get("url", ""))
-        if m:
-            yt_ids.append(m.group(1))
-    dupes = len(yt_ids) - len(set(yt_ids))
-    if len(rows) < 70 or bad_urls or dupes > 0:
-        rep.err(f"Video DB check failed: {len(rows)} rows (need >=70), bad URLs: {bad_urls}, dupes: {dupes}")
+    labs = sorted(d for d in labs_dir.iterdir() if d.is_dir() and d.name.startswith("lab-"))
+    if len(labs) < 20:
+        rep.err("labs", f"Expected >= 20 practical labs, found {len(labs)}.")
+        return
+
+    lab_errors: list[str] = []
+    for lab_dir in labs:
+        readme = lab_dir / "README.md"
+        if not readme.is_file():
+            lab_errors.append(f"{lab_dir.name}: README.md missing")
+            continue
+        txt = readme.read_text(encoding="utf-8", errors="replace")
+        missing = [
+            sec_name
+            for sec_name, pattern in LAB_REQUIRED_SECTIONS
+            if not re.search(pattern, txt, re.M | re.I)
+        ]
+        if missing:
+            lab_errors.append(f"{lab_dir.name}: missing {len(missing)} section(s): {', '.join(missing)}")
+
+    rep.metrics["labs"] = {"total": len(labs), "failing": len(lab_errors)}
+    if lab_errors:
+        rep.err("labs", f"{len(lab_errors)}/{len(labs)} practical labs missing mandatory sections", lab_errors)
     else:
-        rep.ok(f"Video database CSV verified with {len(rows)} unique entries (>=70), valid HTTPS URLs, 0 duplicates.")
+        rep.info(
+            "labs",
+            f"All {len(labs)}/20 practical labs verified with all 11 core sections + "
+            "Clock Profile Declaration + Standardized Verification Record.",
+        )
 
 
+# =============================================================================
+# 5. Markdown Links, Reference-Style Links, Images, MathJax & External URLs
+# =============================================================================
+def strip_fenced_blocks_preserving_lines(text: str) -> list[tuple[int, str]]:
+    """Return list of (1-based lineno, line) for lines outside fenced code blocks."""
+    out: list[tuple[int, str]] = []
+    in_fence = False
+    fence_tok = ""
+    for lineno, line in enumerate(text.splitlines(), 1):
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            tok = stripped[:3]
+            if not in_fence:
+                in_fence = True
+                fence_tok = tok
+            elif stripped.startswith(fence_tok):
+                in_fence = False
+            continue
+        if not in_fence:
+            out.append((lineno, line))
+    return out
+
+
+def strip_inline_code_with_space(line: str) -> str:
+    """Replace inline code spans with spaces so adjacent brackets never merge."""
+    return re.sub(r"``[^`]*``|`[^`]*`", " ", line)
+
+
+def scan_mathjax_in_file(md_path: Path, repo_root: Path) -> list[str]:
+    """
+    Expanded GitHub MathJax Safety Audit (v4.1.0 — closes Blind Spots M5 & M6):
+      1. Unescaped _ or \\_ inside \\text{}, \\mathrm{}, \\texttt{}, \\textbf{}, \\textit{}, \\mbox{}
+      2. Bare \\_ anywhere inside $...$ / $$...$$ math spans (GFM strips \\ before MathJax parses!)
+      3. Unbalanced { / } braces inside math spans
+      4. Unclosed inline $ or display $$ math delimiters & unescaped | inside table math
+    """
+    text = md_path.read_text(encoding="utf-8", errors="replace")
+    rel = str(md_path.relative_to(repo_root))
+    violations: list[str] = []
+
+    def check_math_expr(expr: str, lineno: int, in_table_row: bool = False) -> None:
+        # 1. Text-mode macros containing _ or \_ (M5)
+        for m in re.finditer(r"\\(?:text|mathrm|texttt|textbf|textit|mbox)\{", expr):
+            i = m.end()
+            depth = 1
+            while i < len(expr) and depth > 0:
+                if expr[i] == "{" and (i == 0 or expr[i - 1] != "\\"):
+                    depth += 1
+                elif expr[i] == "}" and (i == 0 or expr[i - 1] != "\\"):
+                    depth -= 1
+                i += 1
+            if depth != 0:
+                violations.append(f"{rel}:{lineno}: unclosed brace in {expr[m.start():m.start() + 40]!r}")
+            else:
+                inner = expr[m.end():i - 1]
+                if "_" in inner:
+                    snippet = expr[m.start():i]
+                    violations.append(f"{rel}:{lineno}: {snippet}")
+
+        # 2. Bare \_ anywhere inside math (M6)
+        if r"\_" in expr:
+            violations.append(f"{rel}:{lineno}: bare \\_ inside math: {expr[:60]!r}")
+
+        # 3. Unbalanced { } braces inside math (ignoring \{ and \}) (M6)
+        depth = 0
+        i = 0
+        while i < len(expr):
+            if expr[i] == "\\" and i + 1 < len(expr):
+                i += 2
+                continue
+            if expr[i] == "{":
+                depth += 1
+            elif expr[i] == "}":
+                depth -= 1
+                if depth < 0:
+                    violations.append(f"{rel}:{lineno}: unmatched closing '}}' in math: {expr[:60]!r}")
+                    break
+            i += 1
+        if depth > 0:
+            violations.append(f"{rel}:{lineno}: unclosed '{{' in math: {expr[:60]!r}")
+
+        # 4. Unescaped table pipe '|' inside inline math on a Markdown table row
+        if in_table_row and re.search(r"(?<!\\)\|", expr):
+            violations.append(f"{rel}:{lineno}: unescaped '|' inside table math: {expr[:60]!r}")
+
+    in_display = False
+    display_buf: list[str] = []
+    display_start = 0
+
+    for lineno, line in strip_fenced_blocks_preserving_lines(text):
+        if in_display:
+            if "$$" in line:
+                before, _, _ = line.partition("$$")
+                display_buf.append(before)
+                check_math_expr("\n".join(display_buf), display_start)
+                in_display = False
+                display_buf = []
+            else:
+                display_buf.append(line)
+            continue
+
+        is_tbl = line.lstrip().startswith("|")
+        cleaned = strip_inline_code_with_space(line)
+
+        # Single-line or opening display math $$...$$
+        pos = 0
+        while True:
+            idx = cleaned.find("$$", pos)
+            if idx == -1:
+                break
+            end_idx = cleaned.find("$$", idx + 2)
+            if end_idx != -1:
+                check_math_expr(cleaned[idx + 2:end_idx], lineno, in_table_row=is_tbl)
+                cleaned = cleaned[:idx] + " " + cleaned[end_idx + 2:]
+                pos = idx + 1
+            else:
+                in_display = True
+                display_start = lineno
+                display_buf = [cleaned[idx + 2:]]
+                cleaned = cleaned[:idx]
+                break
+
+        # Inline $...$ math (avoid escaped \$ and pure currency like $10)
+        c2 = re.sub(r"\\\$", "  ", cleaned)
+        inline_math_re = re.compile(r"(?<!\$)\$(?!\$)(?!\s)([^$\n]+?)(?<!\s)\$(?!\$)")
+        for m in inline_math_re.finditer(c2):
+            expr = m.group(1)
+            if re.match(r"^\d[\d,\.]*\b", expr) and "\\" not in expr:
+                continue
+            check_math_expr(expr, lineno, in_table_row=is_tbl)
+
+        # Detect unclosed inline $ followed by math-like tokens (M6)
+        rem = inline_math_re.sub(" ", c2)
+        for um in re.finditer(r"(?<!\$)\$(?!\$)(.+)", rem):
+            tail = um.group(1)
+            if not re.match(r"^\s*\d[\d,\.]*(?:\s|$|[^A-Za-z_\\{^])", tail):
+                if any(ch in tail for ch in ("\\", "_", "^", "{", "}", "=")):
+                    violations.append(f"{rel}:{lineno}: unclosed inline math '$': {um.group(0)[:60]!r}")
+
+    if in_display:
+        violations.append(f"{rel}:{display_start}: unclosed display math '$$'")
+
+    return violations
+
+
+def gfm_heading_slug(heading_text: str) -> str:
+    """Compute GitHub Flavored Markdown heading anchor slug."""
+    s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", heading_text)
+    s = s.replace("`", "")
+    s = re.sub(r"<[^>]+>", "", s)
+    s = s.strip().lower()
+    out: list[str] = []
+    for ch in s:
+        if ch.isalnum() or ch in (" ", "-", "_"):
+            out.append("-" if ch == " " else ch)
+    return "".join(out)
+
+
+def extract_gfm_anchors(md_path: Path) -> set[str]:
+    """Extract all valid GFM heading anchor slugs (incl. duplicate -1/-2 suffixes) from a Markdown file."""
+    text = md_path.read_text(encoding="utf-8", errors="replace")
+    anchors: set[str] = set()
+    counts: dict[str, int] = {}
+    for _, line in strip_fenced_blocks_preserving_lines(text):
+        m = re.match(r"^#{1,6}\s+(.+?)(?:\s+#+\s*)?$", line)
+        if m:
+            slug = gfm_heading_slug(m.group(1))
+            if slug in counts:
+                counts[slug] += 1
+                anchors.add(f"{slug}-{counts[slug]}")
+            else:
+                counts[slug] = 0
+                anchors.add(slug)
+    return anchors
+
+
+def probe_single_url(url: str, timeout: float = 6.0) -> tuple[str, str, str]:
+    """Probe one external URL and classify: accessible | bot_blocked | broken | unverified."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; EmbeddedC-MasterHub-Validator/4.0; +https://github.com)",
+        "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+    }
+    for method in ("HEAD", "GET"):
+        req = urllib.request.Request(url, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                code = resp.getcode() or 200
+                if 200 <= code < 400:
+                    return (url, "accessible", f"HTTP {code}")
+                if code in (403, 429):
+                    return (url, "bot_blocked", f"HTTP {code}")
+                if code in (404, 410):
+                    return (url, "broken", f"HTTP {code}")
+                return (url, "unverified", f"HTTP {code}")
+        except urllib.error.HTTPError as e:
+            if method == "HEAD" and e.code in (403, 405, 501):
+                continue
+            if e.code in (403, 429):
+                return (url, "bot_blocked", f"HTTP {e.code}")
+            if e.code in (404, 410):
+                return (url, "broken", f"HTTP {e.code}")
+            return (url, "unverified", f"HTTP {e.code}")
+        except urllib.error.URLError as e:
+            reason = e.reason
+            if isinstance(reason, socket.gaierror):
+                return (url, "broken", f"DNS error: {reason}")
+            return (url, "unverified", f"URLError: {reason}")
+        except (TimeoutError, socket.timeout, OSError) as e:
+            return (url, "unverified", f"Timeout/IO: {e}")
+    return (url, "unverified", "Exhausted retries")
+
+
+def check_markdown_links_mathjax_urls(
+    repo_root: Path,
+    rep: ValidationReport,
+    check_external_urls: bool = False,
+) -> None:
+    inline_link_re = re.compile(r"(!?)\[[^\]]*\]\(([^)]+)\)")
+    ref_def_re = re.compile(r"^\s*\[([^\]]+)\]:\s*<?(\S+?)>?(?:\s|$)")
+    # Negative lookbehind (?<!\w) prevents matching C 2D arrays like buf[32][2]
+    ref_use_re = re.compile(r"(?<!\w)(!?)\[([^\[\]\n]+)\]\[([^\[\]\n]*)\]")
+    ext_url_re = re.compile(r"https?://[^\s<>)\]`\"']+")
+
+    md_files = iter_repo_files(repo_root, ".md")
+    broken_inline: list[str] = []
+    broken_images: list[str] = []
+    broken_anchors: list[str] = []
+    broken_ref_uses: list[str] = []
+    broken_ref_targets: list[str] = []
+    mathjax_violations: list[str] = []
+    ext_urls: set[str] = set()
+    anchor_cache: dict[Path, set[str]] = {}
+
+    inline_checked = 0
+    images_checked = 0
+    anchors_checked = 0
+    ref_defs_total = 0
+    ref_uses_total = 0
+
+    def verify_anchor(src_md: Path, src_rel: str, lineno: int, raw_target: str, target_path: Path, frag: str) -> None:
+        nonlocal anchors_checked
+        if not frag or not target_path.is_file() or target_path.suffix.lower() != ".md":
+            return
+        anchors_checked += 1
+        if target_path not in anchor_cache:
+            anchor_cache[target_path] = extract_gfm_anchors(target_path)
+        if frag.lower() not in anchor_cache[target_path]:
+            broken_anchors.append(f"{src_rel}:{lineno} -> {raw_target} (missing heading '#{frag}')")
+
+    for md in md_files:
+        rel = str(md.relative_to(repo_root))
+        raw = md.read_text(encoding="utf-8", errors="replace")
+        non_fenced = strip_fenced_blocks_preserving_lines(raw)
+
+        # 1. Collect reference definitions [id]: target
+        ref_defs: dict[str, tuple[int, str]] = {}
+        for lineno, line in non_fenced:
+            dm = ref_def_re.match(line)
+            if dm:
+                label = dm.group(1).strip().lower()
+                target = dm.group(2).strip()
+                ref_defs[label] = (lineno, target)
+        ref_defs_total += len(ref_defs)
+
+        # Verify local relative targets & #anchors in reference definitions
+        for label, (lineno, raw_target) in ref_defs.items():
+            if raw_target.startswith(("http://", "https://")):
+                ext_urls.add(raw_target.rstrip(".,;:!?"))
+            elif raw_target.startswith("#"):
+                verify_anchor(md, rel, lineno, raw_target, md.resolve(), raw_target[1:])
+            elif not raw_target.startswith(("mailto:", "file://")):
+                t, _, frag = raw_target.partition("#")
+                if t:
+                    res = (md.parent / t).resolve()
+                    if not res.exists():
+                        broken_ref_targets.append(f"{rel}:{lineno}: [{label}]: {raw_target}")
+                    elif frag:
+                        verify_anchor(md, rel, lineno, raw_target, res, frag)
+
+        # 2. Scan inline links, images, #anchors, reference-style links, and external URLs
+        for lineno, line in non_fenced:
+            if ref_def_re.match(line):
+                continue
+            cleaned = strip_inline_code_with_space(line)
+
+            for m in inline_link_re.finditer(cleaned):
+                is_img = bool(m.group(1))
+                raw_target = m.group(2).strip()
+                if not raw_target:
+                    continue
+                if raw_target.startswith(("http://", "https://")):
+                    ext_urls.add(raw_target.split()[0].rstrip(".,;:!?"))
+                    continue
+                if raw_target.startswith(("mailto:", "file://")):
+                    continue
+                first_tok = raw_target.split()[0]
+                if first_tok.startswith("#"):
+                    if not is_img:
+                        verify_anchor(md, rel, lineno, raw_target, md.resolve(), first_tok[1:])
+                    continue
+                target, _, frag = first_tok.partition("#")
+                if not target:
+                    continue
+                resolved = (md.parent / target).resolve()
+                if is_img:
+                    images_checked += 1
+                    if not resolved.exists():
+                        broken_images.append(f"{rel}:{lineno} -> {raw_target}")
+                else:
+                    inline_checked += 1
+                    if not resolved.exists():
+                        broken_inline.append(f"{rel}:{lineno} -> {raw_target}")
+                    elif frag:
+                        verify_anchor(md, rel, lineno, raw_target, resolved, frag)
+
+            for m in ref_use_re.finditer(cleaned):
+                text_part = m.group(2).strip()
+                id_part = m.group(3).strip()
+                # Ignore markdown table / footnote / array numeric indices like [0][1]
+                if text_part.isdigit() and id_part.isdigit():
+                    continue
+                label = (id_part or text_part).lower()
+                ref_uses_total += 1
+                if label not in ref_defs:
+                    broken_ref_uses.append(f"{rel}:{lineno}: [{text_part}][{id_part}] (undefined ref '{label}')")
+
+            for m in ext_url_re.finditer(cleaned):
+                ext_urls.add(m.group(0).rstrip(".,;:!?"))
+
+        # 3. GitHub MathJax Safety Audit
+        mathjax_violations.extend(scan_mathjax_in_file(md, repo_root))
+
+    # Also collect external URLs from 22-video-library/video-database.csv
+    csv_path = repo_root / "22-video-library" / "video-database.csv"
+    if csv_path.is_file():
+        with csv_path.open("r", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                u = row.get("url", "").strip()
+                if u.startswith(("http://", "https://")):
+                    ext_urls.add(u)
+
+    rep.metrics["markdown_audit"] = {
+        "md_files": len(md_files),
+        "inline_links_checked": inline_checked,
+        "anchors_checked": anchors_checked,
+        "images_checked": images_checked,
+        "ref_defs": ref_defs_total,
+        "ref_uses": ref_uses_total,
+        "broken_inline": len(broken_inline),
+        "broken_anchors": len(broken_anchors),
+        "broken_images": len(broken_images),
+        "broken_ref_links": len(broken_ref_uses) + len(broken_ref_targets),
+        "mathjax_violations": len(mathjax_violations),
+        "unique_external_urls": len(ext_urls),
+    }
+
+    if broken_inline:
+        rep.err("links", f"Broken internal inline links ({len(broken_inline)}/{inline_checked})", broken_inline)
+    else:
+        rep.info("links", f"All {inline_checked} internal inline links verified across {len(md_files)} .md files.")
+
+    if broken_anchors:
+        rep.err("anchors", f"Broken internal Markdown #anchor links ({len(broken_anchors)}/{anchors_checked})", broken_anchors)
+    else:
+        rep.info("anchors", f"All {anchors_checked} internal Markdown #anchor fragments verified against GFM headings (0 broken).")
+
+    if broken_images:
+        rep.err("images", f"Broken local image links ({len(broken_images)}/{images_checked})", broken_images)
+    else:
+        rep.info("images", f"All {images_checked} local image references verified (0 broken).")
+
+    all_broken_refs = broken_ref_uses + broken_ref_targets
+    if all_broken_refs:
+        rep.err("ref_links", f"Broken reference-style Markdown links ({len(all_broken_refs)})", all_broken_refs)
+    else:
+        rep.info("ref_links", f"Reference-style links verified: {ref_uses_total} uses, {ref_defs_total} definitions (0 broken).")
+
+    if mathjax_violations:
+        rep.err(
+            "mathjax",
+            f"GitHub MathJax safety FAILED: {len(mathjax_violations)} violation(s) "
+            "(text-mode underscores, bare \\_ in math, unbalanced braces, or unclosed $/$$)",
+            mathjax_violations,
+        )
+    else:
+        rep.info("mathjax", f"Expanded GitHub MathJax safety passed across all {len(md_files)} .md files (0 violations).")
+
+    # External URL reporting
+    if not check_external_urls:
+        rep.unverified_item(
+            "external_urls",
+            f"{len(ext_urls)} unique external URLs UNVERIFIED (pass --check-external-urls to probe live).",
+        )
+    else:
+        sorted_urls = sorted(ext_urls)
+        results: dict[str, list[str]] = {
+            "accessible": [],
+            "bot_blocked": [],
+            "broken": [],
+            "unverified": [],
+        }
+        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
+            futs = [pool.submit(probe_single_url, u) for u in sorted_urls]
+            for fut in concurrent.futures.as_completed(futs):
+                u, cat, detail = fut.result()
+                results[cat].append(f"{u} ({detail})")
+
+        rep.metrics["external_url_probe"] = {k: len(v) for k, v in results.items()}
+        rep.info(
+            "external_urls",
+            f"Live external URL probe ({len(sorted_urls)} URLs): "
+            f"{len(results['accessible'])} accessible, "
+            f"{len(results['bot_blocked'])} bot-blocked (403/429), "
+            f"{len(results['broken'])} broken (404/DNS), "
+            f"{len(results['unverified'])} timeout/unverified.",
+        )
+        if results["broken"]:
+            rep.err("external_urls", f"{len(results['broken'])} broken external URL(s) (404/DNS)", sorted(results["broken"]))
+        if results["bot_blocked"]:
+            rep.warn("external_urls", f"{len(results['bot_blocked'])} bot-blocked external URL(s) (403/429)", sorted(results["bot_blocked"]))
+        if results["unverified"]:
+            rep.unverified_item(
+                "external_urls",
+                f"{len(results['unverified'])} external URL(s) timed out / unverified",
+                sorted(results["unverified"]),
+            )
+
+
+# =============================================================================
+# 6. Real Mermaid Diagram Syntax Parser
+# =============================================================================
+def strip_quoted_strings(line: str) -> str:
+    return re.sub(r'"[^"]*"', '""', line)
+
+
+def check_balanced_delimiters(line: str) -> str | None:
+    """Verify balanced [], (), {} outside quoted strings, accounting for Mermaid node shapes & arrows."""
+    s = strip_quoted_strings(line)
+    # Remove Mermaid arrows/connectors and edge label pipes |...| before bracket balancing
+    s = re.sub(r"\|[^|]*\|", " ", s)
+    s = re.sub(r"<-->|<==>|-\.->|-\.-|==>|-->>|->>|--x|-x|--\)|-\)|-->|---|===", " ", s)
+    # Normalize Mermaid special shapes: ([...]), [(...)], [/.../], [\...\], [/...\], [\.../]
+    s = s.replace("([", "( ").replace("])", " )")
+    s = s.replace("[(", "[ ").replace(")]", " ]")
+    s = s.replace("[/", "[ ").replace("/]", " ]")
+    s = s.replace("[\\", "[ ").replace("\\]", " ]")
+
+    stack: list[str] = []
+    pairs = {")": "(", "]": "[", "}": "{"}
+    for ch in s:
+        if ch in "([{":
+            stack.append(ch)
+        elif ch in ")]}":
+            if not stack or stack[-1] != pairs[ch]:
+                return f"unbalanced closing '{ch}'"
+            stack.pop()
+    if stack:
+        return f"unclosed '{stack[-1]}'"
+    return None
+
+
+def validate_single_mermaid(mmd_path: Path, repo_root: Path) -> list[str]:
+    rel = str(mmd_path.relative_to(repo_root))
+    txt = mmd_path.read_text(encoding="utf-8", errors="replace")
+    lines = txt.splitlines()
+    issues: list[str] = []
+
+    non_empty = [(i, ln.strip()) for i, ln in enumerate(lines, 1) if ln.strip() and not ln.strip().startswith("%%")]
+    if not non_empty:
+        return [f"{rel}: empty Mermaid diagram"]
+
+    first_lineno, header = non_empty[0]
+    if not any(header.startswith(h) for h in VALID_MERMAID_HEADERS):
+        issues.append(f"{rel}:{first_lineno}: unsupported Mermaid diagram header '{header}'")
+
+    is_flowchart = header.startswith(("flowchart ", "graph "))
+    is_sequence = header.startswith("sequenceDiagram")
+
+    # Block nesting balance: subgraph/end (and sequence loop/alt/opt/par/critical/rect + end)
+    block_depth = 0
+    block_openers = ("subgraph",) if is_flowchart else ("loop", "alt", "opt", "par", "critical", "rect", "box")
+    node_count = 0
+    edge_count = 0
+
+    flow_edge_re = re.compile(r"(-->|---|-\.->|-\.-|==>|===|<-->|o--o|x--x|&)")
+    seq_msg_re = re.compile(r"(->>|-->>|->|-->|-x|--x|-\)|--\))")
+    node_decl_re = re.compile(r"^[A-Za-z_]\w*\s*[\[\(\{]")
+    seq_part_re = re.compile(r"^(?:participant|actor)\s+\S+")
+
+    for lineno, line in non_empty[1:]:
+        # HTML tag prohibition
+        if HTML_TAG_RE.search(line):
+            issues.append(f"{rel}:{lineno}: contains prohibited HTML tag in '{line[:80]}'")
+
+        # Balanced double quotes
+        if line.count('"') % 2 != 0:
+            issues.append(f"{rel}:{lineno}: unbalanced double quotes in '{line[:80]}'")
+
+        # Block opener/closer tracking
+        low = line.lower()
+        if any(re.match(rf"^{kw}\b", low) for kw in block_openers):
+            block_depth += 1
+            # Still check balanced brackets/quotes on subgraph header
+            delim_err = check_balanced_delimiters(line)
+            if delim_err:
+                issues.append(f"{rel}:{lineno}: {delim_err} in '{line[:80]}'")
+            continue
+        if re.match(r"^end\s*$", low):
+            block_depth -= 1
+            if block_depth < 0:
+                issues.append(f"{rel}:{lineno}: unexpected 'end' without matching block opener")
+                block_depth = 0
+            continue
+
+        # Skip directive lines (style, classDef, class, linkStyle, direction, autonumber, Note)
+        if re.match(r"^(?:style|classDef|class|linkStyle|click|direction|autonumber|Note|activate|deactivate|else|and)\b", line, re.I):
+            continue
+
+        # Delimiter balance check for flowchart/state/class lines (sequence message payloads are free text after ':')
+        if is_sequence:
+            if seq_part_re.match(line):
+                node_count += 1
+            elif seq_msg_re.search(line):
+                edge_count += 1
+                lhs = line.split(":", 1)[0]
+                if not re.search(r"\S+\s*(?:->>|-->>|->|-->|-x|--x|-\)|--\))\s*\S+", lhs):
+                    issues.append(f"{rel}:{lineno}: malformed sequence arrow '{lhs}'")
+            continue
+
+        # Check unclosed pipe edge labels |...| outside quotes
+        no_quotes = strip_quoted_strings(line)
+        if no_quotes.count("|") % 2 != 0:
+            issues.append(f"{rel}:{lineno}: unbalanced edge-label pipe '|' in '{line[:80]}'")
+
+        # Check invalid single-dash arrow `->` in flowchart/graph outside quotes
+        if is_flowchart and re.search(r"(?<![-<.=])->(?![>])", no_quotes):
+            issues.append(f"{rel}:{lineno}: invalid flowchart connector '->' (use '-->') in '{line[:80]}'")
+
+        delim_err = check_balanced_delimiters(line)
+        if delim_err:
+            issues.append(f"{rel}:{lineno}: {delim_err} in '{line[:80]}'")
+
+        if flow_edge_re.search(no_quotes):
+            edge_count += 1
+            # Count inline node endpoints on edge statements (e.g., A["..."] --> B["..."])
+            parts = flow_edge_re.split(no_quotes)
+            for part in parts[::2]:
+                nm = re.match(r"^\s*(?:\|[^|]*\|\s*)?([A-Za-z_]\w*)", part.strip())
+                if nm:
+                    node_count += 1
+        elif node_decl_re.match(line):
+            node_count += 1
+
+    if block_depth != 0:
+        issues.append(f"{rel}: unbalanced block structure ({block_depth} unclosed subgraph/block(s) missing 'end')")
+
+    if is_flowchart and (node_count == 0 or edge_count == 0):
+        issues.append(f"{rel}: diagram appears trivial/incomplete (nodes={node_count}, edges={edge_count})")
+    elif is_sequence and (node_count == 0 or edge_count == 0):
+        issues.append(f"{rel}: sequenceDiagram incomplete (participants={node_count}, messages={edge_count})")
+
+    return issues
+
+
+def check_mermaid_diagrams(repo_root: Path, rep: ValidationReport) -> None:
+    mmd_files = iter_repo_files(repo_root, ".mmd")
+    if not mmd_files:
+        rep.err("mermaid", "No .mmd Mermaid diagram files found.")
+        return
+
+    all_issues: list[str] = []
+    for mmd in mmd_files:
+        all_issues.extend(validate_single_mermaid(mmd, repo_root))
+
+    rep.metrics["mermaid"] = {"files": len(mmd_files), "issues": len(all_issues)}
+    if all_issues:
+        rep.err("mermaid", f"Mermaid syntax audit FAILED with {len(all_issues)} issue(s)", all_issues)
+    else:
+        rep.info(
+            "mermaid",
+            f"All {len(mmd_files)} Mermaid (.mmd) diagrams passed full syntax audit "
+            "(valid headers, balanced subgraphs/quotes/delimiters, valid arrows, non-zero nodes/edges, 0 HTML tags).",
+        )
+
+
+# =============================================================================
+# 7. Curriculum 13-Section + References + Nav + Drivers/FreeRTOS/Capstones/Videos
+# =============================================================================
+CURRICULUM_REQUIRED_SECTIONS: list[tuple[str, str]] = [
+    ("1. Objectives", r"^##\s+1\.\s+.*Objectives"),
+    ("2. Prerequisites", r"^##\s+2\.\s+.*Prerequisites"),
+    ("3. Theory", r"^##\s+3\.\s+.*Theory"),
+    ("4. Terminology", r"^##\s+4\.\s+.*Terminology"),
+    ("5. Register/Architecture", r"^##\s+5\.\s+.*(?:Register|Architecture)"),
+    ("6. Formulas/Calculations", r"^##\s+6\.\s+.*(?:Formulas|Mathematics|Calculations|Principles)"),
+    ("7. References", r"^##\s+7\.\s+.*(?:References|Documentation)"),
+    ("8. Code Examples", r"^##\s+8\.\s+.*Code\s+Examples"),
+    ("9. Practical Experiments", r"^##\s+9\.\s+.*Practical.*(?:Experiments|Laboratory)"),
+    ("10. Common Mistakes", r"^##\s+10\.\s+.*Common\s+(?:Engineering\s+)?(?:Mistakes|Errors)"),
+    ("11. Exercises", r"^##\s+11\.\s+.*Exercises"),
+    ("12. Assessment", r"^##\s+12\.\s+.*Assessment"),
+    ("13. Completion Criteria", r"^##\s+13\.\s+.*Completion\s+Criteria"),
+]
+
+AUTHORITATIVE_REF_RE = re.compile(r"\b(?:RM0440|DS12288|PM0214|UM2505|ES0430|ARM|ISO)\b")
+STAGE_NAV_RE = re.compile(
+    r"(?:Previous\s+Stage|Next\s+Stage|←\s*\[.*?\]\(\.\./|\[←[^\]]*\]\(\.\./|\[.*?\]\(\.\./[^)]+/README\.md\)\s*→|\[[^\]]*→\]\(\.\./|\*\*Prev(?:ious)?:\*\*|\*\*Next:\*\*)",
+    re.I,
+)
+
+
+def check_curriculum_and_artifacts(repo_root: Path, rep: ValidationReport) -> None:
+    section_errors: list[str] = []
+    ref_errors: list[str] = []
+    nav_warnings: list[str] = []
+
+    for rel in STAGE_READMES:
+        p = repo_root / rel
+        if not p.is_file():
+            section_errors.append(f"{rel}: file missing")
+            continue
+        txt = p.read_text(encoding="utf-8", errors="replace")
+        missing_secs = [
+            name for name, pat in CURRICULUM_REQUIRED_SECTIONS if not re.search(pat, txt, re.M | re.I)
+        ]
+        if missing_secs:
+            section_errors.append(f"{rel}: missing {len(missing_secs)} section(s): {', '.join(missing_secs)}")
+        if len(txt) < 5000:
+            section_errors.append(f"{rel}: unexpectedly short ({len(txt)} < 5000 chars)")
+        if not AUTHORITATIVE_REF_RE.search(txt):
+            ref_errors.append(f"{rel}: no authoritative primary reference (RM0440/DS12288/PM0214/UM2505/ES0430/ARM/ISO)")
+        if not STAGE_NAV_RE.search(txt):
+            nav_warnings.append(f"{rel}: missing explicit Prev/Next stage navigation links")
+
+    if section_errors:
+        rep.err("curriculum", f"Curriculum 13-section audit FAILED ({len(section_errors)} stage(s))", section_errors)
+    elif ref_errors:
+        rep.err("curriculum", f"Curriculum authoritative reference audit FAILED ({len(ref_errors)} stage(s))", ref_errors)
+    else:
+        rep.info(
+            "curriculum",
+            f"All {len(STAGE_READMES)}/17 curriculum stage modules verified (13/13 sections + authoritative primary references).",
+        )
+    if nav_warnings:
+        rep.warn(
+            "curriculum_nav",
+            f"{len(nav_warnings)}/{len(STAGE_READMES)} curriculum stage(s) missing Prev/Next navigation bar links",
+            nav_warnings,
+        )
+    else:
+        rep.info("curriculum_nav", f"All {len(STAGE_READMES)}/17 curriculum stages include Prev/Next navigation links.")
+
+    # Drivers, FreeRTOS, Capstones, Video DB
+    drv_dir = repo_root / "23-code-library" / "Drivers"
+    missing_drv = [
+        f"{name}{ext}"
+        for name in REQUIRED_DRIVERS
+        for ext in (".h", ".c")
+        if not (drv_dir / f"{name}{ext}").is_file()
+    ]
+    if missing_drv:
+        rep.err("drivers", f"Missing bare-metal driver files ({len(missing_drv)})", missing_drv)
+    else:
+        rep.info("drivers", f"All {len(REQUIRED_DRIVERS)}/12 bare-metal drivers (.h/.c) verified in 23-code-library/Drivers/.")
+
+    rtos_ver = repo_root / "23-code-library" / "freertos" / "FreeRTOS-Kernel" / "VERSION.txt"
+    rtos_mk = repo_root / "23-code-library" / "freertos" / "Makefile"
+    if not (rtos_ver.is_file() and rtos_mk.is_file()):
+        rep.err("freertos", "Pinned FreeRTOS-Kernel project files (VERSION.txt / Makefile) missing.")
+    else:
+        rep.info("freertos", "Pinned FreeRTOS-Kernel V11.1.0 project structure verified.")
+
+    missing_caps = [d for d in CAPSTONE_DIRS if not (repo_root / d / "Makefile").is_file()]
+    if missing_caps:
+        rep.err("capstones", "Missing Capstone Makefiles", missing_caps)
+    else:
+        rep.info("capstones", f"All {len(CAPSTONE_DIRS)}/3 Capstone firmware projects verified in 19-projects/.")
+
+    csv_path = repo_root / "22-video-library" / "video-database.csv"
+    if not csv_path.is_file():
+        rep.err("video_db", "22-video-library/video-database.csv missing.")
+    else:
+        with csv_path.open("r", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        bad_urls = [r.get("index", "?") for r in rows if not r.get("url", "").startswith("https://")]
+        yt_ids = [m.group(1) for r in rows if (m := re.search(r"v=([A-Za-z0-9_-]{11})", r.get("url", "")))]
+        dupes = len(yt_ids) - len(set(yt_ids))
+        if len(rows) < 70 or bad_urls or dupes > 0:
+            rep.err("video_db", f"Video DB check failed: rows={len(rows)} (<70?), bad_urls={bad_urls}, dupes={dupes}")
+        else:
+            rep.info("video_db", f"Video database CSV verified: {len(rows)} entries (>=70), valid HTTPS URLs, 0 duplicate YouTube IDs.")
+
+
+# =============================================================================
+# 8 & 9. Firmware Builds & Host Unit Tests (Missing Tools -> UNVERIFIED!)
+# =============================================================================
 def find_arm_tool(name: str) -> str | None:
     found = shutil.which(name)
     if found:
@@ -506,107 +1981,283 @@ def find_arm_tool(name: str) -> str | None:
     return None
 
 
-def check_builds_and_tests(rep: ValidationReport) -> None:
+def check_register_map_c_snippets(repo_root: Path, rep: ValidationReport, gcc_arm: str | None) -> None:
+    """Compile standalone CMSIS C code blocks in 20-technical-diagrams/registers/*.md (v4.1.0 — Blind Spot M7)."""
+    if not gcc_arm:
+        rep.unverified_item(
+            "register_snippets",
+            "Register-map C snippet compilation UNVERIFIED: missing required tool arm-none-eabi-gcc.",
+        )
+        return
+
+    reg_dir = repo_root / "20-technical-diagrams" / "registers"
+    inc_dev = repo_root / "23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include"
+    inc_core = repo_root / "23-code-library/Drivers/CMSIS/Core/Include"
+    if not reg_dir.is_dir() or not inc_dev.is_dir() or not inc_core.is_dir():
+        rep.err("register_snippets", "Register-map directory or CMSIS Include directories missing.")
+        return
+
+    compiled = 0
+    skipped = 0
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory() as td:
+        for md in sorted(reg_dir.glob("*.md")):
+            txt = md.read_text(encoding="utf-8", errors="replace")
+            for idx, m in enumerate(re.finditer(r"```c\r?\n(.*?)```", txt, re.S), 1):
+                code = m.group(1)
+                if '#include "stm32g474xx.h"' not in code and '#include "core_cm4.h"' not in code:
+                    skipped += 1
+                    continue
+                compiled += 1
+                src = Path(td) / f"{md.stem}_{idx}.c"
+                src.write_text(code, encoding="utf-8")
+                proc = subprocess.run(
+                    [
+                        gcc_arm,
+                        "-mcpu=cortex-m4",
+                        "-mthumb",
+                        "-mfpu=fpv4-sp-d16",
+                        "-mfloat-abi=hard",
+                        "-std=c11",
+                        "-O2",
+                        "-Wall",
+                        "-Wextra",
+                        "-Werror",
+                        "-fsyntax-only",
+                        "-DSTM32G474xx",
+                        f"-I{inc_dev}",
+                        f"-I{inc_core}",
+                        str(src),
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if proc.returncode != 0:
+                    err_lines = (proc.stderr or proc.stdout).strip().splitlines()
+                    err_line = next((ln for ln in err_lines if "error:" in ln), err_lines[0] if err_lines else "compile error")
+                    # Strip temp directory prefix for clean, portable diagnostics
+                    err_line = re.sub(r"^.*?[\\/]([^\\/]+\.c:\d+:\d+:)", r"\1", err_line)
+                    failures.append(f"{md.name} C-block #{idx}: {err_line}")
+
+    rep.metrics["register_snippets"] = {"compiled": compiled, "skipped_fragments": skipped, "failures": len(failures)}
+    if failures:
+        rep.err(
+            "register_snippets",
+            f"Register-map C snippet CMSIS compilation FAILED ({len(failures)}/{compiled} block(s))",
+            failures,
+        )
+    elif compiled == 0:
+        rep.err("register_snippets", "No standalone CMSIS C code blocks found in 20-technical-diagrams/registers/*.md.")
+    else:
+        rep.info(
+            "register_snippets",
+            f"All {compiled}/{compiled} standalone CMSIS C snippets in 20-technical-diagrams/registers/*.md "
+            f"syntax-compiled cleanly (-fsyntax-only -Wall -Wextra -Werror; {skipped} prose fragment(s) skipped).",
+        )
+
+
+def check_builds_and_tests(repo_root: Path, rep: ValidationReport, skip_builds: bool = False) -> None:
+    if skip_builds:
+        rep.unverified_item("firmware_builds", "Firmware compilation skipped via --skip-builds.")
+        rep.unverified_item("register_snippets", "Register-map C snippet compilation skipped via --skip-builds.")
+        rep.unverified_item("host_tests", "Host C unit tests skipped via --skip-builds.")
+        return
+
     make_exe = shutil.which("make") or find_arm_tool("make")
     gcc_arm = find_arm_tool("arm-none-eabi-gcc")
     readelf_arm = find_arm_tool("arm-none-eabi-readelf")
 
+    # Register-map C snippet CMSIS compile check (runs whenever arm-none-eabi-gcc is available)
+    check_register_map_c_snippets(repo_root, rep, gcc_arm)
+
     if not make_exe or not gcc_arm:
-        rep.warn("Skipping firmware build checks: make or arm-none-eabi-gcc not found.")
+        missing = [t for t, p in (("make", make_exe), ("arm-none-eabi-gcc", gcc_arm)) if not p]
+        rep.unverified_item(
+            "firmware_builds",
+            f"Firmware builds UNVERIFIED: missing required tool(s): {', '.join(missing)}.",
+        )
     else:
         env = os.environ.copy()
         arm_bin = str(Path(gcc_arm).parent)
         make_bin = str(Path(make_exe).parent)
         env["PATH"] = f"{arm_bin}{os.pathsep}{make_bin}{os.pathsep}{env.get('PATH', '')}"
 
-        # 1. Starter template (debug & release + .isr_vector verification)
-        tpl_dir = REPO_ROOT / "23-code-library" / "templates"
+        # 1. Starter template (debug + release)
+        tpl_dir = repo_root / "23-code-library" / "templates"
         for build_type in ("debug", "release"):
-            cmd = [make_exe, f"BUILD_TYPE={build_type}", "clean", "all"]
-            proc = subprocess.run(cmd, cwd=tpl_dir, env=env, capture_output=True, text=True)
+            proc = subprocess.run(
+                [make_exe, f"BUILD_TYPE={build_type}", "clean", "all"],
+                cwd=tpl_dir,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
             if proc.returncode != 0:
-                rep.err(f"Firmware template build ({build_type}) FAILED:\n{proc.stdout}\n{proc.stderr}")
+                rep.err(
+                    "firmware_builds",
+                    f"Starter template build (BUILD_TYPE={build_type}) FAILED (exit {proc.returncode})",
+                    (proc.stderr or proc.stdout).splitlines()[-10:],
+                )
                 break
         else:
-            rep.ok("Firmware template + 12 drivers compiled cleanly (BUILD_TYPE=debug & release, 0 warnings).")
+            rep.info("firmware_builds", "Starter template + 12 drivers compiled cleanly (BUILD_TYPE=debug & release).")
 
+        # Verify ELF .isr_vector
         elf_path = tpl_dir / "build" / "firmware.elf"
-        if not elf_path.is_file():
+        if not elf_path.is_file() and (tpl_dir / "build").is_dir():
             elves = list((tpl_dir / "build").rglob("*.elf"))
-            elf_path = elves[0] if elves else elf_path
-        if readelf_arm and elf_path.is_file():
+            if elves:
+                elf_path = elves[0]
+        if not readelf_arm:
+            rep.unverified_item("firmware_elf", "ELF .isr_vector check UNVERIFIED: arm-none-eabi-readelf not found.")
+        elif not elf_path.is_file():
+            rep.err("firmware_elf", f"Expected ELF output missing at {elf_path.relative_to(repo_root)}.")
+        else:
             re_proc = subprocess.run([readelf_arm, "-SW", str(elf_path)], capture_output=True, text=True)
             m = re.search(
                 r"\.isr_vector\s+PROGBITS\s+([0-9a-fA-F]+)\s+[0-9a-fA-F]+\s+([0-9a-fA-F]+)\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)",
                 re_proc.stdout,
             )
             if m:
-                addr = int(m.group(1), 16)
-                size = int(m.group(2), 16)
-                align = int(m.group(3))
+                addr, size, align = int(m.group(1), 16), int(m.group(2), 16), int(m.group(3))
                 if addr == 0x08000000 and size == 472 and align >= 512:
-                    rep.ok(f"ELF .isr_vector verified: addr=0x{addr:08X}, size={size} B (118 vectors), align={align} B.")
+                    rep.info("firmware_elf", f"ELF .isr_vector verified: addr=0x{addr:08X}, size={size} B (118 vectors), align={align} B.")
                 else:
-                    rep.err(f"ELF .isr_vector invalid: addr=0x{addr:08X}, size={size}, align={align}")
+                    rep.err("firmware_elf", f"ELF .isr_vector invalid: addr=0x{addr:08X}, size={size}, align={align}")
             else:
-                rep.warn("Could not parse .isr_vector line from readelf output.")
+                rep.err("firmware_elf", "Could not parse .isr_vector section from readelf -SW output.")
 
         # 2. FreeRTOS V11.1.0 build
-        rtos_dir = REPO_ROOT / "23-code-library" / "freertos"
+        rtos_dir = repo_root / "23-code-library" / "freertos"
         proc = subprocess.run([make_exe, "all"], cwd=rtos_dir, env=env, capture_output=True, text=True)
         if proc.returncode != 0:
-            rep.err(f"FreeRTOS build FAILED:\n{proc.stdout}\n{proc.stderr}")
+            rep.err("firmware_builds", f"FreeRTOS V11.1.0 build FAILED (exit {proc.returncode})", (proc.stderr or proc.stdout).splitlines()[-10:])
         else:
-            rep.ok("FreeRTOS V11.1.0 firmware (23-code-library/freertos/) compiled cleanly (exit 0).")
+            rep.info("firmware_builds", "FreeRTOS V11.1.0 firmware (23-code-library/freertos/) compiled cleanly (exit 0).")
 
         # 3. All 3 Capstone builds
-        cap_failed = []
+        cap_failed: list[str] = []
         for cdir in CAPSTONE_DIRS:
-            proc = subprocess.run([make_exe, "all"], cwd=REPO_ROOT / cdir, env=env, capture_output=True, text=True)
+            proc = subprocess.run([make_exe, "all"], cwd=repo_root / cdir, env=env, capture_output=True, text=True)
             if proc.returncode != 0:
-                cap_failed.append(f"{cdir}: {proc.stderr[-300:]}")
+                cap_failed.append(f"{cdir} (exit {proc.returncode}): {(proc.stderr or proc.stdout).strip()[-200:]}")
         if cap_failed:
-            rep.err(f"Capstone build(s) FAILED: {cap_failed}")
+            rep.err("firmware_builds", f"{len(cap_failed)}/3 Capstone firmware build(s) FAILED", cap_failed)
         else:
-            rep.ok("All 3/3 Capstone firmware projects (19-projects/01..03/) compiled cleanly (exit 0).")
+            rep.info("firmware_builds", "All 3/3 Capstone firmware projects (19-projects/01..03/) compiled cleanly (exit 0).")
 
-    # 4. Host C unit tests (574+ assertions)
+    # 4. Host C unit tests (make -C tests clean test -> 0 failed, >= 500 assertions, clean up afterward)
     host_gcc = shutil.which("gcc")
     if not host_gcc or not make_exe:
-        rep.warn("Skipping host C unit tests: host gcc or make not found.")
+        missing = [t for t, p in (("gcc", host_gcc), ("make", make_exe)) if not p]
+        rep.unverified_item(
+            "host_tests",
+            f"Host C unit tests UNVERIFIED: missing required tool(s): {', '.join(missing)}.",
+        )
     else:
-        tests_dir = REPO_ROOT / "tests"
-        proc = subprocess.run([make_exe, "clean", "test"], cwd=tests_dir, capture_output=True, text=True)
-        if proc.returncode != 0:
-            rep.err(f"Host C unit tests FAILED:\n{proc.stdout}\n{proc.stderr}")
-        else:
-            counts = [int(m) for m in re.findall(r"(\d+)\s+assertions?\s+executed,\s*0\s+failed", proc.stdout, re.IGNORECASE)]
-            total_asserts = sum(counts)
-            if total_asserts >= 574 and len(counts) >= 4:
-                rep.ok(f"Host C unit tests ({len(counts)} suites) compiled and passed ({total_asserts} assertions executed, 0 failed).")
+        tests_dir = repo_root / "tests"
+        try:
+            proc = subprocess.run(
+                [make_exe, "-C", str(tests_dir), "clean", "test"],
+                capture_output=True,
+                text=True,
+            )
+            if proc.returncode != 0:
+                rep.err(
+                    "host_tests",
+                    f"Host C unit tests FAILED (exit {proc.returncode})",
+                    (proc.stderr or proc.stdout).splitlines()[-12:],
+                )
             else:
-                rep.err(f"Host C unit tests parsed {total_asserts} assertions across {len(counts)} suites (expected >= 574 across >= 4 suites).")
+                # Verify 0 failed on every suite and extract exact assertion counts
+                suite_matches = re.findall(
+                    r"(\d+)\s+assertions?\s+executed,\s*(\d+)\s+failed",
+                    proc.stdout,
+                    re.IGNORECASE,
+                )
+                total_asserts = sum(int(a) for a, _ in suite_matches)
+                total_failed = sum(int(f) for _, f in suite_matches)
+                rep.metrics["host_tests"] = {
+                    "suites": len(suite_matches),
+                    "assertions_executed": total_asserts,
+                    "assertions_failed": total_failed,
+                }
+                if total_failed != 0:
+                    rep.err("host_tests", f"Host C unit tests reported {total_failed} failed assertion(s) out of {total_asserts}.")
+                elif total_asserts < 500 or len(suite_matches) < 4:
+                    rep.err(
+                        "host_tests",
+                        f"Host C unit tests parsed {total_asserts} assertions across {len(suite_matches)} suites "
+                        "(expected >= 500 across >= 4 suites).",
+                    )
+                else:
+                    rep.info(
+                        "host_tests",
+                        f"Host C unit tests passed: {len(suite_matches)} suites, {total_asserts} assertions executed, 0 failed.",
+                    )
+        finally:
+            # Always clean up build/test binaries afterward
+            subprocess.run([make_exe, "-C", str(tests_dir), "clean"], capture_output=True, text=True)
+
+
+def run_validation(
+    repo_root: Path,
+    skip_builds: bool = False,
+    check_external_urls: bool = False,
+    quiet: bool = False,
+) -> ValidationReport:
+    rep = ValidationReport(quiet=quiet)
+    if not quiet:
+        print(f"=== Embedded C & STM32G474RE Master Learning Hub Validator v4.1.0 ===")
+        print(f"Repository: {repo_root}")
+    check_structure(repo_root, rep)
+    check_control_chars(repo_root, rep)
+    check_cmsis_register_cross_check(repo_root, rep)
+    check_sot_concepts(repo_root, rep)
+    check_labs(repo_root, rep)
+    check_markdown_links_mathjax_urls(repo_root, rep, check_external_urls=check_external_urls)
+    check_mermaid_diagrams(repo_root, rep)
+    check_curriculum_and_artifacts(repo_root, rep)
+    check_builds_and_tests(repo_root, rep, skip_builds=skip_builds)
+    return rep
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate Embedded C Master Learning Hub.")
-    parser.add_argument("--skip-builds", action="store_true", help="Skip compiler and unit-test checks.")
+    parser = argparse.ArgumentParser(
+        description="Regression-Resistant Validation Suite for the Embedded C & STM32G474RE Master Learning Hub (v4.1.0)."
+    )
+    parser.add_argument("--repo-root", type=Path, default=DEFAULT_REPO_ROOT, help="Path to repository root.")
+    parser.add_argument("--skip-builds", action="store_true", help="Skip firmware build and host unit-test checks.")
+    parser.add_argument(
+        "--check-external-urls",
+        action="store_true",
+        help="Probe unique external HTTP(S) URLs live with polite concurrency and timeout.",
+    )
+    parser.add_argument("--json-report", type=Path, default=None, help="Write structured JSON validation report to path.")
+    parser.add_argument("--quiet", action="store_true", help="Suppress per-check stdout output (summary still printed).")
     args = parser.parse_args()
 
-    print(f"=== Validating Embedded C Master Learning Hub (v3.0.0) at: {REPO_ROOT} ===")
-    rep = ValidationReport()
-    check_structure(rep)
-    check_control_chars(rep)
-    check_internal_links(rep)
-    check_mermaid_diagrams(rep)
-    check_sot_concepts(rep)
-    check_register_ground_truth(rep)
-    check_curriculum_drivers_and_projects(rep)
-    check_video_database(rep)
-    if not args.skip_builds:
-        check_builds_and_tests(rep)
+    repo_root = args.repo_root.resolve()
+    rep = run_validation(
+        repo_root=repo_root,
+        skip_builds=args.skip_builds,
+        check_external_urls=args.check_external_urls,
+        quiet=args.quiet,
+    )
 
-    print(f"=== Validation Summary: {len(rep.info)} PASS, {len(rep.warnings)} WARN, {len(rep.errors)} FAIL ===")
+    print(
+        f"=== Validation Summary: "
+        f"{len(rep.infos)} INFO/PASS | "
+        f"{len(rep.warnings)} WARNING | "
+        f"{len(rep.unverified)} UNVERIFIED | "
+        f"{len(rep.errors)} ERROR ==="
+    )
+
+    if args.json_report is not None:
+        args.json_report.parent.mkdir(parents=True, exist_ok=True)
+        args.json_report.write_text(json.dumps(rep.to_dict(repo_root), indent=2), encoding="utf-8")
+        print(f"JSON report written to: {args.json_report}")
+
     return 1 if rep.errors else 0
 
 

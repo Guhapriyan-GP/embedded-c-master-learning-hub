@@ -559,3 +559,176 @@ Resolve the **4 HIGH** items below before final commit and push to GitHub:
 2. **`[P8-HIGH-02]`** Guard or implement real ADC feedback for `POWER_SIM_MODE == 0` in `19-projects/03-advanced-freertos-digital-power-controller/Src/main.c` L383–391 (never run open-loop software plant while reporting `EXTERNAL HARDWARE POWER STAGE`).
 3. **`[P8-HIGH-03]`** Fix `23-code-library/Drivers/i2c_g4.h` `I2C_TIMINGR_*` constants (`0x70811021`, `0x70710F1F`, `0x30421015`, etc.), add max-frequency & `t_SCLDEL` assertions to `tests/unit/test_drivers_math.c`, and correct the `PB8-BOOT0` pull-up warning in `i2c_g4.h` L16–18.
 4. **`[P8-HIGH-04]`** Recalibrate the ~16–20 over-promoted `ONBOARD_HARDWARE_TESTED` concepts and `PROF-SA-002`/`PROF-DOC-001` `COMPLETE` flags in `AUDIT/concepts_sot.json` v2.0.0 and regenerate dependent summary tables.
+
+
+---
+---
+
+# Part III: Final Post-Remediation Independent Red-Team Audit (Agent 12 — 2026-11-18)
+
+> **Historical Preservation Notice:** Parts I (Lines 1–321) and II (Lines 326–561) above are preserved verbatim. Part III below is an independent, adversarial post-remediation challenge of all Wave 1–2 deliverables from Specialists 1–4 and Worker C2 on branch `feature/complete-remediation`.
+
+**Auditor Role:** Agent 12 — Independent Technical Red-Team Auditor (Final Post-Remediation Challenge)  
+**Audit Date:** `2026-11-18`  
+**Target Repository / Branch:** `D:\General_ant\embedded-c-master-learning-hub` (`feature/complete-remediation`)  
+**Primary Ground-Truth Authorities Used:**
+- Vendored ST CMSIS `23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g474xx.h` & ARM CMSIS `core_cm4.h`
+- Official ST `STMicroelectronics/stm32g4xx-hal-driver` API headers (`stm32g4xx_ll_bus.h`, `stm32g4xx_ll_gpio.h`, `stm32g4xx_ll_system.h`, `stm32g4xx_ll_exti.h`, `stm32g4xx_ll_usart.h`, `stm32g4xx_hal_gpio.h`, `stm32g4xx_hal_cortex.h`, `stm32g4xx_hal_uart.h`)
+- **ARM AN321 (`DAI0321A`) §4.9**, **ARM Cortex-M4 Erratum 838869 / ST ES0430 §2.1.3**, **ST RM0440 §39.4.9 / §21.4.8 / Ch. 37**, **ST UM2505 §6.3–§6.4**, **ST PM0214 §2.3.7**
+- Empirical execution: live `python scripts/validate_repo.py` (full build + ELF + `594`-assertion host test run), 7 isolated `tempfile.TemporaryDirectory()` adversarial fault-injection mutations against `scripts/validate_repo.py` v4.0.0, independent 130-file / 1,786-span strict GitHub MathJax scanner, and programmatic `AUDIT/concepts_sot.json` + `AUDIT/TECHNICAL_DEFECTS.md` integrity checks.
+
+---
+
+## III.1 Executive Verdict
+
+**FINAL POST-REMEDIATION RED-TEAM VERDICT: CONDITIONAL HOLD — `0 CRITICAL`, `3 HIGH`, `4 MEDIUM`, `3 LOW`.**
+
+### What Independently Passed Adversarial Challenge
+1. **Firmware Builds, ELF Layout & Host Unit Tests (`PASS`):** Independent live execution of `python scripts/validate_repo.py` confirmed starter template (`debug` & `release`), ELF `.isr_vector` (`0x08000000`, `472 B`, `512 B` align), pinned `FreeRTOS-Kernel V11.1.0`, all `3/3` Capstones (`0` warnings / `0` errors), and **`594 / 594`** host C11 assertions across `4` suites (`0` failed, auto-cleaned afterward).
+2. **Core Finding A Architecture & Implementation (`PASS` in Primary Targets):** `10-interrupts/README.md` §3.3/§3.6/§7/§8.2, `04-arm-cortex-m/README.md` §3.8, `09-timers/README.md` §3.2/§8.1, `exti-syscfg-register-map.md` §3–§4, `exti_g4.h` (`EXTI_ClearPending`), `tim_g4.h` (`TIM_ClearUpdateFlag`), `tim_g4.c` L155–156, `dma_g4.c` L124–126, `adc_g4.c` L99–103, and `freertos/Src/main.c` L229–261 accurately separate ARM AN321 §4.9 (`(void)REG;` AHB-to-APB bridge readback) from ARM Erratum 838869 / ST ES0430 §2.1.3 (`__DSB();` before exception return) and correctly clarify 6-cycle tail-chaining.
+3. **STM32CubeG4 LL & HAL API Spellings Across Labs `01`, `05`, and `08` (`100% EXACT`):** Line-by-line audit against official `STMicroelectronics/stm32g4xx-hal-driver` verified every LL/HAL macro and function signature — including `LL_GPIO_SPEED_FREQ_LOW`/`HIGH`, `LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTC, LL_SYSCFG_EXTI_LINE13)`, `LL_EXTI_IsActiveFlag_0_31`/`ClearFlag_0_31`/`EnableIT_0_31`, `LL_GPIO_TogglePin()` (confirmed atomic via `BSRR` in STM32CubeG4), 5-arg `LL_USART_SetBaudRate(..., LL_USART_PRESCALER_DIV1, LL_USART_OVERSAMPLING_16, baud)`, `LL_USART_IsActiveFlag_RXNE_RXFNE`/`TXE_TXFNF`, `HAL_GPIO_Init()` internal `__HAL_RCC_SYSCFG_CLK_ENABLE()`, and `HAL_NVIC_ClearPendingIRQ()`.
+4. **Physical Hardware Testing Honesty (`PASS`):** Zero false physical-hardware claims across `LAB_VERIFICATION_MATRIX.md`, `HARDWARE_VERIFICATION_MATRIX.md`, `HARDWARE_VALIDATION_SUMMARY.md`, and all 20 labs; the `PENDING — USER CONNECTION REQUIRED` boundary (`6` external labs, `5` bench concepts, `0` Option-Byte mutations) is strictly maintained.
+5. **Learner-Facing GitHub MathJax Remediation (`PASS` on Target User Docs):** `01-master-concept-map/learning-sequence.md` L69 (`f_{\text{PLL-IN}}`), `LEARNERS/FORMULA_AND_CALCULATION_SHEET.md`, all `17/17` curriculum stages, all `20/20` labs, and all `16/16` register maps contain **zero** `\text{...\_...}` / `\mathrm{...\_...}` / `\texttt{...\_...}` MathJax bugs.
+6. **SoT DAG Mathematical Acyclicity (`PASS`):** Independent Kahn topological sort of `AUDIT/concepts_sot.json` v2.1.0 confirmed `350` unique IDs, `27/27` domains, `0` cycles, `0` self-loops, `0` unknown prerequisites, and `0` inverted difficulty-level edges.
+
+### Severity Tally of Newly Uncovered Post-Remediation Defects
+
+| Severity | Count | Finding IDs & Summary |
+|---|---:|---|
+| **CRITICAL** | **0** | None. |
+| **HIGH** | **3** | `[R12-HIGH-01]` Stale spec-violating `I2C TIMINGR = 0x30612144` still published as `"Verified Lab 12"` in `LEARNERS/FORMULA_AND_CALCULATION_SHEET.md` L95; `[R12-HIGH-02]` Residual hardware-hazard `IDD drop on JP5` in `AUDIT/concepts_sot.json` L3295 (`ARM-PWR-001`) + **5 remaining GitHub MathJax/truncated-math defects** in `AUDIT/` (`MISSING_CONCEPTS_AND_GAPS.md` L315/316/400, `COMPLETE_CONCEPT_INVENTORY.md` L283, `TECHNICAL_VERIFICATION_REPORT.md` L25) + unmatched backticks/truncations; `[R12-HIGH-03]` **5 empirically proven blind spots** in `scripts/validate_repo.py` v4.0.0 (`M2` table bitfields, `M4` `#anchor` links, `M5` `\texttt` MathJax, `M6` unclosed `$` / bare `\_` in math, `M7` register-map/lab C-snippet macros). |
+| **MEDIUM** | **4** | `[R12-MED-01]` `lab-08` Approach C (HAL) non-`volatile` `g_hal_rx_byte` & premature `HAL_UART_Receive_IT()` re-arm race condition (+ L525 overstatement); `[R12-MED-02]` Residual Finding A conflation in `learning-sequence.md` L76, `lab-05` L324/L70, `exti_g4.h` L7–8, and `tim_g4.h` L11–12; `[R12-MED-03]` `AUDIT/TECHNICAL_DEFECTS.md` L52 (`DEF-C-002`) unescaped `|` splits table row into **11 columns** instead of 9; `[R12-MED-04]` Stale pre-merge claims in `AUDIT/EDUCATIONAL_QUALITY_REPORT.md` L79–80/L130–133 + off-by-one stage numbering in `learning-sequence.md` (`Stage 07..15` vs `Stage 08..16`). |
+| **LOW** | **3** | `[R12-LOW-01]` `exti-syscfg-register-map.md` L9 (`Compile-Verified`) vs L61 (`Statically Reviewed`) tag mismatch; `[R12-LOW-02]` `21-reference-library/official-st-documentation.md` L30 still cites `RTC (Ch 34)` instead of RM0440 **Ch 37**; `[R12-LOW-03]` Minor precision refinement on ARM AN321 §4.9 asynchronous clock-domain IRQ synchronizer latency in `10-interrupts/README.md` L85. |
+
+---
+
+## III.2 Independent Verification & Adversarial Mutation Matrix
+
+| # | Challenge Area | Target Artifact(s) & Exact Lines | Verification Method / Primary Source | Result |
+|---:|---|---|---|---|
+| **01** | **Finding A** | `10-interrupts/README.md` L61, L79–94, L162–163, L269–272; `04-arm-cortex-m/README.md` L149, L231–232; `09-timers/README.md` L59–64, L210–214 | Exact text check vs ARM AN321 §4.9 & ST ES0430 §2.1.3 (ARM 838869) | **PASS** *(1 LOW nuance)* |
+| **02** | **Finding A (Residual)** | `01-master-concept-map/learning-sequence.md` L76; `lab-05/README.md` L70, L324; `exti_g4.h` L7–8; `tim_g4.h` L11–12; `exti-syscfg-register-map.md` L9 vs L61 | Cross-file consistency check against Finding A consensus | **FAIL (MEDIUM + LOW)** |
+| **03** | **Finding B (LL/HAL API)** | `lab-01/README.md` L141–214; `lab-05/README.md` L155–286; `lab-08/README.md` L264–444 | Line-by-line audit vs official `STMicroelectronics/stm32g4xx-hal-driver` | **PASS (API spelling) / FAIL (MED race in `lab-08` HAL)** |
+| **04** | **Finding B (Matrices)** | `AUDIT/LAB_VERIFICATION_MATRIX.md`, `AUDIT/HARDWARE_VERIFICATION_MATRIX.md`, `adc_g4.c` L98–104, `freertos/Src/main.c` L226–263 | Cross-check vs `HARDWARE_VALIDATION_SUMMARY.md` & RM0440 §21.4.8 | **PASS** |
+| **05** | **Finding C (Live Run)** | `scripts/validate_repo.py` v4.0.0 full run (`make` ARM builds + ELF + `tests/`) | Direct local CLI execution (`exit 0`, `26 PASS / 1 WARN / 1 UNVERIFIED / 0 ERR`, `594/594` host tests) | **PASS** |
+| **06** | **Finding C (Mutations)** | `scripts/validate_repo.py` v4.0.0 (`M1`–`M7` in isolated `tempfile.TemporaryDirectory()`) | Positive controls `M1` (bullet bit pos) & `M3` (broken link) caught (`2/2`); adversarial mutations `M2`, `M4`, `M5`, `M6`, `M7` **escaped with `0` errors (`5/5` blind spots)** | **FAIL (HIGH)** |
+| **07** | **GitHub MathJax** | All `130` `.md` files (`1,786` math spans), incl. `learning-sequence.md` L69 & `FORMULA_AND_CALCULATION_SHEET.md` | Independent strict scanner (`\text`/`\mathrm`/`\texttt`/`\textbf`/`\mbox`, bare `\_`, `{}` balance, `$` closure, table pipes) | **FAIL (HIGH — 5 bugs left in 3 `AUDIT/` files)** |
+| **08** | **Formula Desk Sheet** | `LEARNERS/FORMULA_AND_CALCULATION_SHEET.md` L95 | Cross-check vs RM0440 §39.4.9, `Lab 12`, & `i2c_g4.h` (`0x70811021` vs broken `0x30612144`) | **FAIL (HIGH)** |
+| **09** | **SoT & Audit Docs** | `AUDIT/concepts_sot.json` L3295 (`ARM-PWR-001`), `PERIPH-ADC-002`, `PERIPH-BDTR-001`; `AUDIT/TECHNICAL_DEFECTS.md` L52; `AUDIT/EDUCATIONAL_QUALITY_REPORT.md` L79–80/130–133; `LEARNERS/MKDOCS_PORTAL_PLAN.md` | Programmatic JSON/DAG/backtick/JP5/9-column audit & cross-report review | **FAIL (HIGH + 2 MED)** |
+
+---
+
+## III.3 Detailed Adversarial Findings & Concrete Remediation Actions
+
+### HIGH FINDINGS
+
+#### `[R12-HIGH-01]` Stale Spec-Violating `I2C TIMINGR = 0x30612144` Still Published as `"Verified Lab 12"` in `LEARNERS/FORMULA_AND_CALCULATION_SHEET.md`
+- **File & Line:** `LEARNERS/FORMULA_AND_CALCULATION_SHEET.md` L95
+- **Verified Defect:** L95 states:
+  > *"- **Verified `Lab 12` 400 kHz Fast Mode @ $f_{\text{I2CCLK}} = 170\text{ MHz}$:** `TIMINGR = 0x30612144` (`PRESC=3`, `SCLDEL=6`, `SDADEL=1`, `SCLH=0x21`, `SCLL=0x44`)."*
+  Part 4 `[HIGH-03]` and Phase 8 `[P8-HIGH-03]` proved `0x30612144` violates **RM0440 §39.4.9** (`t_SCLDEL = 164.7 ns < 400 ns`, breaking for any bus rise time $t_r > 64.7\text{ ns}$), and both `Lab 12` and `23-code-library/Drivers/i2c_g4.h` were upgraded to **`0x70811021`**. Teaching learners the superseded, broken constant in the primary formula cheat sheet directly contradicts `Lab 12` and `i2c_g4.h`.
+- **Concrete Remediation:** Replace `0x30612144` at `LEARNERS/FORMULA_AND_CALCULATION_SHEET.md` L95 with **`0x70811021`** (`PRESC=7`, `SCLDEL=8` → `t_SCLDEL = 423.5 ns >= 400 ns`, `SDADEL=1`, `SCLH=0x10`, `SCLL=0x21`, `f_max = 396.3 kHz <= 400 kHz`) and add the 160 MHz equivalent **`0x70710F1F`**.
+
+#### `[R12-HIGH-02]` Residual `JP5` IDD Hardware Hazard in `AUDIT/concepts_sot.json` + 5 Remaining GitHub MathJax / Truncated-Math Defects in `AUDIT/`
+- **Files & Lines:**
+  - `AUDIT/concepts_sot.json` L3295 (`ARM-PWR-001.completion_criteria`)
+  - `AUDIT/MISSING_CONCEPTS_AND_GAPS.md` L315, L316, L400
+  - `AUDIT/COMPLETE_CONCEPT_INVENTORY.md` L283 (`PERIPH-ADC-002`, mirrored from `concepts_sot.json`)
+  - `AUDIT/TECHNICAL_VERIFICATION_REPORT.md` L25
+  - `AUDIT/concepts_sot.json` (`PERIPH-ADC-002` & `PERIPH-BDTR-001`)
+- **Verified Defects:**
+  1. **Hardware Safety Hazard (`ARM-PWR-001`, `AUDIT/concepts_sot.json` L3295):** Still instructs learners: *"measuring IDD drop on JP5"*. On NUCLEO-G474RE (`UM2505 §6.3–§6.4`), `JP5` is the `5V_SEL` power selector and **`JP6`** is the `IDD` current jumper! Worker C2 fixed `STM32-PWR-002` but overlooked `ARM-PWR-001`.
+  2. **5 Real GitHub MathJax Rendering Defects Still Present (Despite `"136 -> 0"` Claim):**
+     - `AUDIT/MISSING_CONCEPTS_AND_GAPS.md` L315 (`$I_{IO(\text{PIN})... |`), L316 (`$R_{p,\... |` pairing across table columns with `40 k$\Omega$`), and L400 (`$< 0.5\text{... |` pairing with `$t_{CONV}=...$`) — 80-char table cell truncation sliced inside `$...$` and `{...}`, leaving unclosed `$`, unclosed `{`, and unescaped `|` inside inline math that breaks GitHub table rendering!
+     - `AUDIT/COMPLETE_CONCEPT_INVENTORY.md` L283 (2× `$t_{S\_temp} \ge 5\ \mu\text{s}$`, sourced from `concepts_sot.json` `PERIPH-ADC-002`) and `AUDIT/TECHNICAL_VERIFICATION_REPORT.md` L25 (`$t_{S\_\text{temp}} \ge 5\ \mu\text{s}$`) — GFM strips `\_` → `_` before MathJax parses the math span, corrupting `t_{S\_temp}` into $t_{S_t emp}$.
+  3. **Residual SoT String Truncations:** `PERIPH-ADC-002.explanation` is truncated mid-math (`+ 5\text{–}15^\circ\text{C.`), `PERIPH-BDTR-001.concept` has an unmatched backtick (`` `BDTR.DTG ``), and `81` legacy `explanation`/`gap_summary` strings still contain mid-word/unmatched-backtick truncations.
+- **Concrete Remediation:**
+  1. Update `ARM-PWR-001.completion_criteria` in `AUDIT/concepts_sot.json` L3295 from `JP5` → **`JP6` (`IDD`, UM2505 §6.4 — never `JP5`)**.
+  2. Replace `t_{S\_temp}` / `t_{S\_\text{temp}}` with `t_{S,\text{temp}}` in `concepts_sot.json` (`PERIPH-ADC-002`), `AUDIT/COMPLETE_CONCEPT_INVENTORY.md` L283, and `AUDIT/TECHNICAL_VERIFICATION_REPORT.md` L25; repair truncated math cells in `AUDIT/MISSING_CONCEPTS_AND_GAPS.md` L315, L316, and L400 and close backticks in `PERIPH-BDTR-001` & truncated `explanation` fields.
+
+#### `[R12-HIGH-03]` 5 Empirically Proven Blind Spots in `scripts/validate_repo.py` v4.0.0
+- **File & Lines:** `scripts/validate_repo.py` L122–145, L811–843, L1228–1285, L1388
+- **Empirical Adversarial Mutation Proof (Isolated `tempfile.TemporaryDirectory()`):**
+  - **Caught (`2/2` Positive Controls):** `M1` (`**Bit 8 (`HSION`)**` → `Bit 9` in `rcc-register-map.md`: **CAUGHT**, `BITPOS MISMATCH`) and `M3` (`[broken](does-not-exist.md)`: **CAUGHT**, `Broken internal inline links`).
+  - **Escaped with `0 ERROR` (`5/5` Proven Blind Spots):**
+    1. **`M2` (Table-Cell Bitfield Range Blind Spot, L811–843):** Re-injecting Part 4 `[CRIT-02]` (`BLANKING[21:19]` → `BLANKING[21:18]` in `opamp-comp-vrefbuf-register-map.md` table) exited **`0` errors** — Pass C only checks `21` `**Bit N (`FIELD`)**` bullet items and ignores all table-cell bit ranges (`FIELD[hi:lo]` / `(bN)`).
+    2. **`M5` (`\texttt`/`\textbf`/`\textit`/`\mbox` MathJax Blind Spot, L1228):** Injecting `$f_{\texttt{TIM\_CLK}} = 170\text{ MHz}$` exited **`0` errors** — L1228 regex only matches `\text{}` and `\mathrm{}` (even though `TECHNICAL_DEFECTS.md` L60 explicitly cites `\texttt{...}`!).
+    3. **`M6` (Unclosed `$` / Unbalanced `{` / Bare `\_` in Math Blind Spot, L1228–1285):** Injecting broken unclosed math `$f_{SYSCLK} = 170 MHz` exited **`0` errors** — which is exactly how `[R12-HIGH-02]` escaped v4.0.0!
+    4. **`M4` (Markdown `#anchor` Fragment Blind Spot, L1388):** Injecting `[broken anchor](test_doc.md#totally-fake-heading)` exited **`0` errors** because L1388 strips `#fragment` without verifying target headings.
+    5. **`M7` (Register-Map / Lab C-Snippet Compilation Blind Spot):** Re-injecting Part 4 `[CRIT-02]` (`OPAMP_CSR_OPAMPxEN` → `OPAMP_CSR_OPAEN` in `opamp-comp-vrefbuf-register-map.md`) exited **`0` errors** because v4.0.0 still does not compile C blocks extracted from `20-technical-diagrams/registers/*.md` or `18-practical-laboratory/lab-01..19/README.md`. *(Additionally, `REQUIRED_AUDIT_FILES` L122–145 omits the 6 newly created Section 9 reports.)*
+- **Concrete Remediation:** Upgrade `validate_repo.py` to v4.1.0: (1) extend `scan_mathjax_in_file()` to check `\texttt`/`\textbf`/`\textit`/`\mbox`, bare `\_` in math, unbalanced `{}`/`$`, and unescaped `|` in table math; (2) extend Pass C to cross-check table-cell `FIELD[hi:lo]` and `(bN)` against CMSIS `_Pos`/`_Msk`; (3) verify local `#anchor` headings; (4) add an optional/default C-snippet compile gate for register maps & Approach A lab code; and (5) add the 6 new Section 9 reports to `REQUIRED_AUDIT_FILES`.
+
+---
+
+### MEDIUM FINDINGS
+
+#### `[R12-MED-01]` `lab-08` Approach C (HAL) RX Buffer Data Race & Non-`volatile` Shared Variable
+- **File & Lines:** `18-practical-laboratory/lab-08-usart-baremetal-driver-printf/README.md` L381, L392–397, L437–441, L525
+- **Verified Defect:**
+  1. `static uint8_t g_hal_rx_byte = 0U;` (L381) omits `volatile` even though `HAL_UART_IRQHandler()` writes it in ISR context and `main()` reads it in thread context.
+  2. `HAL_UART_RxCpltCallback()` (L394–395) sets `g_hal_rx_ready = 1U;` and **immediately re-arms `HAL_UART_Receive_IT(&g_huart2, &g_hal_rx_byte, 1U)`** targeting the **exact same single-byte buffer** *before* `main()` copies `g_hal_rx_byte`, creating an ISR/main overwrite race on back-to-back bytes!
+  3. L525 (`§12.1`) overstates that all 3 approaches include `(void)USART2->ISR; __DSB();` — Approach C's `USART2_IRQHandler()` (L388–390) calls only `HAL_UART_IRQHandler(&g_huart2);`.
+- **Concrete Remediation:** Make `g_hal_rx_byte` `volatile` and either copy the received byte into a separate volatile/SPSC ring buffer inside `HAL_UART_RxCpltCallback()` before calling `HAL_UART_Receive_IT()`, or re-arm `HAL_UART_Receive_IT()` from `main()` after reading `ch`; qualify L525 to note `(void)USART2->ISR; __DSB();` is in Approaches A & B (and add `(void)USART2->ISR; __DSB();` after `HAL_UART_IRQHandler` in Approach C for parity).
+
+#### `[R12-MED-02]` Residual Finding A Conflation Across 4 Files (`learning-sequence.md`, `lab-05`, `exti_g4.h`, `tim_g4.h`)
+- **Files & Lines:**
+  - `01-master-concept-map/learning-sequence.md` L76
+  - `18-practical-laboratory/lab-05-exti-pushbutton-interrupt/README.md` L70, L324
+  - `23-code-library/Drivers/exti_g4.h` L7–8
+  - `23-code-library/Drivers/tim_g4.h` L11–12
+- **Verified Defect:** Despite Finding A's clean separation in `10-interrupts/README.md` §3.6, these 4 locations retain pre-remediation conflation:
+  - `learning-sequence.md` L76 still writes *"preventing phantom double-entry per `ES0430 §2.1.3` / ARM 838869"* (conflating APB bridge double-entry [AN321 §4.9] with ARM 838869 [incorrect interrupt vectoring]!).
+  - `lab-05` L324 (`§9` Troubleshooting) still prescribes *"Posted APB2 write did not retire before ISR exit -> Add `__DSB();`"* (omitting `(void)EXTI->PR1;`), and L70 conflates ARM 838869 with tail-chaining a duplicate ISR entry.
+  - `exti_g4.h` L7–8 top file banner still says *"followed by Cortex-M4 `__DSB()` (ARM Errata 838869 / ES0430 §2.1.3) to prevent double-triggering"* (while L102–113 was properly fixed), and `tim_g4.h` L11–12 omits `(void)tim->SR;` in its top banner (while L135–145 was fixed).
+- **Concrete Remediation:** Align all 4 comments/table rows with `10-interrupts/README.md` §3.6 (`(void)REG;` = ARM AN321 §4.9 APB posted-write commit; `__DSB();` = CPU write-buffer drain + ARM Erratum 838869 / ST ES0430 §2.1.3).
+
+#### `[R12-MED-03]` Unescaped Pipe (`|`) Splits `DEF-C-002` Row in `AUDIT/TECHNICAL_DEFECTS.md` into 11 Columns
+- **File & Line:** `AUDIT/TECHNICAL_DEFECTS.md` L52
+- **Verified Defect:** All `24` other `DEF-*` rows have exact `9/9` populated fields, but L52 (`DEF-C-002`) contains unescaped `|` characters inside inline code (`` `|` `` and `` `\|` ``), splitting the Markdown table row into **11 columns** and misaligning the rendered GitHub table.
+- **Concrete Remediation:** Escape pipe characters inside `DEF-C-002` as `&#124;` (or spell out `"pipe character"`) so all `25/25` rows parse cleanly as exactly 9 columns.
+
+#### `[R12-MED-04]` Stale Pre-Merge Claims in `AUDIT/EDUCATIONAL_QUALITY_REPORT.md` & Off-by-One Stage Numbering in `learning-sequence.md`
+- **Files & Lines:**
+  - `AUDIT/EDUCATIONAL_QUALITY_REPORT.md` L79–80, L130–133
+  - `01-master-concept-map/learning-sequence.md` L74, L81, L88, L95, L102, L109, L115 vs `10-interrupts/README.md` L1 (`Stage 08`), `09-timers/README.md` L1 (`Stage 09`), etc.
+- **Verified Defect:**
+  1. `AUDIT/EDUCATIONAL_QUALITY_REPORT.md` L79–80 & L130–133 still state that stages `04/08/09/10` lack nav bars, recommend adding a MathJax guard to `validate_repo.py`, and treat physical NUCLEO-G474RE testing as unexecuted — all three are now stale post-Wave-2.
+  2. `learning-sequence.md` numbers `10-interrupts/` as `Stage 07` and `09-timers/` as `Stage 08` (through `Stage 15`), whereas the actual stage README titles (`10-interrupts/README.md` L1, `09-timers/README.md` L1, ..., `17-advanced-firmware-engineering/README.md` L1) number them `Stage 08` through `Stage 16`.
+- **Concrete Remediation:** Refresh `AUDIT/EDUCATIONAL_QUALITY_REPORT.md` §3 & §6 to reflect post-Wave-2 status (`17/17` nav bars deployed, validator v4.0.0 active, `13/20` labs onboard-tested) and align stage numbering consistently between `learning-sequence.md` and stage README headers.
+
+---
+
+### LOW FINDINGS
+
+- **`[R12-LOW-01]` `20-technical-diagrams/registers/exti-syscfg-register-map.md` L9 vs L61 Tag Mismatch:** L9 declares `"C code snippets Compile-Verified"`, while L61 directly above the snippet says `"Statically Reviewed"`. Update L61 to `"Compile-Verified (Not Tested on Physical Hardware)"`.
+- **`[R12-LOW-02]` `21-reference-library/official-st-documentation.md` L30 Stale RM0440 RTC Chapter:** Lists `RTC (Ch 34)` instead of RM0440 **Ch 37** (as fixed in `rtc-tamp-usb-register-map.md` under Part 4 `[MED-04]`).
+- **`[R12-LOW-03]` ARM AN321 §4.9 Asynchronous Clock-Domain Synchronizer Nuance (`10-interrupts/README.md` L85):** Clarify in 1 sentence that while `(void)EXTI->PR1;` stalls until the AHB-to-APB2 bridge commits the clear at the EXTI slave, peripherals in slower/asynchronous clock domains (or APB prescaler `> /1`) may still exhibit 1–2 cycles of IRQ-wire synchronizer latency back to NVIC — reinforcing why clearing *early* in the ISR + checking the status flag on entry + readback + `__DSB()` is the complete pattern.
+
+---
+
+## III.4 Section 10 Final Acceptance Criteria Scorecard (10 Criteria)
+
+| # | Acceptance Criterion | Independent Verdict | Evidence / Blocking Item(s) |
+|---:|---|---|---|
+| **1** | **Finding A:** Accurate ARM AN321 §4.9 vs ES0430 §2.1.3 (ARM 838869) & tail-chaining everywhere | **PARTIAL** | Core stages/maps/code PASS; residual conflation in `learning-sequence.md:76`, `lab-05:70/324`, `exti_g4.h:7–8`, `tim_g4.h:11–12` (`[R12-MED-02]`) |
+| **2** | **Finding B:** Complete 3-way Bare-Metal/LL/HAL Labs `01/05/08` (exact CubeG4 APIs) & 20-lab 6-state matrices | **PARTIAL** | All CubeG4 LL/HAL spellings 100% exact & matrices clean; `lab-08` Approach C HAL RX buffer race (`[R12-MED-01]`) |
+| **3** | **Finding C:** Regression-resistant `scripts/validate_repo.py` v4.0.0 & `0 ERROR` live run | **PARTIAL** | Live run exits `0` (`594/594` tests, 5 ARM builds PASS); 5 adversarial mutations escaped (`[R12-HIGH-03]`) |
+| **4** | **GitHub MathJax:** Zero MathJax rendering defects repo-wide (`136 -> 0`) | **FAIL** | Learner docs 100% clean, but 5 defects remain in 3 `AUDIT/` files (`[R12-HIGH-02]`) |
+| **5** | **Register & Hardware Math Ground Truth:** Zero stale silicon/board hazards across all docs | **FAIL** | 16 register maps PASS (0 CMSIS mismatches), but broken `0x30612144` in `FORMULA_AND_CALCULATION_SHEET.md:95` (`[R12-HIGH-01]`) & `JP5` IDD in `ARM-PWR-001` (`[R12-HIGH-02]`) |
+| **6** | **Verification Honesty & Hardware Safety Boundary:** Zero false hardware claims; `PENDING — USER CONNECTION REQUIRED` enforced | **PASS** | 100% honest across all 20 labs, matrices, and reports; zero Option-Byte mutations |
+| **7** | **Source-of-Truth `concepts_sot.json` v2.1.0 Integrity:** Acyclic DAG + clean metadata | **PARTIAL** | DAG spotless (`350` IDs, `0` cycles, `0` inverted edges); `ARM-PWR-001` (`JP5`), `PERIPH-ADC-002` (`t_{S\_temp}`), `PERIPH-BDTR-001` unmatched backtick (`[R12-HIGH-02]`) |
+| **8** | **Consolidated Audit Suite:** `TECHNICAL_DEFECTS.md` 9 fields & cross-report synchronization | **PARTIAL** | `DEF-C-002` unescaped `|` breaks 9-column table (`[R12-MED-03]`); stale post-merge notes in `EDUCATIONAL_QUALITY_REPORT.md` (`[R12-MED-04]`) |
+| **9** | **Builds, ELF & Host Tests:** Clean ARM GCC cross-builds (`0` warn) + `594/594` host tests | **PASS** | Independently re-executed live (`debug`/`release` template, `.isr_vector` 472 B @ 512 B, FreeRTOS V11.1.0, 3 Capstones, `594/594` PASS) |
+| **10** | **Educational UX, Nav Bars, External URLs & MkDocs Plan:** Seamless navigation & zero-duplication portal plan | **PARTIAL** | `17/17` nav bars, `70/70` live URLs, strong `MKDOCS_PORTAL_PLAN.md`; off-by-one stage numbering in `learning-sequence.md` (`[R12-MED-04]`) |
+
+**Criteria Satisfied:** **2 PASS / 6 PARTIAL / 2 FAIL** → **CONDITIONAL HOLD**.
+
+---
+
+## III.5 Mandatory Final Release Checklist (Before Final Commit & Merge)
+
+1. **`[R12-HIGH-01]`** Update `LEARNERS/FORMULA_AND_CALCULATION_SHEET.md` L95 from broken `0x30612144` → **`0x70811021`** (170 MHz) / **`0x70710F1F`** (160 MHz).
+2. **`[R12-HIGH-02]`** Fix `ARM-PWR-001.completion_criteria` (`JP5` → `JP6`), fix `t_{S\_temp}` / `t_{S\_\text{temp}}` → `t_{S,\text{temp}}` in `concepts_sot.json` (`PERIPH-ADC-002`), `AUDIT/COMPLETE_CONCEPT_INVENTORY.md` L283, and `AUDIT/TECHNICAL_VERIFICATION_REPORT.md` L25, and repair truncated math cells in `AUDIT/MISSING_CONCEPTS_AND_GAPS.md` L315/L316/L400 + `PERIPH-BDTR-001`.
+3. **`[R12-HIGH-03]`** Harden `scripts/validate_repo.py` (`v4.0.0` → `v4.1.0`) to close the 5 proven blind spots (`\texttt`/`\textbf`/`\mbox` + bare `\_` + unclosed `$`/braces in MathJax, table-cell bit positions, `#anchor` verification, register-map/lab C-snippet compile check, and adding the 6 new Section 9 reports to `REQUIRED_AUDIT_FILES`).
+4. **`[R12-MED-01..04]`** Fix `lab-08` HAL RX buffer race (`volatile` + ring buffer / post-read re-arm), clean residual Finding A conflation (`learning-sequence.md:76`, `lab-05:70/324`, `exti_g4.h:7–8`, `tim_g4.h:11–12`), escape `|` in `AUDIT/TECHNICAL_DEFECTS.md` L52, refresh `AUDIT/EDUCATIONAL_QUALITY_REPORT.md` L79–80/130–133, and align `learning-sequence.md` stage numbers.
+5. **`[R12-LOW-01..03]`** Fix `exti-syscfg-register-map.md` L61 tag, `official-st-documentation.md` L30 (`RTC Ch 37`), and add 1-sentence AN321 §4.9 clock-domain synchronizer nuance to `10-interrupts/README.md` L85.
