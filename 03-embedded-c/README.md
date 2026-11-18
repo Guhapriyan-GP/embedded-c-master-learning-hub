@@ -87,7 +87,7 @@ Never blindly use `|=` or `&=` on hardware registers! Always check the access co
 
 **Reserved Bits, Atomic GPIO & STM32G4 Bit-Banding Scope (`EMB-REG-002`, `EMB-REG-004`):**
 - Always preserve reserved bits at their reset value (RM0440 §1.1) using `MODIFY_REG(REG, CLEARMSK, SETMASK)` (`stm32g4xx.h`).
-- Never use `GPIOA->ODR ^= (1U << 5)` or `GPIOA->ODR |= (1U << 5)` in concurrent main/ISR code (`LDR` → `ORR` → `STR` loses ISR updates!). Use single-store atomic **`GPIOA->BSRR`** (offset `0x18`: bits `[15:0]` set, bits `[31:16]` reset; if both `BSy` and `BRy` are written `1` simultaneously, **`BSy` set wins** per RM0440 §9.4.7) or **`GPIOA->BRR`** (offset `0x28`, bits `[15:0]` reset).
+- Never use `GPIOA->ODR ^= (1U << 5)` or `GPIOA->ODR |= (1U << 5)` in concurrent main/ISR code (`LDR` → `ORR` → `STR` corrupts concurrent updates to **sibling pins** on the same port!). Use single-store atomic **`GPIOA->BSRR`** (offset `0x18`: bits `[15:0]` set, bits `[31:16]` reset; if both `BSy` and `BRy` are written `1` simultaneously, **`BSy` set wins** per RM0440 §9.4.7) or **`GPIOA->BRR`** (offset `0x28`, bits `[15:0]` reset). **Concurrency nuance:** `BSRR` makes an individual pin set or reset atomic across *different* pins on the same port, whereas reading `ODR` and conditionally writing `BSRR` to **toggle** a pin is **not** atomic as a complete toggle if two concurrent contexts toggle the *same* pin — concurrent same-pin writers require single-writer ownership or an explicit `PRIMASK`/`BASEPRI` critical section!
 - **STM32G474RE Bit-Banding Scope (`stm32g474xx.h`):** `SRAM1_BB_BASE = 0x22000000UL` covers `0x20000000–0x200FFFFF` and `PERIPH_BB_BASE = 0x42000000UL` covers `0x40000000–0x400FFFFF` (APB1/APB2/AHB1), which **excludes AHB2 GPIO registers at `0x48000000`!** That is why `BSRR`/`BRR` are mandatory for atomic GPIO updates.
 
 ---
@@ -102,7 +102,7 @@ Never blindly use `|=` or `&=` on hardware registers! Always check the access co
 | Preserves program order **between two `volatile` accesses** | **YES** | Compiler cannot reorder `vol_a = 1; vol_b = 2;` relative to each other. |
 | Prevents **non-volatile** accesses from reordering across a `volatile` access | **NO!** | GCC at `-O2` CAN legally hoist or sink `payload_buf[0] = 42;` *past* `volatile ready_flag = 1;`! **Requires `__asm__ volatile ("" ::: "memory")` or `__DMB()`!** |
 | Guarantees **atomicity** of RMW (`v++`) or 64-bit reads (`volatile uint64_t`) | **NO!** | `v++` still compiles to non-atomic `LDR`/`ADD`/`STR`; `uint64_t` still tears across two 32-bit loads! |
-| Guarantees **hardware bus visibility** to DMA1/DMA2 or completion of buffered writes | **NO!** | Requires ARMv7-M hardware barriers: **`__DMB()`** (DMA publish/consume), **`__DSB()`** (peripheral flag clear before ISR exit or `__WFI()`), **`__ISB()`** (pipeline flush after `SCB->VTOR`/`CPACR`/`MPU`). |
+| Guarantees **hardware bus visibility** to DMA1/DMA2 or completion of buffered writes | **NO!** | Requires ARMv7-M hardware barriers: **`__DMB()`** (DMA publish/consume), **`(void)REG;` + `__DSB()`** (APB peripheral flag-clear readback per ARM AN321 §4.9 + CPU write-buffer drain before ISR return per ARM Erratum 838869 / ES0430 §2.1.3, or `__DSB()` before `__WFI()`), **`__ISB()`** (pipeline flush after `SCB->VTOR`/`CPACR`/`MPU`). |
 
 ---
 
@@ -112,7 +112,7 @@ Never blindly use `|=` or `&=` on hardware registers! Always check the access co
 
 1. **Reentrant `PRIMASK` & Selective Cortex-M4 `BASEPRI` Critical Sections (`EMB-ATOM-001`):**
    - Never pair bare `__disable_irq()` with bare `__enable_irq()` inside utility functions — nested calls prematurely re-enable interrupts on inner exit! Always **save and restore `PRIMASK`** with compiler memory barriers (`crit_enter_primask` / `crit_exit_primask` in Section 8.1).
-   - On STM32G474RE (`__NVIC_PRIO_BITS = 4U`, priority encoded in top bits `[7:4]`), `PRIMASK` masks *every* interrupt (adding jitter to 100 kHz digital power fault ISRs!). Instead, **`__set_BASEPRI_MAX(min_masked_prio << 4U)`** masks only IRQs with numeric priority $\ge p_{\text{mask}}$ (`min_masked_prio`) while **never weakening** a stricter outer `BASEPRI` threshold (hardware ignores any write with a numerically larger non-zero priority). Priority `0..(min_masked_prio - 1)` ISRs execute with **zero added latency** (the exact mechanism behind FreeRTOS `configMAX_SYSCALL_INTERRUPT_PRIORITY`; Section 8.1).
+   - On STM32G474RE (`__NVIC_PRIO_BITS = 4U`, priority encoded in top bits `[7:4]`), `PRIMASK` masks *every* interrupt (adding critical-section masking delay to 100 kHz digital power fault ISRs!). Instead, **`__set_BASEPRI_MAX(min_masked_prio << 4U)`** masks only IRQs with numeric priority $\ge p_{\text{mask}}$ (`min_masked_prio`) while **never weakening** a stricter outer `BASEPRI` threshold (hardware ignores any write with a numerically larger non-zero priority). Priority `0..(min_masked_prio - 1)` ISRs remain **unmasked high-priority interrupts (unaffected by `BASEPRI` critical-section masking)** — the exact mechanism behind FreeRTOS `configMAX_SYSCALL_INTERRUPT_PRIORITY` (note: `BASEPRI` does **not** guarantee zero interrupt latency, because unmasked ISRs still incur 12+ cycles of hardware stacking, Flash/bus contention, or preemption by even higher-priority interrupts; see `10-interrupts/` §3.2 and Section 8.1 below).
 2. **Exclusive Load/Store (`__LDREXW`/`__STREXW`/`__CLREX`) & C11 `<stdatomic.h>` (`EMB-ATOM-002`):**
    - Cortex-M4 provides a **local exclusive monitor** accessed via `LDREX` / `STREX` (exposed via `cmsis_gcc.h` `__LDREXW`/`__STREXW`/`__CLREX`, `stm32g4xx.h` `ATOMIC_SET_BIT`/`ATOMIC_CLEAR_BIT`/`ATOMIC_MODIFY_REG`, and ISO C11 `<stdatomic.h>`).
    - **Why It Is ISR-Safe Without Masking Interrupts:** `__LDREXW(addr)` loads `*addr` and tags the local monitor *Exclusive*. If an ISR preempts before `__STREXW(new_val, addr)`, exception entry/return (`ERET`) automatically clears the local monitor to *Open*, causing `__STREXW` to abort the write and return `1` so the `do { ... } while` loop cleanly retries with fresh data! Always issue `__CLREX()` on early loop exit (Section 8.2).
@@ -262,8 +262,14 @@ $$\left(t_{\text{now}} - t_{\text{last}}\right) \bmod 2^{32} \ge T_{\text{period
 
 ### 6.2 SPSC Power-of-Two Ring Buffer Indexing & Occupancy
 With capacity $N = 2^k$ and free-running unsigned `uint32_t head, tail`:
-$$\text{count} = (\text{head} - \text{tail}) \bmod 2^{32}, \qquad \text{index}(i) = i \mathbin{\&} (N - 1)$$
-$$\text{empty} \iff (\text{head} == \text{tail}), \qquad \text{full} \iff \left((\text{head} - \text{tail}) \bmod 2^{32}\right) == N$$
+
+$$
+\text{count} = (\text{head} - \text{tail}) \bmod 2^{32}, \qquad \text{index}(i) = i \mathbin{\&} (N - 1)
+$$
+
+$$
+\text{empty} \iff (\text{head} == \text{tail}), \qquad \text{full} \iff \left((\text{head} - \text{tail}) \bmod 2^{32}\right) == N
+$$
 
 ### 6.3 Cortex-M4 `BASEPRI` Register Encoding on STM32G474RE
 With $N_{\text{prio}} = 4$ (`__NVIC_PRIO_BITS`) and numeric priority level $p \in [0..15]$:
@@ -308,7 +314,7 @@ static inline void crit_exit_primask(uint32_t prev_primask)
     __set_PRIMASK(prev_primask);
 }
 
-/* EMB-ATOM-001: Nesting-safe Cortex-M4 BASEPRI critical section (keeps prio 0..N-1 zero-latency!) */
+/* EMB-ATOM-001: Nesting-safe Cortex-M4 BASEPRI critical section (leaves prio 0..N-1 unmasked by BASEPRI!) */
 static inline uint32_t crit_enter_basepri(uint8_t min_masked_prio)
 {
     uint32_t prev    = __get_BASEPRI();
@@ -843,7 +849,7 @@ int cli_dispatch(int argc, const char *const argv[])
 ## 10. Common Mistakes & Anti-Patterns
 
 1. **Using `|=` on `rc_w1` (`EXTI->PR1`, `ADC1->ISR`) or `&=` on `rc_w0` (`TIM2->SR`):** Silently clears unrelated concurrent hardware flags! Always use direct `=` assignment.
-2. **Using `GPIOA->ODR ^= (1U << 5)` inside an ISR:** Non-atomic RMW races with main-loop GPIO updates. Use `BSRR`/`BRR`.
+2. **Using `GPIOA->ODR ^= (1U << 5)` inside an ISR:** Non-atomic RMW races with main-loop updates to sibling `GPIOA` pins. Use `BSRR`/`BRR` for atomic single-write set/reset (and use single-writer ownership or a `PRIMASK`/`BASEPRI` critical section if two concurrent contexts must toggle the *same* pin).
 3. **Assuming `volatile` makes ISR/DMA data sharing thread-safe:** `volatile` provides zero atomicity and allows non-volatile payload reordering across a volatile flag without `__DMB()` / compiler barriers.
 4. **Assuming `LDREX`/`STREX` synchronizes with DMA1/DMA2:** Cortex-M4's local exclusive monitor only tracks CPU exceptions, never DMA AHB transfers!
 5. **Unbounded `while (!(REG & FLAG));` polling loops:** A shorted I2C bus freezes the entire MCU permanently. Always bound waits with a wraparound-safe timeout.

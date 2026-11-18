@@ -10,7 +10,7 @@
 
 1. **FreeRTOS `ARM_CM4F` Context Switch & `BASEPRI` Partitioning (20 Points):**
    (a) Detail the roles of `SVC`, `SysTick`, and `PendSV` in a FreeRTOS Cortex-M4F context switch. Why is context switching deferred to lowest-priority `PendSV`? How does `PendSV_Handler` conditionally save FPU registers `S16–S31`?
-   (b) On STM32G474RE (`__NVIC_PRIO_BITS = 4`), explain `NVIC_SetPriorityGrouping(0)` and `configMAX_SYSCALL_INTERRUPT_PRIORITY = (5 << 4)`. Which numeric IRQ priorities (`0..15`) may call `FromISR` APIs, which are zero-latency unmanaged ISRs, and why must `configMAX_SYSCALL_INTERRUPT_PRIORITY` NEVER be `0`?
+   (b) On STM32G474RE (`__NVIC_PRIO_BITS = 4`), explain `NVIC_SetPriorityGrouping(0)` and `configMAX_SYSCALL_INTERRUPT_PRIORITY = (5 << 4)`. Which numeric IRQ priorities (`0..15`) may call `FromISR` APIs, which are unmasked high-priority ISRs (unaffected by `BASEPRI` masking), and why must `configMAX_SYSCALL_INTERRUPT_PRIORITY` NEVER be `0`?
 
 2. **Priority Inversion vs. Deadlock & Interrupt-Safe Communication (15 Points):**
    (a) Contrast **unbounded priority inversion** (3-task L/M/H scenario) with **circular-wait deadlock**. Why does Priority Inheritance solve priority inversion yet **still deadlock** if two tasks acquire Mutex A and Mutex B in opposite orders?

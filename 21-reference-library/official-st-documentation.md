@@ -46,7 +46,7 @@ This library catalogues the authoritative STMicroelectronics primary documentati
 - **Document Number:** **ES0430**
 - **Title:** *STM32G471xx/473xx/474xx/483xx/484xx device errata*
 - **Critical Workarounds Every Bare-Metal Engineer Must Apply:**
-  - **§2.1.2 / §2.1.3 (Cortex-M4 Core / ARM 838869 & ARM AN321):** Perform a dummy readback of the cleared peripheral status register (`(void)EXTI->PR1;`) followed by `__DSB()` before returning from an ISR to drain both the processor write buffer and downstream AHB/APB bus bridges; avoid 1–2 instruction ISRs interrupting `VDIV`/`VSQRT`.
+  - **§2.1.2 / §2.1.3 (Cortex-M4 r0p1 Core / ARM Erratum 838869 vs. ARM AN321 §4.9):** Pair an explicit dummy readback of the cleared peripheral status register (`(void)EXTI->PR1;`, **ARM AN321 §4.9** — flushes the AHB-to-APB posted-write bridge to prevent spurious same-ISR re-entry) with `__DSB();` immediately before exception return (**ES0430 §2.1.3 / ARM Erratum 838869** — drains the Cortex-M4 write buffer so a stalling store-immediate overlapping `BX LR` cannot vector to an incorrect interrupt); avoid 1–2 instruction ISRs interrupting `VDIV`/`VSQRT` (§2.1.2).
   - **§2.2.1 (Debug):** Always use **SWD** (`PA13`/`PA14`), not full JTAG without `NJTRST`.
   - **§2.2.2–2.2.3 (Flash):** Flush DCache (`FLASH_ACR.DCRST`) after Flash writes during RWW.
   - **§2.3.1 (DMA — CRITICAL):** **NEVER clear global `DMA_IFCR.CGIFx`**; always clear individual `CTCIFx`/`CHTIFx`/`CTEIFx` bits to prevent transfer-error lockup.

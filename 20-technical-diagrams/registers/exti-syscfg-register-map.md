@@ -95,7 +95,8 @@ void EXTI15_10_IRQHandler(void) {
         /* Clear pending flag via direct write (rc_w1 — NEVER use |=) */
         EXTI->PR1 = EXTI_PR1_PIF13;
 
-        /* Atomic LED toggle on PA5 using BSRR (avoids RMW race on ODR!) */
+        /* Sibling-pin-safe single-writer PA5 toggle via atomic BSRR set/reset
+         * (avoids ODR RMW corruption of sibling pins; concurrent same-pin writers need a critical section) */
         if (GPIOA->ODR & (1U << 5U)) {
             GPIOA->BSRR = GPIO_BSRR_BR5;
         } else {

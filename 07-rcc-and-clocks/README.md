@@ -53,8 +53,8 @@ Every STM32G474RE boots with **HSI16** selected as `SYSCLK` (`16 MHz`), all peri
 
 ### 3.2 Main PLL Architecture & DS12288 Electrical Constraints `[STM32G474RE Exact]`
 The Main PLL takes **HSI16** (`PLLSRC = 10b`) or **HSE** (`PLLSRC = 11b`), divides by input prescaler $M \in [1, 16]$, multiplies by $N \in [8, 127]$ inside a Voltage-Controlled Oscillator (VCO), and produces three independent output clocks:
-- **`PLL_R` (`PLLREN=1`, $R \in \{2, 4, 6, 8\}$):** Drives `SYSCLK` up to **170 MHz** (Range 1 Boost).
-- **`PLL_Q` (`PLLQEN=1`, $Q \in \{2, 4, 6, 8\}$):** Drives `FDCAN1–3`, `USB`/`RNG` (48 MHz), `QUADSPI`, and `SAI1`/`I2S` ($\le 170\text{ MHz}$).
+- **`PLL_R` (`PLLREN=1`, $R \in \lbrace 2, 4, 6, 8 \rbrace$):** Drives `SYSCLK` up to **170 MHz** (Range 1 Boost).
+- **`PLL_Q` (`PLLQEN=1`, $Q \in \lbrace 2, 4, 6, 8 \rbrace$):** Drives `FDCAN1–3`, `USB`/`RNG` (48 MHz), `QUADSPI`, and `SAI1`/`I2S` ($\le 170\text{ MHz}$).
 - **`PLL_P` (`PLLPEN=1`, $P \in [2, 31]$ via `PLLPDIV`, or `7`/`17` via `PLLP` bit):** Drives asynchronous `ADC1–5` kernel clocks ($\le 60\text{ MHz}$ single / $\le 52\text{ MHz}$ multi-ADC).
 
 **Strict DS12288 Operating Limits (NEVER violate!):**
@@ -172,9 +172,18 @@ All addresses, offsets, and bit positions below are verified directly against `s
 ## 6. Engineering Mathematics & Worked Formulas
 
 ### 6.1 Main PLL Frequency Synthesis Equations
-$$f_{\text{PLL-IN}} = \frac{f_{\text{IN}}}{M}, \quad f_{\text{PLL-IN}} \in [2.66,\ 16.0]\text{ MHz}$$
-$$f_{\text{VCO}} = f_{\text{PLL-IN}} \times N = f_{\text{IN}} \times \frac{N}{M}, \quad f_{\text{VCO}} \in [96.0,\ 344.0]\text{ MHz}\text{ (Range 1)}$$
-$$f_{\text{PLL-R}}\ (\text{SYSCLK}) = \frac{f_{\text{VCO}}}{R}, \quad f_{\text{PLL-Q}} = \frac{f_{\text{VCO}}}{Q}, \quad f_{\text{PLL-P}} = \frac{f_{\text{VCO}}}{P}$$
+
+$$
+f_{\text{PLL-IN}} = \frac{f_{\text{IN}}}{M}, \quad f_{\text{PLL-IN}} \in [2.66,\ 16.0]\text{ MHz}
+$$
+
+$$
+f_{\text{VCO}} = f_{\text{PLL-IN}} \times N = f_{\text{IN}} \times \frac{N}{M}, \quad f_{\text{VCO}} \in [96.0,\ 344.0]\text{ MHz}\text{ (Range 1)}
+$$
+
+$$
+f_{\text{PLL-R}}\ (\text{SYSCLK}) = \frac{f_{\text{VCO}}}{R}, \quad f_{\text{PLL-Q}} = \frac{f_{\text{VCO}}}{Q}, \quad f_{\text{PLL-P}} = \frac{f_{\text{VCO}}}{P}
+$$
 
 ### 6.2 Worked Example A: Exact 170 MHz from NUCLEO-G474RE 24 MHz HSE Crystal (`X3`)
 - Given $f_{\text{IN}} = 24\text{ MHz}$ (`HSE`), choose $M = 6$ (`PLLM = 5`):
@@ -210,7 +219,7 @@ Using `/16` keeps the signal comfortably within standard 50–100 MHz oscillosco
 | Document | Exact Sections | Scope |
 |---|---|---|
 | **ST RM0440** (*STM32G4 Series Reference Manual*) | Ch. 3 (*FLASH ACR / Wait States*), Ch. 5/6 (*PWR*, §6.1.5 Boost transition), Ch. 6/7 (*RCC* — note Rev 8 vs Rev 9 chapter shift) | `[STM32G474RE Exact]` |
-| **ST DS12288** (*STM32G474xB/xC/xE Datasheet*) | §5.3.9 (*External/Internal Clock Characteristics*), §5.3.10 (*PLL Characteristics*: $2.66–16\text{ MHz}$ input, $96–344\text{ MHz}$ VCO) | `[STM32G474RE Exact]` |
+| **ST DS12288** (*STM32G474xB/xC/xE Datasheet*) | §5.3.9 (*External/Internal Clock Characteristics*), §5.3.10 (*PLL Characteristics*: $2.66\text{--}16\text{ MHz}$ input, $96\text{--}344\text{ MHz}$ VCO) | `[STM32G474RE Exact]` |
 | **ST UM2505** (*STM32G4 Nucleo-64 MB1367 User Manual*) | §6.7 (*OSC Clock*: 24 MHz X3 crystal & 32.768 kHz X2 crystal default solder-bridge states) | `[STM32G474RE Exact]` |
 | **ST ES0430** (*STM32G474xx Device Errata*) | §2.2.4 (*LSI stability with RTC + LSE CSS*) | `[STM32G474RE Exact]` |
 | **ST AN5093** (*Getting Started with STM32G4 Hardware Dev*) | Crystal load-capacitance sizing & HSE layout guidelines | `[STM32G474RE Exact]` |
@@ -471,7 +480,7 @@ uint32_t RCC_ReadAndClearResetFlags(void)
 3. **Q:** If `SYSCLK = 170 MHz`, `HPRE = /1`, and `PPRE1 = /4`, what are `HCLK`, `PCLK1`, and `TIM2CLK`?  
    *Answer Check:* `HCLK = 170 MHz`, `PCLK1 = 42.5 MHz`, `TIM2CLK = 2 * PCLK1 = 85.0 MHz`.
 4. **Q:** Why cannot `PLL_Q` generate an exact 48 MHz USB clock when `SYSCLK = 170 MHz` ($f_{\text{VCO}} = 340\text{ MHz}$), and what STM32G4 hardware solves this?  
-   *Answer Check:* $340 / 48 = 7.083$ (not an integer in $\{2,4,6,8\}$). Solution: **`HSI48` + `CRS`** (`CLK48SEL = 00b`).
+   *Answer Check:* $340 / 48 = 7.083$ (not an integer in $\lbrace 2, 4, 6, 8 \rbrace$). Solution: **`HSI48` + `CRS`** (`CLK48SEL = 00b`).
 5. **Q:** Why must `PWR->SR2 & PWR_SR2_VOSF` be polled instead of `PWR->SR1`?  
    *Answer Check:* Verified in `stm32g474xx.h`: `VOSF` is bit 10 of `PWR->SR2` (`0x40007014`).
 6. **Q:** Does running the STM32G474RE at **160 MHz** allow you to skip Range 1 Boost Mode (`PWR->CR5.R1MODE = 0`), drop Flash latency to 3 WS, or omit the RM0440 §6.1.5 `HPRE = /2` transition?  

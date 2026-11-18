@@ -26,7 +26,7 @@
 ### Prerequisite Concept IDs
 - **Stage 03 (`04-arm-cortex-m/`):** `ARM-EXC-001` (Exception entry/exit, 8-word basic stack frame vs 18-word FPU extended frame, `EXC_RETURN`, MSP vs PSP).
 - **Stage 06 (`07-rcc-and-clocks/`):** `STM32-RCC-001`, `STM32-RCC-002` (170 MHz `HCLK`, `SystemCoreClock`, peripheral clock gating).
-- **Stage 07 (`08-gpio/`):** `PERIPH-GPIO-001`, `PERIPH-GPIO-003` (Digital input `MODER = 00b`, NUCLEO-G474RE Active-HIGH `PC13`, atomic `BSRR`).
+- **Stage 07 (`08-gpio/`):** `PERIPH-GPIO-001`, `PERIPH-GPIO-003` (Digital input `MODER = 00b`, NUCLEO-G474RE Active-HIGH `PC13`, atomic single-write `BSRR` set/reset).
 
 ### Pedagogical Sequencing Note (Strictly Precedes Timer Interrupts!)
 - **NVIC, SysTick, and EXTI (Labs 04–05)** are mastered **here** as a strict prerequisite for **Timer Interrupts (`Lab 06`)** in [`09-timers/`](../09-timers/README.md) (while polling-only Basic Timer exercises in `09-timers/` may precede interrupts). There are **zero** dependencies from this stage on `09-timers/`.
@@ -47,14 +47,23 @@ The **Priority Grouping** field `SCB->AIRCR.PRIGROUP[10:8]` splits those 4 bits 
 | `NVIC_SetPriorityGrouping(5)` | `0b101` (`5`) | 2 bits (`0..3`) | 2 bits (`0..3`) | Legacy grouped preemption |
 | `NVIC_SetPriorityGrouping(7)` | `0b111` (`7`) | 0 bits | 4 bits (`0..15`) | Cooperative non-nested ISRs only |
 
-> **Important CMSIS Detail:** `NVIC_SetPriority(IRQn, prio)` automatically shifts `prio << (8 - __NVIC_PRIO_BITS)` (`prio << 4`) into hardware bits `[7:4]`. Always call `NVIC_SetPriorityGrouping(3)` (or `0` — both map to 4 preemption / 0 subpriority bits on a 4-bit implementation!) once at boot before enabling IRQs.
+> **Important CMSIS & FreeRTOS Detail:** `NVIC_SetPriority(IRQn, prio)` automatically shifts `prio << (8 - __NVIC_PRIO_BITS)` (`prio << 4`) into hardware bits `[7:4]`. Per `core_cm4.h` (`PreemptPriorityBits = min(7 - PRIGROUP, __NVIC_PRIO_BITS)`), on STM32G474RE (`__NVIC_PRIO_BITS = 4U`), **both `NVIC_SetPriorityGrouping(0U)` and `NVIC_SetPriorityGrouping(3U)`** allocate all **4 bits to preemption priority and 0 bits to subpriority** (and both satisfy FreeRTOS's `vPortValidateInterruptPriority()` check `PRIGROUP <= 3`). Call it once at boot before enabling IRQs.
 
 ### 3.2 Interrupt Masking: `PRIMASK` vs `BASEPRI` vs `FAULTMASK` `[ARM Cortex-M4F]`
 | Core Register | CMSIS Access | Behavior | Engineering Rule |
 |---|---|---|---|
 | **`PRIMASK`** | `__disable_irq()` / `__enable_irq()` (`CPSID I` / `CPSIE I`) | Masks **ALL** configurable interrupts (priorities `0..15`); only Reset, NMI (`-2`), HardFault (`-1`) execute | Use ONLY for ultra-short (< 20 cycles) atomic sequences; save/restore via `__get_PRIMASK()` / `__set_PRIMASK()` for safe nesting! |
-| **`BASEPRI`** | `__set_BASEPRI(prio << 4)` | Masks only interrupts with **numeric priority $\ge$ `prio`** (`BASEPRI = 0` disables masking) | **Preferred for real-time & FreeRTOS:** keeps zero-latency motor/power-fault ISRs (e.g., prio `0..4`) running while protecting shared data against prio `5..15` ISRs! |
+| **`BASEPRI`** | `__set_BASEPRI_MAX(prio << 4)` / `__set_BASEPRI(prev)` | Masks only interrupts with **numeric priority $\ge$ `prio`** (`BASEPRI = 0` disables masking; `BASEPRI_MAX` never weakens a stricter outer mask) | **Preferred for real-time & FreeRTOS:** leaves **unmasked high-priority interrupts (unaffected by `BASEPRI` critical-section masking)** (e.g., prio `0..4` motor/power-fault ISRs) eligible to preempt while protecting shared data against prio `5..15` ISRs! |
 | **`FAULTMASK`** | `__disable_fault_irq()` | Masks everything including HardFault (only NMI remains); auto-clears on exception return | Rarely used; reserved for fault-handling recovery routines. |
+
+> [!IMPORTANT]
+> **`BASEPRI` Does NOT Guarantee "Zero Interrupt Latency":** Avoid calling priorities `0..(N-1)` *"zero-latency ISRs."* Leaving an interrupt unmasked by `BASEPRI` eliminates **critical-section masking delay** from `BASEPRI`-protected code, **not** hardware interrupt latency. Even an unmasked high-priority interrupt (e.g., priority `0..4`) still incurs:
+> 1. **Hardware exception stacking latency** ($\ge 12$ CPU clock cycles on Cortex-M4F with zero bus wait states; more under contention);
+> 2. **Flash/AHB bus contention** (Flash wait states on cache miss or concurrent `DMA1`/`DMA2` bus transfers);
+> 3. **Multi-cycle uninterruptible bus transfers** (or non-interruptible `LDM`/`STM` bursts if `SCnSCB->ACTLR.DISMCYCINT = 1`); and
+> 4. **Preemption by even higher-priority exceptions** (e.g., priority `0`, NMI, or HardFault preempting priority `2`).
+>
+> **FreeRTOS `ARM_CM4F` Consistency:** Set `NVIC_SetPriorityGrouping(0U)` (or `3U` — 4 preemption / 0 subpriority bits) and align `configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY` (e.g., `5U`, encoded as `configMAX_SYSCALL_INTERRUPT_PRIORITY = (5U << 4) = 0x50`). Priorities `5..15` are masked during `taskENTER_CRITICAL()` and may call `...FromISR()` APIs; priorities `0..4` remain **unmasked high-priority interrupts** and **must never** call any FreeRTOS API. Never set `configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY` to `0` (`BASEPRI = 0` disables masking!).
 
 ### 3.3 Hardware Latency Optimization: Tail-Chaining & Late-Arrival `[ARM Cortex-M4F]`
 - **Standard Interrupt Entry (PM0214 §2.3.7 / ARM DDI 0439):** **12 clock cycles** (~70.6 ns @ 170 MHz, ~75.0 ns @ 160 MHz, zero-wait-state SRAM/CCM stack) to automatically stack `{R0, R1, R2, R3, R12, LR, PC, xPSR}` and fetch the ISR vector.
@@ -76,21 +85,31 @@ STM32G474RE's External Interrupt/Event Controller (`EXTI` @ `0x40010400`) handle
   - `IMR1`: Routes edge latch to NVIC, executing an ISR (wakes `__WFI()`).
   - `EMR1`: Sends a hardware pulse directly to the CPU event input — wakes `__WFE()` **without entering an ISR** (0-cycle stacking overhead!).
 
-### 3.6 Peripheral Flag-Clear Synchronization: Dummy Readback + `__DSB()` (ARM AN321 §4.9 & ES0430 §2.1.3 / Erratum 838869) `[ARM Cortex-M4F]`
-Two **distinct** hardware mechanisms must be addressed when clearing a peripheral interrupt flag (`EXTI->PR1`, `TIMx->SR`, `DMAx->IFCR`, etc.) inside a fast Cortex-M4 ISR at 160/170 MHz:
+### 3.6 Peripheral Flag-Clear Synchronization: Dummy Readback + `__DSB()` (ARM AN321 §4.9 vs. ARM Erratum 838869 / ST ES0430 §2.1.3) `[ARM Cortex-M4F]`
+Two **distinct** hardware mechanisms — with **different root causes and different failure modes** — must be understood and addressed when clearing peripheral interrupt flags (`EXTI->PR1`, `TIMx->SR`, `DMAx->IFCR`, etc.) inside a fast Cortex-M4 ISR at 160/170 MHz:
 
-1. **AHB-to-APB Bus Bridge Propagation & Spurious Re-Entry (ARM AN321 / DAI0321A §4.9 — *Disabling interrupts at peripherals*):**
-   - Writing `EXTI->PR1 = EXTI_PR1_PIF13;` posts a Device-memory store through the Cortex-M4 internal write buffer and across the STM32 **AHB-to-APB2 bridge**.
-   - **Important Architectural Nuance:** **`__DSB()` alone** is *not* strictly guaranteed by the ARMv7-M architecture to wait for a downstream APB slave to latch the clear and deassert its IRQ wire back to NVIC — `DSB` only drains the **processor's internal write buffer** onto the bus interface. If the flag clear is the very last instruction of a short ISR (especially at 160/170 MHz or with an APB prescaler > `/1`), exception return (`BX LR` / `POP {PC}`) can execute while the IRQ line is still asserted at the NVIC input, causing an immediate 6-cycle tail-chained **duplicate ISR re-entry**.
-   - **Why Dummy Readback Works:** Because Device-memory reads on the same peripheral slave cannot bypass prior writes across the AHB-to-APB bridge, reading the register back (`(void)EXTI->PR1;`) stalls the CPU until the clear write has physically committed at the peripheral slave and the read response returns! Note that per ARM AN321 §4.9, peripherals operating in slower APB prescaler domains (`> /1`) or asynchronous wakeup clock domains can still incur 1–2 cycles of IRQ-wire synchronizer latency back to NVIC beyond the register commit — which is why clearing **early** in the ISR, checking the status flag on entry, and finishing with `(void)REG;` + `__DSB();` is the complete production pattern.
-2. **ARM Cortex-M4 r0p1 Erratum 838869 (ST ES0430 §2.1.3 — *Store immediate overlapping exception return operation might vector to incorrect interrupt*):**
-   - Distinct from APB double-triggering, on Cortex-M4 r0p0/r0p1 (`__CM4_REV = 0x0001U` on STM32G474RE), if a **store-immediate** instruction (such as writing a peripheral register) stalls on the bus while immediately followed by an exception return (`BX LR` / `POP {PC}`), a pipeline/bus overlap with a late interrupt change can cause the core to **vector to an incorrect interrupt handler**.
-   - ARM's official software workaround is placing a **`__DSB();`** (or ensuring a non-store-immediate instruction separates the store from the exception return) before ISR exit.
+1. **Normal AHB-to-APB Posted-Write Bridge Propagation (ARM AN321 / DAI0321A §4.9 — *Disabling interrupts at peripherals*):**
+   - **Mechanism:** Writing `EXTI->PR1 = EXTI_PR1_PIF13;` posts a Device-memory store through the Cortex-M4 write buffer and across the STM32 **AHB-to-APB2 bridge**.
+   - **Why `__DSB()` Alone Is Insufficient for APB Propagation:** On ARMv7-M, `__DSB()` drains the **CPU's internal write buffer** onto the AHB master interface, but it does **not** architecturally guarantee that a downstream APB bridge has committed the posted write inside the peripheral slave and deasserted the peripheral's IRQ wire back to the NVIC.
+   - **Failure Mode:** If the flag clear sits near the end of a short ISR (especially at 160/170 MHz or with APB prescaler `> /1`), `BX LR` / `POP {PC}` can execute while the EXTI IRQ signal is still momentarily asserted at the NVIC input, causing an immediate 6-cycle tail-chained **spurious duplicate re-entry of the same ISR**.
+   - **Remedy (`ARM AN321 §4.9`):** Clear the flag **early** in the ISR (so remaining ISR work overlaps propagation delay), and execute a **dummy readback** of a register in the same peripheral (`(void)EXTI->PR1;`). Because Device-memory reads on the same peripheral slave cannot bypass earlier writes across the AHB-to-APB bridge, the read stalls the CPU until the posted clear physically commits at the EXTI slave. *(Per ARM AN321 §4.9, asynchronous or divided peripheral clocks can still add 1–2 cycles of IRQ-wire synchronizer delay beyond slave commit, reinforcing early clearing and checking the status flag on ISR entry.)*
+
+2. **ARM Cortex-M4 r0p1 Erratum 838869 (ST ES0430 §2.1.3 — Exact Title: *"Store immediate overlapping exception return operation might vector to incorrect interrupt"*, Category B / Rare):**
+   - **Exact Triggering Conditions (ARM Cortex-M4 Software Developers Errata Notice & ST ES0430 §2.1.3):** On Cortex-M4 r0p1 (`__CM4_REV = 0x0001U` in `stm32g474xx.h`), the erratum triggers when **all** of the following occur:
+     1. The handler for **Interrupt A** is currently executing;
+     2. **Interrupt B** (with the **same or lower priority** than Interrupt A) is pending;
+     3. A **store-with-immediate-offset** (`STR`, `STRH`, or `STRB` with immediate offset or pre/post-indexed addressing) executes to a **bufferable** location (such as Device peripheral registers in `0x4000_0000–0x5FFF_FFFF` or write-bufferable Normal SRAM);
+     4. Zero or more data-processing instructions execute (with no intervening synchronizing load or barrier), followed by a **`BX` instruction** (e.g., `BX LR` with `EXC_RETURN`) triggering an exception return;
+     5. Bus **wait states** stall the buffered store such that the bus accepts the store data **at least two cycles after `BX` executes**; and
+     6. Before the bus accepts the buffered store data, another **Interrupt C** is asserted with priority **same or lower than A**, but strictly **greater than B**.
+   - **Write-Buffer & Vector-Fetch Mismatch Mechanism / Failure Mode:** Because the Cortex-M4 write buffer lets execution advance into `BX LR` while the store is still stalled on the bus, the late assertion of higher-priority Interrupt C changes the NVIC's selected next pending interrupt inside that overlapping cycle window — creating a mismatch between the interrupt acknowledged by the NVIC and the vector fetched by the processor. The core may **vector to an incorrect interrupt handler** (spurious/wrong vector fetch). **Crucially, Erratum 838869 does NOT inherently cause a "duplicate EXTI interrupt because the EXTI flag wasn't cleared"** — duplicate same-ISR entry is the separate AHB-to-APB propagation effect in item 1!
+   - **ARM Workaround & Placement:** Place a **Data Synchronization Barrier (`__DSB();`)** immediately before exception return (`BX LR`) so the CPU stalls until all buffered stores complete before `BX` executes (or ensure no buffered store-immediate immediately precedes `BX LR`). *(ST ES0430 §2.1.3 notes its Category B / Rare profile; ARM's Cortex-M4 Errata Notice and production SDKs/RTOS ports apply `__DSB();` at ISR exit.)*
+   - **Does a Typical STM32G4 EXTI ISR Satisfy Erratum 838869's Conditions?** **Yes, potentially.** A short leaf EXTI ISR compiles under `-O2` to return via **`BX LR`** (no `POP {..., PC}` memory load ahead of return) and frequently ends with a store-immediate (`STR` to `EXTI->PR1`, `GPIOA->BSRR`, or a `volatile` SRAM counter such as `g_b1_press_count++`). Even if `(void)EXTI->PR1;` already flushed the APB2 flag-clear earlier in the handler, any **trailing store** placed after `(void)EXTI->PR1;` can still sit in the CPU write buffer when `BX LR` executes — which is why **`__DSB();` belongs right before ISR exit**!
 
 - **Authoritative 3-Step Production Pattern:**
   1. Clear the peripheral interrupt flag **early** in the ISR using **direct write** (`EXTI->PR1 = EXTI_PR1_PIF13;` — NEVER `|=` on an `rc_w1` register!).
-  2. Perform a **dummy readback** of the same peripheral register (`(void)EXTI->PR1;`) so the clear traverses the AHB-to-APB bridge and commits at the peripheral slave before exit (**ARM AN321 §4.9**).
-  3. Execute **`__DSB();`** before returning from the ISR as a defensive architectural barrier draining the core write buffer/pipeline and mitigating **ARM Erratum 838869 / ST ES0430 §2.1.3**.
+  2. Perform a **dummy readback** of the same peripheral register (`(void)EXTI->PR1;`) to force the posted AHB-to-APB2 write to commit at the EXTI slave before exit (**ARM AN321 §4.9**).
+  3. Execute **`__DSB();`** right before returning from the ISR to drain the Cortex-M4 write buffer for all trailing stores and satisfy **ARM Cortex-M4 Erratum 838869 / ST ES0430 §2.1.3**.
 
 ---
 
@@ -141,13 +160,25 @@ Verified directly against `core_cm4.h` and `stm32g474xx.h`:
 ## 6. Engineering Mathematics & Worked Formulas
 
 ### 6.1 SysTick Reload Equation
-$$\text{LOAD} = \frac{f_{\text{HCLK}}}{f_{\text{tick}}} - 1$$
+
+$$
+\text{LOAD} = \frac{f_{\text{HCLK}}}{f_{\text{tick}}} - 1
+$$
+
 At $f_{\text{HCLK}} = 170\text{ MHz}$ (Profile A) and $f_{\text{tick}} = 1000\text{ Hz}$ ($1.000\text{ ms}$):
-$$\text{LOAD} = \frac{170{,}000{,}000}{1{,}000} - 1 = 169{,}999 \le 16{,}777{,}215\ (2^{24}-1) \quad \checkmark$$
+
+$$
+\text{LOAD} = \frac{170{,}000{,}000}{1{,}000} - 1 = 169{,}999 \le 16{,}777{,}215\ (2^{24}-1) \quad \checkmark
+$$
+
 *(At $f_{\text{HCLK}} = 160\text{ MHz}$ Profile B: $\text{LOAD} = 159{,}999$.)*
 
 ### 6.2 Worst-Case Interrupt Response Latency & Jitter Budget
-$$t_{\text{response,max}} = t_{\text{crit}} + t_{\text{higher ISRs}} + \frac{12\text{ cycles} + N_{\text{wait}}}{f_{\text{HCLK}}}$$
+
+$$
+t_{\text{response,max}} = t_{\text{crit}} + t_{\text{higher ISRs}} + \frac{12\text{ cycles} + N_{\text{wait}}}{f_{\text{HCLK}}}
+$$
+
 At $170\text{ MHz}$ ($5.882\text{ ns/cycle}$), hardware stacking of 12 cycles takes **$70.6\text{ ns}$** (zero contention). Any `PRIMASK` critical section of $200\text{ cycles}$ adds **$1.18\ \mu\text{s}$** of jitter to every interrupt — proving why selective **`BASEPRI`** masking is essential for hard-real-time control loops!
 
 ---
@@ -197,11 +228,13 @@ uint32_t millis(void)
 }
 
 /* Selective BASEPRI critical section: masks IRQs with priority >= threshold_prio (e.g. 5..15),
- * leaving ultra-urgent priorities 0..4 completely unmasked! */
+ * leaving high-priority interrupts 0..4 unmasked by BASEPRI (still subject to hardware stacking/bus latency).
+ * Uses __set_BASEPRI_MAX so a nested critical section never weakens a stricter outer mask. */
 static inline uint32_t enter_basepri_critical(uint32_t threshold_prio)
 {
     uint32_t prev = __get_BASEPRI();
-    __set_BASEPRI(threshold_prio << (8U - __NVIC_PRIO_BITS));
+    __set_BASEPRI_MAX(threshold_prio << (8U - __NVIC_PRIO_BITS));
+    __asm__ volatile ("" ::: "memory");
     __DSB();
     __ISB();
     return prev;
@@ -209,6 +242,7 @@ static inline uint32_t enter_basepri_critical(uint32_t threshold_prio)
 
 static inline void exit_basepri_critical(uint32_t prev_basepri)
 {
+    __asm__ volatile ("" ::: "memory");
     __set_BASEPRI(prev_basepri);
 }
 ```
@@ -258,6 +292,8 @@ void EXTI15_10_IRQHandler(void)
     if ((pending & EXTI_PR1_PIF13) != 0U) {
         EXTI->PR1 = EXTI_PR1_PIF13; /* Direct '=' clear (NEVER '|='!) */
         g_b1_press_count++;
+        /* BSRR single-write update avoids ODR RMW corruption of sibling GPIOA pins
+         * (PA5 is single-writer owned by this ISR; concurrent same-pin writers need a critical section). */
         GPIOA->BSRR = ((GPIOA->ODR & GPIO_ODR_OD5) != 0U) ? GPIO_BSRR_BR5 : GPIO_BSRR_BS5;
     }
 
@@ -329,7 +365,7 @@ void EXTI15_10_IRQHandler(void)
 | `PERIPH-SYSTICK-001` | Verify $1.000\text{ ms} \pm 0.01\%$ SysTick period at 170 MHz and rollover-safe timeout across `0xFFFFFFFF -> 0x00000000` | Oscilloscope + Unit Test |
 | `PERIPH-EXTI-001` / `002` | Trigger `EXTI15_10_IRQHandler` on `PC13` rising edge and simultaneous `SWIER1` multi-pin trigger with `0` lost or double-counted events | GDB + Logic Analyzer |
 | `RT-IRQ-001` / `002` | Verify `PRIGROUP = 3`, nested preemption trace, `< 150 ns` ISR entry latency at 170 MHz, and `0` double triggers using `(void)EXTI->PR1; __DSB();` | Oscilloscope + GDB |
-| `RT-TIME-002` | Prove `0` torn 64-bit reads over 10M iterations using `BASEPRI` while Priority-1 ISR experiences `0` added jitter | Logic Analyzer + `DWT->CYCCNT` |
+| `RT-TIME-002` | Prove `0` torn 64-bit reads over 10M iterations using `BASEPRI` while Priority-1 ISR remains completely unmasked by `BASEPRI` (zero critical-section masking delay) | Logic Analyzer + `DWT->CYCCNT` |
 
 ---
 

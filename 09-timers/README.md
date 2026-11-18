@@ -208,6 +208,7 @@ void TIM2_IRQHandler(void)
 {
     if ((TIM2->SR & TIM_SR_UIF) != 0U) {
         TIM2->SR = ~TIM_SR_UIF;   /* rc_w0 direct write: NEVER use '&= ~UIF'! */
+        /* Sibling-pin-safe single-writer PA5 toggle via BSRR (concurrent same-pin writers need a critical section) */
         GPIOA->BSRR = ((GPIOA->ODR & GPIO_ODR_OD5) != 0U) ? GPIO_BSRR_BR5 : GPIO_BSRR_BS5;
         (void)TIM2->SR;           /* APB1 bridge sync readback (ARM AN321 §4.9) */
         __DSB();                  /* Core write-buffer drain & ARM Erratum 838869 (ES0430 §2.1.3) */

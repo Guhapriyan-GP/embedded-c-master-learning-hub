@@ -280,7 +280,10 @@ $$R_{\text{LED}} = \frac{3.1\text{ V} - 2.1\text{ V}}{0.005\text{ A}} = 200\ \Om
 At $220\ \Omega$: $I_f = \frac{3.1 - 2.1}{220} = 4.55\text{ mA} \le 8\text{ mA}$ (safe!), $P_R = (0.00455)^2 \times 220 = 4.55\text{ mW} \ll 100\text{ mW}$ (0603 safe!).
 
 ### 6.2 RC Rise Time, Settling Time & Hardware Debounce
-$$\tau = R \cdot C, \qquad t_{\text{rise (10\%–90\%)}} = \ln(9)\,RC \approx 2.2\,RC, \qquad t_{\text{settle (99.3\%)}} = 5\tau = 5\,RC$$
+
+$$
+\tau = R \cdot C, \qquad t_{\text{rise (10\%--90\%)}} = \ln(9)\,RC \approx 2.2\,RC, \qquad t_{\text{settle (99.3\%)}} = 5\tau = 5\,RC
+$$
 
 **Worked Example (Hardware Switch Debounce):** To filter 10 ms mechanical chatter with $R = 10\text{ k}\Omega$ and $C = 1\ \mu\text{F}$:
 $$\tau = 10\times 10^3\ \Omega \times 1\times 10^{-6}\text{ F} = 10\text{ ms}, \qquad t_{\text{rise}} \approx 22\text{ ms}$$
@@ -295,8 +298,14 @@ $$NM_H = 2.90\text{ V} - 2.31\text{ V} = 0.59\text{ V}, \qquad NM_L = 0.99\text{
 $$R_{p,\min} = \frac{V_{DD} - V_{OL(\max)}}{I_{OL}}, \qquad R_{p,\max} = \frac{t_{r(\max)}}{0.8473 \cdot C_b}$$
 
 **Worked Example (400 kHz I2C Fast Mode, $V_{DD} = 3.3\text{ V}$, $V_{OL(\max)} = 0.4\text{ V}$, $I_{OL} = 3\text{ mA}$, $t_{r(\max)} = 300\text{ ns}$, $C_b = 100\text{ pF}$):**
-$$R_{p,\min} = \frac{3.3\text{ V} - 0.4\text{ V}}{3\times 10^{-3}\text{ A}} = 967\ \Omega$$
-$$R_{p,\max} = \frac{300\times 10^{-9}\text{ s}}{0.8473 \times 100\times 10^{-12}\text{ F}} = 3.54\text{ k}\Omega$$
+
+$$
+R_{p,\min} = \frac{3.3\text{ V} - 0.4\text{ V}}{3\times 10^{-3}\text{ A}} = 967\ \Omega
+$$
+
+$$
+R_{p,\max} = \frac{300\times 10^{-9}\text{ s}}{0.8473 \times 100\times 10^{-12}\text{ F}} = 3.54\text{ k}\Omega
+$$
 
 > **Critical Insight:** At $C_b = 100\text{ pF}$ and 400 kHz Fast Mode, the classic "always use 4.7 kΩ" rule-of-thumb **VIOLATES** the $300\text{ ns}$ rise-time specification ($t_r = 0.8473 \times 4700 \times 100\text{ pF} = 398\text{ ns} > 300\text{ ns}$)! Choosing **$2.2\text{ k}\Omega$** satisfies $967\ \Omega \le 2.2\text{ k}\Omega \le 3.54\text{ k}\Omega$ cleanly ($t_r = 186\text{ ns}$). Meanwhile, STM32's internal $40\text{ k}\Omega$ pull-up produces $t_r = 3.39\ \mu\text{s}$ — **11.3x slower than Fast Mode allows!**
 

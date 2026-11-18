@@ -35,8 +35,13 @@ $$R_{p,\min} = \frac{V_{\text{DD}} - V_{\text{OL},\max}}{I_{\text{OL}}}, \qquad 
 
 ## 2. Main PLL Clocks — 170 MHz & 160 MHz Boost Mode (`STM32-RCC-*`, `CLK-PLL-001`)
 
-$$f_{\text{PLL-IN}} = \frac{f_{\text{SRC}}}{M}, \qquad f_{\text{VCO}} = f_{\text{PLL-IN}} \times N, \qquad f_{\text{SYSCLK}} = f_{\text{PLL-R}} = \frac{f_{\text{VCO}}}{R}$$
-$$f_{\text{PLL-Q}} = \frac{f_{\text{VCO}}}{Q}, \qquad f_{\text{PLL-P}} = \frac{f_{\text{VCO}}}{P}$$
+$$
+f_{\text{PLL-IN}} = \frac{f_{\text{SRC}}}{M}, \qquad f_{\text{VCO}} = f_{\text{PLL-IN}} \times N, \qquad f_{\text{SYSCLK}} = f_{\text{PLL-R}} = \frac{f_{\text{VCO}}}{R}
+$$
+
+$$
+f_{\text{PLL-Q}} = \frac{f_{\text{VCO}}}{Q}, \qquad f_{\text{PLL-P}} = \frac{f_{\text{VCO}}}{P}
+$$
 
 **Mandatory DS12288 / RM0440 Operating Bounds:**
 - $f_{\text{PLL-IN}} \in [2.66,\ 16.0]\text{ MHz}$ ($M = \text{PLLM} + 1 \in [1..16]$)
@@ -56,11 +61,20 @@ $$f_{\text{PLL-Q}} = \frac{f_{\text{VCO}}}{Q}, \qquad f_{\text{PLL-P}} = \frac{f
 ## 3. Timers, PWM & `BDTR.DTG` 4-Range Dead-Time (`PERIPH-TIM-*`, `PERIPH-BDTR-001`)
 
 ### Timer Clock Rule
-$$f_{\text{TIM-CLK}} = \begin{cases} f_{\text{PCLK}x} & \text{if } \text{PPRE}x = /1 \\ 2 \times f_{\text{PCLK}x} & \text{if } \text{PPRE}x > /1 \end{cases}$$
+
+$$
+f_{\text{TIM-CLK}} = \begin{cases} f_{\text{PCLK}x} & \text{if } \text{PPRE}x = /1 \\ 2 \times f_{\text{PCLK}x} & \text{if } \text{PPRE}x > /1 \end{cases}
+$$
 
 ### Update Frequency, Edge-Aligned PWM & Center-Aligned PWM
-$$f_{\text{update}} = f_{\text{PWM,edge}} = \frac{f_{\text{TIM-CLK}}}{(\text{PSC} + 1) \cdot (\text{ARR} + 1)}, \qquad f_{\text{PWM,center}} = \frac{f_{\text{TIM-CLK}}}{2 \cdot (\text{PSC} + 1) \cdot \text{ARR}}$$
-$$\text{Duty Cycle (\%)} = \frac{\text{CCR}x}{\text{ARR} + 1} \times 100\%, \qquad \text{PWM Resolution (bits)} = \log_2(\text{ARR} + 1)$$
+
+$$
+f_{\text{update}} = f_{\text{PWM,edge}} = \frac{f_{\text{TIM-CLK}}}{(\text{PSC} + 1) \cdot (\text{ARR} + 1)}, \qquad f_{\text{PWM,center}} = \frac{f_{\text{TIM-CLK}}}{2 \cdot (\text{PSC} + 1) \cdot \text{ARR}}
+$$
+
+$$
+\text{Duty Cycle (\%)} = \frac{\text{CCR}x}{\text{ARR} + 1} \times 100\%, \qquad \text{PWM Resolution (bits)} = \log_2(\text{ARR} + 1)
+$$
 - **Example (25 kHz edge-aligned PWM @ 170 MHz, `PSC = 0`):** $\text{ARR} = \frac{170{,}000{,}000}{25{,}000} - 1 = 6{,}799$ ($\approx 12.7\text{ bits}$ resolution).
 
 ### Advanced Timer Dead-Time (`TIMx->BDTR.DTG[7:0]`, RM0440 §28.6.20)
@@ -88,10 +102,22 @@ Valid when $3 \cdot \text{Baud} \le f_{\text{KER,presc}} \le 4096 \cdot \text{Ba
 $$\text{BRR}_{\text{LPUART}} = \text{round}\!\left(\frac{256 \times f_{\text{KER,presc}}}{\text{Baud}}\right)$$
 
 ### I2C `TIMINGR` Timing Equations (RM0440 §39.4.9)
-$$t_{\text{PRESC}} = (\text{PRESC} + 1) \cdot t_{\text{I2CCLK}}$$
-$$t_{\text{SCLL}} = (\text{SCLL} + 1) \cdot t_{\text{PRESC}}, \qquad t_{\text{SCLH}} = (\text{SCLH} + 1) \cdot t_{\text{PRESC}}$$
-$$t_{\text{SCLDEL}} = (\text{SCLDEL} + 1) \cdot t_{\text{PRESC}}, \qquad t_{\text{SDADEL}} = \text{SDADEL} \cdot t_{\text{PRESC}}$$
-$$f_{\text{SCL}} \approx \frac{1}{t_{\text{SCLL}} + t_{\text{SCLH}} + t_{\text{SYNC1}} + t_{\text{SYNC2}}}$$
+
+$$
+t_{\text{PRESC}} = (\text{PRESC} + 1) \cdot t_{\text{I2CCLK}}
+$$
+
+$$
+t_{\text{SCLL}} = (\text{SCLL} + 1) \cdot t_{\text{PRESC}}, \qquad t_{\text{SCLH}} = (\text{SCLH} + 1) \cdot t_{\text{PRESC}}
+$$
+
+$$
+t_{\text{SCLDEL}} = (\text{SCLDEL} + 1) \cdot t_{\text{PRESC}}, \qquad t_{\text{SDADEL}} = \text{SDADEL} \cdot t_{\text{PRESC}}
+$$
+
+$$
+f_{\text{SCL}} \approx \frac{1}{t_{\text{SCLL}} + t_{\text{SCLH}} + t_{\text{SYNC1}} + t_{\text{SYNC2}}}
+$$
 - **Verified `Lab 12` & `i2c_g4.h` 400 kHz Fast Mode @ $f_{\text{I2CCLK}} = 170\text{ MHz}$:** `TIMINGR = 0x70811021` (`PRESC=7`, `SCLDEL=8`, `SDADEL=1`, `SCLH=0x10`, `SCLL=0x21` $\implies$ $f_{\text{SCL(max)}} = 396.3\text{ kHz} \le 400\text{ kHz}$, $t_{\text{SCLDEL}} = 423.5\text{ ns} \ge 400\text{ ns}$).
 - **Verified `i2c_g4.h` 400 kHz Fast Mode @ $f_{\text{I2CCLK}} = 160\text{ MHz}$:** `TIMINGR = 0x70710F1F` (`PRESC=7`, `SCLDEL=7`, `SDADEL=1`, `SCLH=0x0F`, `SCLL=0x1F` $\implies$ $f_{\text{SCL(max)}} = 396.0\text{ kHz} \le 400\text{ kHz}$, $t_{\text{SCLDEL}} = 400.0\text{ ns}$).
 - **Verified `i2c_g4.h` 100 kHz Standard Mode @ $f_{\text{I2CCLK}} = 16\text{ MHz}$ (HSI16, RM0440 Table 384):** `TIMINGR = 0x30420F13` (`PRESC=3`, `SCLDEL=4`, `SDADEL=2`, `SCLH=0x0F`, `SCLL=0x13`).
@@ -108,8 +134,13 @@ $$f_{\text{ADC}} \le 60\text{ MHz}\text{ (single)},\quad \le 52\text{ MHz}\text{
 Factory calibration constants in STM32G474RE System ROM (measured at $V_{\text{DDA}} = 3.0\text{ V}$):
 - **`VREFINT_CAL`** (`uint16_t` @ `0x1FFF75AA`), **`TS_CAL1`** (30 °C @ `0x1FFF75A8`), **`TS_CAL2`** (130 °C @ `0x1FFF75CA`)
 
-$$V_{\text{DDA}} = 3.0\text{ V} \times \frac{\text{VREFINT-CAL}}{\text{ADC}_{\text{VREFINT}}}, \qquad V_{\text{IN}} = V_{\text{DDA}} \times \frac{\text{ADC}_{\text{RAW}}}{4095}$$
-$$T_{\text{die}}(^\circ\text{C}) = \frac{130 - 30}{\text{TS-CAL2} - \text{TS-CAL1}} \times \left(\text{ADC}_{\text{TEMP}} \cdot \frac{V_{\text{DDA}}}{3.0\text{ V}} - \text{TS-CAL1}\right) + 30$$
+$$
+V_{\text{DDA}} = 3.0\text{ V} \times \frac{\text{VREFINT-CAL}}{\text{ADC}_{\text{VREFINT}}}, \qquad V_{\text{IN}} = V_{\text{DDA}} \times \frac{\text{ADC}_{\text{RAW}}}{4095}
+$$
+
+$$
+T_{\text{die}}(^\circ\text{C}) = \frac{130 - 30}{\text{TS-CAL2} - \text{TS-CAL1}} \times \left(\text{ADC}_{\text{TEMP}} \cdot \frac{V_{\text{DDA}}}{3.0\text{ V}} - \text{TS-CAL1}\right) + 30
+$$
 
 ### 12-Bit DAC Output Voltage
 $$V_{\text{OUT}} = V_{\text{REF+}} \times \frac{\text{DOR}}{4096} \quad (\text{or } \approx V_{\text{REF+}} \cdot \frac{\text{DHR12R}}{4095}\text{ full-scale code } 4095)$$

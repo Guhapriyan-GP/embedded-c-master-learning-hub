@@ -18,7 +18,7 @@
 | `RTOS-TASK-001` / `002` | TCB, Task States (`Running/Ready/Blocked/Suspended/Deleted`), Priorities, `vTaskDelayUntil`, Idle Task & Idle Hook | `[RTOS Generic]` | Level 1–2 (Essential) |
 | `RTOS-IPC-001` / `002` | Queues (Pass-by-Value vs Zero-Copy Pointer Pool) & **Stream / Message Buffers** | `[RTOS Generic]` | Level 2–3 (Production) |
 | `RTOS-SYNC-001` / `002` / `003` / `004` | Binary & Counting Semaphores, **Mutexes & Priority Inheritance (Distinct from Deadlocks!)**, Event Groups (24-bit), & **Direct-to-Task Notifications** | `[RTOS Generic]` | Level 2–3 (Production) |
-| `RTOS-ISR-001` / `002` | `FromISR` APIs (`pxHigherPriorityTaskWoken`, `portYIELD_FROM_ISR`), **`configMAX_SYSCALL_INTERRUPT_PRIORITY`**, & Zero-Latency `BASEPRI` ISRs | `[ARM Cortex-M4F]` / `[STM32G474RE Exact]` | Level 2 (Production) |
+| `RTOS-ISR-001` / `002` | `FromISR` APIs (`pxHigherPriorityTaskWoken`, `portYIELD_FROM_ISR`), **`configMAX_SYSCALL_INTERRUPT_PRIORITY`**, & Unmasked High-Priority `BASEPRI` ISRs | `[ARM Cortex-M4F]` / `[STM32G474RE Exact]` | Level 2 (Production) |
 | `RTOS-HAZ-001` / `002` | **Deadlocks (4 Coffman Conditions, Lock Ordering)** & Livelocks vs **Priority Inversion (PIP & PCP)** | `[RTOS Theory]` | Level 2 (Production) |
 | `RTOS-MEM-001` / `002` | **`xTaskCreateStatic`**, `heap_1..5` (`heap_5` across SRAM1/2 + CCM), **`uxTaskGetStackHighWaterMark`**, & **`configCHECK_FOR_STACK_OVERFLOW = 2`** | `[RTOS Generic]` / `[STM32G474RE Exact]` | Level 2 (Production) |
 | `RTOS-PWR-001` / `RTOS-THEORY-001` | **`LPTIM1` Tickless Idle (`Stop 0/1`)** & Real-Time Scheduling Theory (**RMS**, **EDF**, Liu-Layland $U \le n(2^{1/n}-1)$, Exact RTA) | `[STM32G474RE Exact]` / `[RTOS Theory]` | Level 3 (Specialist) |
@@ -81,7 +81,7 @@ Do **NOT** conflate Priority Inversion with Deadlocks!
 ### 3.6 `FromISR` APIs, `BASEPRI` Partitioning & Mandatory `NVIC_SetPriorityGrouping(0)` `[STM32G474RE Exact]`
 1. **Mandatory STM32 NVIC Grouping Call:** Before `vTaskStartScheduler()`, you **MUST** call **`NVIC_SetPriorityGrouping(0U)`** (or `3U` — both allocate **all 4 STM32G4 priority bits to Preemption Priority and 0 bits to Subpriority**!). Subpriority bits break FreeRTOS `BASEPRI` masking assumptions and trip `configASSERT`!
 2. **`configMAX_SYSCALL_INTERRUPT_PRIORITY` (e.g., `5 << 4 = 0x50`):**
-   - **Priorities `0..4` (Numerically `< 5`):** **Unmanaged Zero-Latency ISRs** (e.g., `HRTIM1`, `TIM1` motor FOC, `COMP1` fault). NEVER masked by `taskENTER_CRITICAL()` (which writes `0x50` to `BASEPRI`), and **MUST NEVER call ANY FreeRTOS API**!
+   - **Priorities `0..4` (Numerically `< 5`):** **Unmanaged Unmasked High-Priority ISRs** (e.g., `HRTIM1`, `TIM1` motor FOC, `COMP1` fault). NEVER masked by `taskENTER_CRITICAL()` (which writes `0x50` to `BASEPRI`), and **MUST NEVER call ANY FreeRTOS API**! *(Terminology note: `BASEPRI` eliminates RTOS critical-section masking delay for priorities `0..4`, **not** hardware interrupt latency — these ISRs still incur 12+ cycles of Cortex-M4 stacking, Flash/bus contention, or preemption by higher-priority exceptions; see [`10-interrupts/` §3.2](../10-interrupts/README.md#32-interrupt-masking-primask-vs-basepri-vs-faultmask-arm-cortex-m4f).)*
    - **Priorities `5..15` (Numerically `>= 5`):** **Kernel-Managed ISRs** (e.g., `USART2`, `ADC1_DMA`, `EXTI13`). Safe to call `...FromISR()` APIs; masked briefly during FreeRTOS critical sections.
    - **NEVER set `configMAX_SYSCALL_INTERRUPT_PRIORITY` to `0`** (writing `0` to `BASEPRI` disables masking completely!).
 3. **Immediate Deferred Preemption:** Always pass `&xHigherPriorityTaskWoken` into `...FromISR()` and end the ISR with **`portYIELD_FROM_ISR(xHigherPriorityTaskWoken);`** (which pends `PendSV` so the woken high-priority task executes immediately upon ISR exit instead of waiting up to 1 ms for SysTick!).
@@ -120,7 +120,7 @@ Verified against `stm32g474xx.h` (`__NVIC_PRIO_BITS = 4U`) and FreeRTOS `ARM_CM4
 | `NVIC_SetPriorityGrouping(0U)` | `SCB->AIRCR.PRIGROUP = 0` (4 pre / 0 sub) | Mandatory before `vTaskStartScheduler()` |
 | `configPRIO_BITS` | `4` (`__NVIC_PRIO_BITS`) | STM32G474RE implements upper 4 bits `[7:4]` |
 | `configKERNEL_INTERRUPT_PRIORITY` | `(15U << 4) = 0xF0` | Lowest NVIC priority for `SysTick` & `PendSV` |
-| `configMAX_SYSCALL_INTERRUPT_PRIORITY` | `(5U << 4) = 0x50` | Priorities `0..4` zero-latency unmanaged; `5..15` `FromISR`-safe |
+| `configMAX_SYSCALL_INTERRUPT_PRIORITY` | `(5U << 4) = 0x50` | Priorities `0..4` unmasked high-priority unmanaged (unaffected by `BASEPRI`); `5..15` `FromISR`-safe |
 | `configCHECK_FOR_STACK_OVERFLOW` | `2` | Method 2 `0xA5A5A5A5` watermark canary + SP check |
 | `configSUPPORT_STATIC_ALLOCATION` | `1` | Enables `xTaskCreateStatic()` zero-heap production firmware |
 | Vector Mapping (`#define`) | `vPortSVCHandler -> SVC_Handler`, `xPortPendSVHandler -> PendSV_Handler`, `xPortSysTickHandler -> SysTick_Handler` | Hooks FreeRTOS kernel directly into bare-metal startup table |
@@ -188,13 +188,14 @@ void vSensorTask(void *pvParameters)
 void EXTI15_10_IRQHandler(void)
 {
     if ((EXTI->PR1 & EXTI_PR1_PIF13) != 0U) {
-        EXTI->PR1 = EXTI_PR1_PIF13;
+        EXTI->PR1 = EXTI_PR1_PIF13; /* Direct rc_w1 clear (NEVER '|='!) */
+        (void)EXTI->PR1;            /* APB2 posted-write commit readback (ARM AN321 §4.9) */
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
         if (g_sensor_handle != NULL) {
             vTaskNotifyGiveFromISR(g_sensor_handle, &xHigherPriorityTaskWoken);
         }
-        __DSB();
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken); /* Immediate PendSV switch! */
+        __DSB();                    /* Write-buffer drain & ARM Erratum 838869 (ES0430 §2.1.3) */
     }
 }
 

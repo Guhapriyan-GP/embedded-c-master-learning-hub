@@ -142,7 +142,7 @@ A frequent mistake when reading `stm32g474xx.h` (which serves LQFP48 through UFB
 
 Every bare-metal STM32G474RE driver MUST honor these **ES0430** silicon workarounds:
 1. **§2.1.2 (Cortex-M4 Core):** Interrupted `VDIV`/`VSQRT` FPU instructions can corrupt state if an ISR is $\le 2$ instructions with lazy stacking — ensure ISRs are $> 2$ instructions or disable `FPCCR.LSPEN`.
-2. **§2.1.3 (ARM Erratum 838869):** Store immediate clearing a peripheral interrupt flag right before ISR exit can cause a spurious double-entry — **always place `__DSB();` before returning from an ISR** after writing `EXTI->PR1`, `TIMx->SR`, etc.!
+2. **§2.1.3 (ARM Cortex-M4 r0p1 Erratum 838869 — *Store immediate overlapping exception return operation might vector to incorrect interrupt*):** Under rare bus-stall timing conditions, a buffered store-immediate overlapping `BX LR` exception return while pending interrupts change can cause the core to **vector to an incorrect interrupt handler** (distinct from normal AHB-to-APB flag-clear propagation under **ARM AN321 §4.9**, which can cause spurious same-ISR re-entry). Clear peripheral flags early via direct write (`EXTI->PR1 = mask;`, `TIMx->SR = ~mask;`), perform a dummy readback `(void)REG;` (AN321 §4.9 APB slave commit), and execute **`__DSB();`** immediately before returning from the ISR (drains the CPU write buffer and satisfies Erratum 838869)!
 3. **§2.2.1 (System Debug):** Full JTAG without `NJTRST` (`PB4`) breaks debug attach — **always use 2-wire SWD (`PA13`/`PA14`)**.
 4. **§2.2.2–2.2.3 (Flash RWW & ECC):** Always flush Flash **DCache (`FLASH->ACR |= FLASH_ACR_DCRST;`)** after programming/erasing Flash during Read-While-Write before reading back, and handle `FLASH->ECCR` safely if reset occurs mid-erase.
 5. **§2.2.4 (RCC/RTC):** Do not rely on LSI clocking RTC simultaneously with LSE CSS enabled — clock RTC directly from LSE (`X2` 32.768 kHz).
@@ -176,11 +176,20 @@ Verified directly against `stm32g474xx.h`:
 ## 6. Relevant Formulas & Calculations
 
 ### 6.1 Total STM32G474RET6 SRAM & Flash Partitioning
-$$\text{SRAM}_{\text{total}} = \underbrace{80\text{ KB}}_{\text{SRAM1}} + \underbrace{16\text{ KB}}_{\text{SRAM2}} + \underbrace{32\text{ KB}}_{\text{CCM-SRAM}} = 128\text{ KB} \quad (\texttt{0x20000000}..\texttt{0x2001FFFF})$$
-$$\text{Flash Pages} = \begin{cases} 2 \text{ banks} \times 128 \text{ pages} \times 2\text{ KB} = 512\text{ KB} & (\texttt{DBANK} = 1) \\ 1 \text{ bank} \times 128 \text{ pages} \times 4\text{ KB} = 512\text{ KB} & (\texttt{DBANK} = 0) \end{cases}$$
+
+$$
+\text{SRAM}_{\text{total}} = \underbrace{80\text{ KB}}_{\text{SRAM1}} + \underbrace{16\text{ KB}}_{\text{SRAM2}} + \underbrace{32\text{ KB}}_{\text{CCM-SRAM}} = 128\text{ KB} \quad (\texttt{0x20000000}..\texttt{0x2001FFFF})
+$$
+
+$$
+\text{Flash Pages} = \begin{cases} 2 \text{ banks} \times 128 \text{ pages} \times 2\text{ KB} = 512\text{ KB} & (\texttt{DBANK} = 1) \\ 1 \text{ bank} \times 128 \text{ pages} \times 4\text{ KB} = 512\text{ KB} & (\texttt{DBANK} = 0) \end{cases}
+$$
 
 ### 6.2 APB Timer Clock Doubler Rule (RM0440 Ch. 7)
-$$f_{\text{TIMx-CLK}} = \begin{cases} f_{\text{PCLKx}} & \text{if } \texttt{PPREx} = /1 \\ 2 \times f_{\text{PCLKx}} & \text{if } \texttt{PPREx} \in \{/2, /4, /8, /16\} \end{cases}$$
+
+$$
+f_{\text{TIMx-CLK}} = \begin{cases} f_{\text{PCLKx}} & \text{if } \texttt{PPREx} = /1 \\ 2 \times f_{\text{PCLKx}} & \text{if } \texttt{PPREx} \in \lbrace /2, /4, /8, /16 \rbrace \end{cases}
+$$
 
 ---
 

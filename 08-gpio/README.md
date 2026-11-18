@@ -80,13 +80,18 @@ On STM32G474RE, only **`FT_f`** pads physically implement the 20 mA Fm+ pull-dow
 | **Bit 23** | `SYSCFG_CFGR1_I2C4_FMP` | Enables 20 mA Fm+ drive on `FT_f` pins AF-mapped to **`I2C4`** |
 
 > **Fm+ Pull-Up Calculation & Current-Budget Warning:** For $V_{DD} = 3.3\text{ V}$, $V_{OL(\max)} = 0.4\text{ V}$, $I_{OL} = 20\text{ mA}$, $C_b = 150\text{ pF}$, $t_{r,\max} = 120\text{ ns}$:
-> $$R_{p,\min} = \frac{3.3 - 0.4}{0.020} = \mathbf{145\ \Omega}, \qquad R_{p,\max} = \frac{120\times 10^{-9}}{0.8473 \times 150\times 10^{-12}} = \mathbf{944\ \Omega} \implies \text{Choose } \mathbf{470\ \Omega\text{ or }680\ \Omega}$$
+>
+> $$
+> R_{p,\min} = \frac{3.3 - 0.4}{0.020} = \mathbf{145\ \Omega}, \qquad R_{p,\max} = \frac{120\times 10^{-9}}{0.8473 \times 150\times 10^{-12}} = \mathbf{944\ \Omega} \implies \text{Choose } \mathbf{470\ \Omega}\text{ or }\mathbf{680\ \Omega}
+> $$
+>
 > Always confirm the pin's DS12288 Table 12 type is **`FT_f`** (standard `FT`/`TT_a` pins cannot drive 20 mA at $V_{OL} \le 0.4\text{ V}$) and account for 20 mA sinks against the package $\sum I_{VSS} \le 160\text{ mA}$ budget!
 
-### 3.4 Atomic Pin Manipulation (`BSRR` & `BRR`) vs `ODR` Race Conditions
-Executing `GPIOA->ODR ^= (1U << 5)` compiles into a **3-instruction non-atomic Read-Modify-Write (RMW)** sequence (`LDR` $\to$ `EOR` $\to$ `STR`). If an ISR preempts between `LDR` and `STR` and modifies `PA6`, the main loop's `STR` overwrites and destroys the ISR's update!
-- **`GPIOx->BSRR` (`0x18`, Write-Only):** Single-cycle atomic write. Bits `[15:0]` (`BSy=1`) set pins HIGH; bits `[31:16]` (`BRy=1`) reset pins LOW; writing `0` leaves the pin untouched. If both `BSy` and `BRy` are written `1`, **Set (`BSy`) has priority**.
+### 3.4 Atomic Pin Set/Reset (`BSRR` & `BRR`) vs `ODR` Race Conditions & Toggle Nuance
+Executing `GPIOA->ODR ^= (1U << 5)` compiles into a **3-instruction non-atomic Read-Modify-Write (RMW)** sequence (`LDR` $\to$ `EOR` $\to$ `STR`). If an ISR preempts between `LDR` and `STR` and modifies a sibling pin `PA6`, the main loop's `STR` overwrites and destroys the ISR's update!
+- **`GPIOx->BSRR` (`0x18`, Write-Only):** Single-cycle atomic set/reset write. Bits `[15:0]` (`BSy=1`) set pins HIGH; bits `[31:16]` (`BRy=1`) reset pins LOW; writing `0` leaves all other pins untouched. If both `BSy` and `BRy` are written `1`, **Set (`BSy`) has priority**.
 - **`GPIOx->BRR` (`0x28`, Write-Only):** STM32G4 dedicated 16-bit atomic reset register (`BRy` in bits `[15:0]`).
+- **Critical Concurrency Nuance (`BSRR` Set/Reset vs. Pin Toggle):** Writing `BSRR` is atomic for a single pin set or reset and **guarantees sibling-pin isolation** (updating `PA5` via `BSRR` can never corrupt concurrent ISR updates to `PA6`). However, implementing a **toggle** by reading `ODR` and conditionally writing `BSRR` (`if (ODR & mask) BSRR = BR; else BSRR = BS;`) is **NOT atomic as a complete toggle if two concurrent writers toggle the *same* pin** — if an ISR preempts between reading `ODR` and writing `BSRR` and toggles `PA5`, the preempted context writes a stale value and loses a toggle! Concurrent writers targeting the **same pin** require **single-writer ownership** or an explicit **`PRIMASK`/`BASEPRI` critical section**.
 
 ### 3.5 NUCLEO-G474RE (MB1367) Critical Board Hardware Traps `[STM32G474RE Exact]`
 1. **User Button B1 (`PC13`) is ACTIVE-HIGH (UM2505):** Unlike older MB1136 Nucleo boards (STM32F4), NUCLEO-G474RE wires `B1` between `VDD` and `PC13` with an **external pull-down resistor**. Unpressed = `0` (`LOW`); Pressed = `1` (`HIGH`). Configure `PUPDR = 00` (No Pull — enabling internal pull-up creates a voltage divider fighting the external pull-down!).
@@ -178,7 +183,7 @@ $$t = -R C \ln\!\left(1 - \frac{V_{\text{IT}+}}{V_{\text{DD}}}\right) \approx 1.
 
 > **Verification Status:** Statically Reviewed against `stm32g474xx.h`, RM0440, and UM2505 (Not Tested on Physical Hardware).
 
-### 8.1 Glitch-Free GPIO Init (`PA5` LD2 + `PC13` Active-HIGH B1) & Atomic Toggle
+### 8.1 Glitch-Free GPIO Init (`PA5` LD2 + `PC13` Active-HIGH B1) & Sibling-Safe `BSRR` Toggle
 ```c
 #include "stm32g474xx.h"
 #include <stdint.h>
@@ -204,9 +209,12 @@ void GPIO_Board_Init(void)
     GPIOC->MODER &= ~GPIO_MODER_MODE13_Msk;
 }
 
-static inline void LD2_Toggle_Atomic(void)
+static inline void LD2_Toggle_BSRR(void)
 {
-    /* Atomic single-pin toggle using BSRR without risking ODR RMW corruption of other pins */
+    /* Sibling-pin-safe single-writer toggle via atomic BSRR set/reset (never corrupts other GPIOA pins).
+     * NOTE: Reading ODR then writing BSRR is NOT atomic as a complete toggle if two concurrent
+     * contexts toggle the SAME pin (PA5); concurrent same-pin writers require single-writer
+     * ownership or an explicit PRIMASK/BASEPRI critical section! */
     if ((GPIOA->ODR & GPIO_ODR_OD5) != 0U) {
         GPIOA->BSRR = GPIO_BSRR_BR5;
     } else {
@@ -366,7 +374,7 @@ void I2C1_FastModePlus_Init_PA15_PB7(void)
 
 1. **[Level 1]** Write a single atomic `GPIOA->BSRR` statement that simultaneously sets `PA5` and `PA6` HIGH while forcing `PA7` and `PA8` LOW.
 2. **[Level 1]** Configure `PA9` as Push-Pull Output *with* and *without* `PWR->CR3 |= PWR_CR3_UCPD_DBDIS` and measure pin voltage under a `10 kΩ` pull-up in input mode to prove the 5.1 kΩ dead-battery resistor behavior.
-3. **[Level 2]** Reproduce an `ODR` RMW race condition between `main()` toggling `PA5` via `GPIOA->ODR ^= (1U<<5)` and a 100 kHz timer ISR toggling `PA6`, then eliminate 100% of dropped toggles using `BSRR`.
+3. **[Level 2]** Reproduce an `ODR` RMW race condition between `main()` toggling `PA5` via `GPIOA->ODR ^= (1U<<5)` and a 100 kHz timer ISR toggling sibling pin `PA6`, then eliminate 100% of sibling-pin corruption using `BSRR` (and explain why concurrent writers toggling the *same* pin `PA5` still require single-writer ownership or a `PRIMASK`/`BASEPRI` critical section).
 4. **[Level 2]** Implement a 16-button parallel vertical-counter debouncer using bitwise operations (`cnt0`, `cnt1`, `state`) running in $< 15$ CPU cycles per tick.
 
 ---

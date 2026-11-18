@@ -231,8 +231,15 @@ Single Wire Output (**SWO**) streams real-time **ITM** `printf`/event packets an
 ## 6. Relevant Formulas & Calculations
 
 ### 6.1 Flash Image Utilization & `.bin` Size Verification
-$$\text{Flash Used} = S_{\text{vectors}} + S_{\text{.text}} + S_{\text{.rodata}} + S_{\text{.data}} + S_{\text{.ccmram}}$$
-$$\text{SRAM1+2 Used} = S_{\text{.data}} + S_{\text{.bss}} + S_{\text{heap+stack}}$$
+
+$$
+\text{Flash Used} = S_{\text{vectors}} + S_{\text{.text}} + S_{\text{.rodata}} + S_{\text{.data}} + S_{\text{.ccmram}}
+$$
+
+$$
+\text{SRAM1+2 Used} = S_{\text{.data}} + S_{\text{.bss}} + S_{\text{heap+stack}}
+$$
+
 *(Here $S_{\text{vectors}}$ is `.isr_vector`, $S_{\text{heap+stack}}$ is `._user_heap_stack`, and `.bss` / `.noinit` occupy **0 bytes** in Flash / `.bin`!)*
 
 ### 6.2 Worst-Case Static Stack Bound

@@ -214,11 +214,20 @@ $$\text{alias addr} = 0\text{x}22000000 + (0\text{x}0100 \times 32) + (5 \times 
 Writing `1UL` to `*(volatile uint32_t *)0x22002014UL` atomically sets bit 5 of `0x20000100` in one CPU store! *(Remember: NEVER apply this formula to `0x48000000` AHB2 GPIO — outside the 1 MB window!)*
 
 ### 6.2 `SCB->VTOR` Minimum Alignment & SysTick Reload
-$$\text{VTOR align} = 2^{\lceil \log_2((16 + N_{\text{IRQ}}) \times 4) \rceil} = 2^{\lceil \log_2(118 \times 4) \rceil} = 2^{\lceil \log_2(472) \rceil} = 512\text{ bytes (0x200)}$$
-$$\text{SysTick LOAD} = \frac{f_{\text{HCLK}}}{f_{\text{tick}}} - 1 \implies \frac{170,000,000}{1000} - 1 = 169,999 \quad (1\text{ ms tick @ 170 MHz; } 159,999\text{ @ 160 MHz})$$
+
+$$
+\text{VTOR align} = 2^{\lceil \log_2((16 + N_{\text{IRQ}}) \times 4) \rceil} = 2^{\lceil \log_2(118 \times 4) \rceil} = 2^{\lceil \log_2(472) \rceil} = 512\text{ bytes (0x200)}
+$$
+
+$$
+\text{SysTick LOAD} = \frac{f_{\text{HCLK}}}{f_{\text{tick}}} - 1 \implies \frac{170,000,000}{1000} - 1 = 169,999 \quad (1\text{ ms tick @ 170 MHz; } 159,999\text{ @ 160 MHz})
+$$
 
 ### 6.3 Worst-Case Nested ISR Stack Budget (With FPU Lazy Stacking)
-$$S_{\text{MSP,max}} = \sum_{p=1}^{L_{\text{nest}}} \left( S_{\text{hw frame},p} + S_{\text{locals},p} \right), \qquad S_{\text{hw frame}} = \begin{cases} 32\text{ B} & \text{(no FPU active)} \\ 104\text{ B} & \text{(FPCA = 1)} \end{cases}$$
+
+$$
+S_{\text{MSP,max}} = \sum_{p=1}^{L_{\text{nest}}} \left( S_{\text{hw frame},p} + S_{\text{locals},p} \right), \qquad S_{\text{hw frame}} = \begin{cases} 32\text{ B} & \text{(no FPU active)} \\ 104\text{ B} & \text{(FPCA = 1)} \end{cases}
+$$
 
 ---
 

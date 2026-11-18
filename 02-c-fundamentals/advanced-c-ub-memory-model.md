@@ -283,7 +283,7 @@ On 32-bit ARM Cortex-M4, a single naturally aligned `uint8_t`, `uint16_t`, or `u
 |---|---|---|
 | **Compiler Barrier:** `__asm__ volatile ("" ::: "memory")` | **0 CPU instructions** | Prevents GCC from reordering memory loads/stores across this point (essential inside `PRIMASK`/`BASEPRI` critical sections and double-read loops). |
 | **`__DMB()` (Data Memory Barrier)** | `dmb sy` | Guarantees all prior explicit memory accesses become visible to other bus masters (DMA1/DMA2) before subsequent accesses begin. |
-| **`__DSB()` (Data Synchronization Barrier)** | `dsb sy` | Stalls the CPU until all prior memory writes and write-buffer transfers physically complete (mandatory after clearing ISR peripheral flags before exit per ES0430, after `RCC` clock enable, and before `__WFI()`). |
+| **`__DSB()` (Data Synchronization Barrier)** | `dsb sy` | Stalls the CPU until all prior explicit memory accesses and internal write-buffer transfers drain onto the bus (guards against **ARM Cortex-M4 Erratum 838869 / ST ES0430 §2.1.3** before ISR `BX LR` return and ensures buffered writes complete before `__WFI()`; for `RCC` clock enables and AHB-to-APB peripheral ISR flag clears, pair with a **dummy peripheral register readback** `(void)REG;` per **ARM AN321 §4.9** so posted writes commit at the downstream APB slave). |
 | **`__ISB()` (Instruction Synchronization Barrier)** | `isb sy` | Flushes the 3-stage pipeline so subsequent instructions fetch using updated core configuration (mandatory after `SCB->CPACR`, `SCB->VTOR`, `MPU->CTRL`, `MSR CONTROL`). |
 
 ---

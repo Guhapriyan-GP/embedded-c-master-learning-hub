@@ -40,7 +40,7 @@ STM32G474RE (Category 3 device) implements **512 KB Flash (`0x08000000..0x0807FF
 - **Dual-Bank Mode (`FLASH->OPTR.DBANK = 1`, Factory Default):**
   - **Bank 1:** `0x08000000..0x0803FFFF` (256 KB, **128 × 2 KB pages**).
   - **Bank 2:** `0x08040000..0x0807FFFF` (256 KB, **128 × 2 KB pages**).
-  - **Read-While-Write (RWW):** CPU can execute code or service zero-latency ISRs from **Bank 1** while simultaneously erasing or programming **Bank 2** with **zero CPU stalls**!
+  - **Read-While-Write (RWW):** CPU can execute code or service unmasked high-priority ISRs from **Bank 1** while simultaneously erasing or programming **Bank 2** with **zero Flash stall cycles**!
 - **Single-Bank Mode (`FLASH->OPTR.DBANK = 0`):**
   - 1 contiguous 512 KB bank of **128 × 4 KB pages** (no RWW; CPU stalls if fetching from Flash during erase/program).
 - **CRITICAL STM32G4 Programming Rules:**

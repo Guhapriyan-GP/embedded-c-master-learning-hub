@@ -8,7 +8,7 @@ These 6 guided walkthroughs bridge the exact gap where beginners most often stal
 
 ---
 
-## Worked Example 1: Pointers, `volatile`, and Atomic `GPIOA->BSRR` LED Toggle
+## Worked Example 1: Pointers, `volatile`, and Sibling-Safe `GPIOA->BSRR` LED Toggle
 
 **Concept IDs:** `C-PTR-001`, `EMB-MMIO-001`, `EMB-VOL-001`, `PERIPH-GPIO-001`
 
@@ -19,7 +19,7 @@ Turn the NUCLEO-G474RE onboard green LED `LD2` (`PA5`) ON and OFF safely using o
 - A peripheral register is just a fixed 32-bit address in memory (`GPIOA_BASE = 0x48000000UL`; `GPIOA->BSRR` is at offset `0x18` → `0x48000018UL`).
 - Without **`volatile`** (CMSIS `__IO`), GCC at `-O2` assumes no external hardware observes writes to that address and can **delete** repeated writes (`*bsrr = ...; *bsrr = ...;`) or hoist reads out of polling loops!
 - Using **`GPIOA->ODR ^= (1U << 5U)`** compiles to **3 instructions** (`LDR` → `EOR` → `STR`). If an ISR modifies `PA6` between `LDR` and `STR`, main-loop `STR` **overwrites and loses** the ISR's change (Read-Modify-Write race).
-- **`GPIOA->BSRR`** (`0x48000018`, Write-Only) performs an **atomic single-cycle** set (bits `[15:0]`) or reset (bits `[31:16]`) in hardware with zero RMW race.
+- **`GPIOA->BSRR`** (`0x48000018`, Write-Only) performs an **atomic single-cycle** set (bits `[15:0]`) or reset (bits `[31:16]`) in hardware, eliminating RMW corruption of **sibling pins** on the same port. *(Concurrency nuance: reading `ODR` and conditionally writing `BSRR` is **not** atomic as a complete toggle if two concurrent contexts toggle the **same** pin `PA5` — concurrent same-pin writers require single-writer ownership or an explicit `PRIMASK`/`BASEPRI` critical section!)*
 
 ### 3. Register-Level Implementation *(Statically Reviewed — Not Tested on Physical Hardware)*
 ```c
@@ -43,8 +43,9 @@ void led_pa5_init(void) {
     GPIOA->MODER = (GPIOA->MODER & ~(3U << (5U * 2U))) | (1U << (5U * 2U));
 }
 
-void led_pa5_toggle_atomic(void) {
-    /* Check current ODR latch; drive opposite state via single-cycle BSRR write */
+void led_pa5_toggle_bsrr(void) {
+    /* Single-writer toggle: read ODR latch, then drive opposite state via atomic BSRR set/reset
+     * (protects sibling GPIOA pins; concurrent writers to PA5 itself need a critical section). */
     if ((GPIOA->ODR & (1U << 5U)) != 0U) {
         GPIOA->BSRR = GPIO_BSRR_BR5;   /* Bit 21: atomic reset PA5 LOW  */
     } else {
@@ -55,20 +56,20 @@ void led_pa5_toggle_atomic(void) {
 
 ### 4. GDB Debugging Walkthrough
 ```gdb
-(gdb) break led_pa5_toggle_atomic
+(gdb) break led_pa5_toggle_bsrr
 (gdb) continue
 (gdb) x/1wx 0x48000000                 # Inspect GPIOA->MODER: bits [11:10] == 01b (0xABFFF7FF -> Output)
 (gdb) x/1wx 0x48000014                 # Inspect GPIOA->ODR before BSRR write (bit 5 == 0)
 (gdb) step                             # Execute GPIOA->BSRR = GPIO_BSRR_BS5 (0x00000020)
 (gdb) x/1wx 0x48000014                 # Confirm bit 5 of GPIOA->ODR flipped to 1 (0x00000020)!
-(gdb) disassemble /m led_pa5_toggle_atomic  # Verify single STR instruction to BSRR (no LDR/ORR/STR)
+(gdb) disassemble /m led_pa5_toggle_bsrr  # Verify ODR read + single STR to BSRR (no RMW LDR/EOR/STR to ODR)
 ```
 
 ### 5. Full Lab Link
 - Complete 3-way (Bare-Metal Register / ST LL / ST HAL) buildable experiment: **[`Lab 01: Bare-Metal GPIO LED Blinky`](../18-practical-laboratory/lab-01-baremetal-gpio-led-blinky/README.md)** and reusable driver [`23-code-library/Drivers/gpio_g4.c`](../23-code-library/Drivers/gpio_g4.c).
 
 ### 6. Independent Exercise
-Modify `led_pa5_toggle_atomic()` to use `GPIOA->BRR = GPIO_BRR_BR5;` (offset `0x28`) for clearing `PA5` instead of `BSRR` bit 21. Compile with `make BUILD_TYPE=release` and inspect `build/firmware.lss` (`make disasm`) to see whether GCC saves a Thumb-2 constant-load instruction (hint: `0x00000020` fits in an 8-bit immediate, just like `0x00200000`!).
+Modify `led_pa5_toggle_bsrr()` to use `GPIOA->BRR = GPIO_BRR_BR5;` (offset `0x28`) for clearing `PA5` instead of `BSRR` bit 21. Compile with `make BUILD_TYPE=release` and inspect `build/firmware.lss` (`make disasm`) to see whether GCC saves a Thumb-2 constant-load instruction (hint: `0x00000020` fits in an 8-bit immediate, just like `0x00200000`!).
 
 ---
 

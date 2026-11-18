@@ -49,7 +49,7 @@
 
 ### 3.2 Mandatory Stop-Mode Entry & Exit Hygiene (`PWREN` & `SLEEPDEEP`)
 1. **ALWAYS enable `RCC->APB1ENR1 |= RCC_APB1ENR1_PWREN;`** (+ dummy read) before writing `PWR->CR1`; otherwise `LPMS` writes are silently ignored!
-2. **Park ALL Unused GPIOs to Analog Mode (`MODER = 11b`, `PUPDR = 00b`):** A single floating digital input near $V_{\text{DD}}/2$ draws $100–500\ \mu\text{A}$ of Schmitt-trigger shoot-through current — dwarfing Stop 1's entire silicon current!
+2. **Park ALL Unused GPIOs to Analog Mode (`MODER = 11b`, `PUPDR = 00b`):** A single floating digital input near $V_{\text{DD}}/2$ draws $100\text{--}500\ \mu\text{A}$ of Schmitt-trigger shoot-through current — dwarfing Stop 1's entire silicon current!
 3. **Disable SysTick (`SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk`)** before Sleep/Stop if you do not want a 1 ms tick immediately waking the CPU; clear stale `EXTI->PR1` flags before `__WFI()`.
 4. **Post-Stop Wakeup Cleanup:** Immediately after `__WFI()` returns from Stop 0/1:
    - Clear **`SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;`** (otherwise the next accidental `__WFI()` re-enters Stop!).
