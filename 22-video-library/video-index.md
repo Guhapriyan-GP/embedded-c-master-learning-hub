@@ -1,6 +1,6 @@
 # Verified Educational Video Research Database
 
-This directory contains **50 verified educational video lectures** supporting the Embedded C and STM32 Bare-Metal curriculum. Every video URL, duration, channel name, and topic mapping has been programmatically verified.
+This directory contains **70 verified educational video lectures** (50 baseline + 20 newly live-verified additions covering bare-metal linker/startup, HardFault/MPU, DMA, STM32G4 HRTIM/CORDIC/FMAC/FDCAN, Bootloaders, Low-Power/Watchdogs, Unity/Ceedling, MISRA C, Cortex-M PendSV, FSM/HSM, and CoreSight SWO/ITM/DWT) supporting the Embedded C and STM32 Bare-Metal curriculum. Every video URL, HTTP 200 status, `playabilityStatus: OK`, duration, channel name, publish date, and topic mapping has been programmatically live-verified.
 
 ---
 
@@ -565,4 +565,243 @@ This directory contains **50 verified educational video lectures** supporting th
 - **Prerequisites:** Advanced RTOS
 - **Educational Value:** Explains dual-core scheduling, core affinity, and inter-processor communication.
 - **Concepts Not Covered (Gap Analysis):** Cortex-M4 on G474RE is single core; provides general architectural knowledge.
+
+---
+
+<!-- Newly Live-Verified Gap-Remediation Videos (#51-#70) -->
+
+## Category: Toolchain & Bare-Metal
+
+### Video 51: Bare Metal Embedded C Lecture 4: Writing Linker Scripts and Section Placement
+- **Instructor / Channel:** Fastbit Embedded Brain Academy
+- **Direct Link:** [https://www.youtube.com/watch?v=B7oKdUvRhQQ](https://www.youtube.com/watch?v=B7oKdUvRhQQ)
+- **Platform:** YouTube
+- **Duration:** 37m 40s | **Published Date:** 2020-04-25
+- **Curriculum Alignment:** Stage - *GNU Linker Scripts & Section Placement*
+- **Prerequisites:** C compilation, Memory maps
+- **Educational Value:** Walks through writing a GNU ld linker script from scratch for ARM Cortex-M4: MEMORY regions, SECTIONS, .text/.data/.bss, VMA vs LMA (AT>FLASH), and boundary symbols.
+- **Concepts Not Covered (Gap Analysis):** Targets STM32F407 Flash/SRAM sizes; adapt to STM32G474RE 512 KB Flash, 96 KB SRAM1/2, and 32 KB CCM-SRAM (stm32g474re.ld).
+
+### Video 52: Bare Metal Embedded C Lecture 3: How to Write an MCU Startup File from Scratch
+- **Instructor / Channel:** Fastbit Embedded Brain Academy
+- **Direct Link:** [https://www.youtube.com/watch?v=2Hm8eEHsgls](https://www.youtube.com/watch?v=2Hm8eEHsgls)
+- **Platform:** YouTube
+- **Duration:** 25m 23s | **Published Date:** 2020-04-24
+- **Curriculum Alignment:** Stage - *Startup Code & Vector Table From Scratch*
+- **Prerequisites:** C pointers, Linker scripts
+- **Educational Value:** Builds a bare-metal C startup file for ARM Cortex-M4 from scratch: vector table array placement, weak default handler aliases, .data copy from Flash to SRAM, .bss zeroing, and main() invocation.
+- **Concepts Not Covered (Gap Analysis):** Targets STM32F407 IRQ count; STM32G474RE has 102 external IRQs (stm32g474xx.h) and requires FPU CPACR enable before hard-float main().
+
+
+## Category: ARM Architecture
+
+### Video 53: How to Debug HardFaults on ARM Cortex-M MCUs
+- **Instructor / Channel:** Memfault
+- **Direct Link:** [https://www.youtube.com/watch?v=3_ar-3OjXnA](https://www.youtube.com/watch?v=3_ar-3OjXnA)
+- **Platform:** YouTube
+- **Duration:** 57m 57s | **Published Date:** 2021-06-16
+- **Curriculum Alignment:** Stage - *Cortex-M HardFault & Fault Register Debugging*
+- **Prerequisites:** Cortex-M exceptions, Stack frames, GDB
+- **Educational Value:** Authoritative Memfault webinar detailing Cortex-M exception frame unwinding (MSP/PSP), decoding CFSR (MMFSR/BFSR/UFSR), HFSR, MMFAR/BFAR, and isolating crashes in GDB.
+- **Concepts Not Covered (Gap Analysis):** Covers general ARM Cortex-M fault triage; pair with PM0214 Sec 4.4.9-4.4.14 and nvic-systick-register-map.md for STM32G474RE register offsets.
+
+### Video 54: STM32 MPU tips - 1 MPU usage in STM32 with ARM Cortex M7
+- **Instructor / Channel:** STMicroelectronics
+- **Direct Link:** [https://www.youtube.com/watch?v=6IUfxSAFhlw](https://www.youtube.com/watch?v=6IUfxSAFhlw)
+- **Platform:** YouTube
+- **Duration:** 20m 54s | **Published Date:** 2020-05-22
+- **Curriculum Alignment:** Stage - *ARMv7-M Memory Protection Unit (MPU)*
+- **Prerequisites:** Cortex-M memory map, Exceptions
+- **Educational Value:** Official STMicroelectronics training on ARMv7-M PMSAv7 MPU configuration (MPU_CTRL, RBAR, RASR, region size, AP, XN, TEX/C/B/S memory attributes).
+- **Concepts Not Covered (Gap Analysis):** Focuses on Cortex-M7 speculative-access rules; STM32G474RE Cortex-M4 shares the 8-region PMSAv7 register model without M7 caches (pair with PM0214 Sec 4.2 and mpu_armv7.h).
+
+
+## Category: DMA & Peripherals
+
+### Video 55: #9. ADC DMA in STM32 using Registers  || Internal Temp sensor
+- **Instructor / Channel:** ControllersTech
+- **Direct Link:** [https://www.youtube.com/watch?v=Ysp8hpp8bxI](https://www.youtube.com/watch?v=Ysp8hpp8bxI)
+- **Platform:** YouTube
+- **Duration:** 29m 36s | **Published Date:** 2021-05-29
+- **Curriculum Alignment:** Stage - *Bare-Metal STM32 DMA Using Registers*
+- **Prerequisites:** Pointers, Peripheral registers, ADC
+- **Educational Value:** Direct register-level STM32 DMA setup without HAL: configuring peripheral/memory addresses, transfer count, circular mode, and peripheral-to-memory data flow.
+- **Concepts Not Covered (Gap Analysis):** Targets STM32F4 stream-based DMA; STM32G474RE uses channel-based DMA1/DMA2 routed via DMAMUX1_Channelx->CCR (pair with dma-dmamux-register-map.md).
+
+
+## Category: Communication
+
+### Video 56: FDCAN External Loop-back Mode
+- **Instructor / Channel:** STMicroelectronics
+- **Direct Link:** [https://www.youtube.com/watch?v=4xVnlDdouBg](https://www.youtube.com/watch?v=4xVnlDdouBg)
+- **Platform:** YouTube
+- **Duration:** 20m 20s | **Published Date:** 2022-04-25
+- **Curriculum Alignment:** Stage - *STM32 FDCAN Protocol & Loop-Back Mode*
+- **Prerequisites:** Serial protocols, Clock trees
+- **Educational Value:** Official STMicroelectronics walkthrough of CAN-FD framing, bit-rate switching (BRS), FDCAN architecture, AN5348 guidance, and external loopback verification without a full bus.
+- **Concepts Not Covered (Gap Analysis):** Demonstrated via STM32CubeIDE/HAL on STM32H7; STM32G474RE integrates 3 FDCAN instances with fixed 212-word Message RAM per instance (pair with fdcan-register-map.md).
+
+
+## Category: STM32G4 Timers
+
+### Video 57: STM32G4 OLT - 44 . WDG TIMERS High Resolution Timer HRTIM
+- **Instructor / Channel:** STMicroelectronics
+- **Direct Link:** [https://www.youtube.com/watch?v=JwJG251RscQ](https://www.youtube.com/watch?v=JwJG251RscQ)
+- **Platform:** YouTube
+- **Duration:** 38m 12s | **Published Date:** 2021-09-20
+- **Curriculum Alignment:** Stage - *STM32G4 High-Resolution Timer (HRTIM)*
+- **Prerequisites:** Timers, PWM, Dead-time
+- **Educational Value:** Official STMicroelectronics STM32G474 Online Training detailing HRTIM1 184 ps DLL resolution, Master Timer + 6 Sub-Timers (TIMA-TIMF), crossbar set/reset events, dead-time, burst mode, and fault protection.
+- **Concepts Not Covered (Gap Analysis):** Architecture and feature lecture without bare-metal C code; pair with hrtim-register-map.md, RM0440 Ch 27, and AN4539 for register-level programming.
+
+
+## Category: STM32G4 DSP
+
+### Video 58: CORDIC in Practice, Part 2: Cosine and Sine
+- **Instructor / Channel:** STMicroelectronics
+- **Direct Link:** [https://www.youtube.com/watch?v=SeDyNtKRDMU](https://www.youtube.com/watch?v=SeDyNtKRDMU)
+- **Platform:** YouTube
+- **Duration:** 30m 52s | **Published Date:** 2020-11-10
+- **Curriculum Alignment:** Stage - *STM32G4 CORDIC Coprocessor (Cos/Sin)*
+- **Prerequisites:** Fixed-point math, STM32G4 architecture
+- **Educational Value:** Official STMicroelectronics hands-on STM32G4 CORDIC training explaining Q1.31/Q1.15 angle scaling, CSR configuration, WDATA/RDATA pipeline, precision cycles, and AN5325 benchmarks.
+- **Concepts Not Covered (Gap Analysis):** Uses STM32CubeIDE/LL-HAL scaffolding; translate directly to bare-metal CORDIC->CSR/WDATA/RDATA registers via cordic-fmac-crc-rng-register-map.md.
+
+### Video 59: STM32H7 OLT - 62. Peripheral Filter Math Accelerator FMAC
+- **Instructor / Channel:** STMicroelectronics
+- **Direct Link:** [https://www.youtube.com/watch?v=AQCTcl0eFRk](https://www.youtube.com/watch?v=AQCTcl0eFRk)
+- **Platform:** YouTube
+- **Duration:** 20m 42s | **Published Date:** 2021-03-16
+- **Curriculum Alignment:** Stage - *STM32 Filter Math Accelerator (FMAC)*
+- **Prerequisites:** Digital filters (FIR/IIR), Fixed-point math
+- **Educational Value:** Official STMicroelectronics training on the FMAC hardware accelerator: 256x16-bit internal SRAM, X1/X2/Y circular buffers, preload, and autonomous FIR/IIR filter execution.
+- **Concepts Not Covered (Gap Analysis):** Labeled STM32H7 OLT but covers the identical ST FMAC peripheral IP present in STM32G474RE; pair with cordic-fmac-crc-rng-register-map.md and AN5305.
+
+
+## Category: Bootloaders & Flash
+
+### Video 60: How to Create a Super Simple Bootloader, Part 4: Developing the App Code
+- **Instructor / Channel:** STMicroelectronics
+- **Direct Link:** [https://www.youtube.com/watch?v=MFIzI-UNaEs](https://www.youtube.com/watch?v=MFIzI-UNaEs)
+- **Platform:** YouTube
+- **Duration:** 6m 38s | **Published Date:** 2021-07-08
+- **Curriculum Alignment:** Stage - *Custom Bootloader App & VTOR Relocation*
+- **Prerequisites:** Linker scripts, Vector tables, Flash memory
+- **Educational Value:** Official STMicroelectronics guide showing how to partition internal Flash, shift an application linker script origin, relocate SCB->VTOR, and jump cleanly from a custom bootloader.
+- **Concepts Not Covered (Gap Analysis):** Targets NUCLEO-G071RB with STM32CubeIDE; STM32G474RE requires 64-bit double-word Flash programming and supports Dual-Bank RWW (pair with pwr-flash-register-map.md and RM0440 Ch 3).
+
+### Video 61: STM32 Secure Bootloader: The Bootloader | Bootloader #2
+- **Instructor / Channel:** STM32World
+- **Direct Link:** [https://www.youtube.com/watch?v=nagbMzDy2FA](https://www.youtube.com/watch?v=nagbMzDy2FA)
+- **Platform:** YouTube
+- **Duration:** 31m 55s | **Published Date:** 2026-11-16
+- **Curriculum Alignment:** Stage - *STM32 Secure Bootloader & Signature Verification*
+- **Prerequisites:** Bootloaders, Linker scripts, Cryptography basics
+- **Educational Value:** Practical STM32 bootloader implementation covering firmware image verification, digital signature checking prior to flashing, and safe application handoff.
+- **Concepts Not Covered (Gap Analysis):** Targets STM32 USB DFU workflow; adapt to STM32G474RE Dual-Bank A/B rollback, hardware CRC-32, and Option Byte RDP/WRP via RM0440 Ch 3 and APP-OTA-001.
+
+
+## Category: Power & Reliability
+
+### Video 62: STM32 Stop Mode Tutorial | Save Power Efficiently
+- **Instructor / Channel:** ControllersTech
+- **Direct Link:** [https://www.youtube.com/watch?v=UtQhc4XV8k4](https://www.youtube.com/watch?v=UtQhc4XV8k4)
+- **Platform:** YouTube
+- **Duration:** 19m 24s | **Published Date:** 2020-03-25
+- **Curriculum Alignment:** Stage - *STM32 Stop Mode & Wakeup Clock Recovery*
+- **Prerequisites:** RCC clocks, EXTI interrupts, PWR basics
+- **Educational Value:** Demonstrates entering STM32 Stop mode via WFI, waking from EXTI/RTC interrupts, and performing mandatory post-Stop PLL/SYSCLK re-initialization.
+- **Concepts Not Covered (Gap Analysis):** Uses STM32CubeIDE/HAL on legacy STM32; STM32G474RE implements Stop 0 and Stop 1 (no Stop 2) plus Standby/Shutdown (pair with pwr-flash-register-map.md and lab-14).
+
+### Video 63: STM32 Watchdog Tutorial – IWDG vs WWDG with Examples
+- **Instructor / Channel:** ControllersTech
+- **Direct Link:** [https://www.youtube.com/watch?v=AelNsnpfbcM](https://www.youtube.com/watch?v=AelNsnpfbcM)
+- **Platform:** YouTube
+- **Duration:** 16m 55s | **Published Date:** 2020-07-19
+- **Curriculum Alignment:** Stage - *Hardware Watchdogs (IWDG vs WWDG)*
+- **Prerequisites:** Timers, Clock sources (LSI/PCLK1)
+- **Educational Value:** Contrasts Independent Watchdog (IWDG clocked by LSI) against Window Watchdog (WWDG clocked by PCLK1) with timeout calculations and refresh-window failure modes.
+- **Concepts Not Covered (Gap Analysis):** Demonstrated via STM32CubeIDE/HAL; translate to direct IWDG->KR/PR/RLR and WWDG->CR/CFR register writes using watchdog-register-map.md and lab-13.
+
+
+## Category: Firmware Engineering
+
+### Video 64: Unit Testing With Ceedling
+- **Instructor / Channel:** ORCASat Command and Data Handling
+- **Direct Link:** [https://www.youtube.com/watch?v=QnkO4q95o6s](https://www.youtube.com/watch?v=QnkO4q95o6s)
+- **Platform:** YouTube
+- **Duration:** 39m 15s | **Published Date:** 2020-05-10
+- **Curriculum Alignment:** Stage - *Embedded C Unit Testing with Unity & Ceedling*
+- **Prerequisites:** C functions, Headers, Host GCC
+- **Educational Value:** Flight-software (CubeSat C&DH) walkthrough demonstrating host-based Embedded C unit testing, test-driven workflow, and mocking hardware dependencies with Unity and Ceedling.
+- **Concepts Not Covered (Gap Analysis):** Does not cover on-target hardware-in-the-loop (HIL) testing or MISRA C static analysis; pair with 17-advanced-firmware-engineering/README.md.
+
+### Video 65: MISRA C 2023 What You Need to Know | Embedded Computing Design
+- **Instructor / Channel:** Parasoft
+- **Direct Link:** [https://www.youtube.com/watch?v=R5gUzPYYs1s](https://www.youtube.com/watch?v=R5gUzPYYs1s)
+- **Platform:** YouTube
+- **Duration:** 51m 11s | **Published Date:** 2023-10-26
+- **Curriculum Alignment:** Stage - *MISRA C:2023 Coding Standard & Static Analysis*
+- **Prerequisites:** C11/C99 language rules, Compiler warnings
+- **Educational Value:** In-depth overview of MISRA C:2023 structure, Mandatory/Required/Advisory rules, Directives, essential type model, deviation workflows, and CI static analysis integration.
+- **Concepts Not Covered (Gap Analysis):** Vendor-hosted technical webinar; pair with open-source cppcheck/clang-tidy workflows and 21-reference-library/industry-standards-misra-barr.md.
+
+
+## Category: RTOS
+
+### Video 66: #23 RTOS Part-2: Automating the context switch
+- **Instructor / Channel:** Quantum Leaps, LLC
+- **Direct Link:** [https://www.youtube.com/watch?v=PKml9ki3178](https://www.youtube.com/watch?v=PKml9ki3178)
+- **Platform:** YouTube
+- **Duration:** 37m 36s | **Published Date:** 2018-04-15
+- **Curriculum Alignment:** Stage - *ARM Cortex-M PendSV Context Switch Internals*
+- **Prerequisites:** ARM Cortex-M exceptions, Stack frames, Assembly
+- **Educational Value:** Bare-metal ARM Cortex-M walkthrough writing a real PendSV_Handler context switcher in assembly: saving/restoring R4-R11, swapping thread stack pointers, and triggering ICSR.PENDSVSET.
+- **Concepts Not Covered (Gap Analysis):** Implements a minimal teaching kernel (MiROS) rather than FreeRTOS; supplement FreeRTOS BASEPRI and configMAX_SYSCALL_INTERRUPT_PRIORITY via 16-rtos/README.md and freertos-context-switch.mmd.
+
+
+## Category: Firmware Engineering
+
+### Video 67: #35 State Machines Part-1: What is a state machine?
+- **Instructor / Channel:** Quantum Leaps, LLC
+- **Direct Link:** [https://www.youtube.com/watch?v=EBSxZKjgBXI](https://www.youtube.com/watch?v=EBSxZKjgBXI)
+- **Platform:** YouTube
+- **Duration:** 24m 15s | **Published Date:** 2020-11-22
+- **Curriculum Alignment:** Stage - *Event-Driven Finite State Machines (FSM)*
+- **Prerequisites:** Embedded C, Function pointers, Interrupts
+- **Educational Value:** Teaches event-driven embedded firmware design and clean C Finite State Machines, showing how explicit state variables and events eliminate brittle nested-flag spaghetti code.
+- **Concepts Not Covered (Gap Analysis):** Introduces flat FSMs before nesting; follow immediately with Video #68 for Hierarchical State Machines (HSM) and Active Objects.
+
+### Video 68: Active Objects, Hierarchical State Machines and Modeling in Practice
+- **Instructor / Channel:** Quantum Leaps, LLC
+- **Direct Link:** [https://www.youtube.com/watch?v=h_u92uLssDo](https://www.youtube.com/watch?v=h_u92uLssDo)
+- **Platform:** YouTube
+- **Duration:** 40m 53s | **Published Date:** 2021-10-22
+- **Curriculum Alignment:** Stage - *Hierarchical State Machines (HSM) & Active Objects*
+- **Prerequisites:** FSMs, RTOS concurrency, Embedded C
+- **Educational Value:** Conference keynote by Miro Samek demonstrating Hierarchical State Machines (HSM), Run-to-Completion (RTC) semantics, and the Active Object (Actor) concurrency architecture for deterministic embedded systems.
+- **Concepts Not Covered (Gap Analysis):** Demonstrates QP modeling concepts alongside C architecture; implement bare-metal C state tables and ring-buffer event queues via 17-advanced-firmware-engineering/README.md.
+
+
+## Category: Debugging
+
+### Video 69: Debugging, Logging, and Monitoring via SWO Trace (STM32 ITM & DWT) - Phil's Lab #173
+- **Instructor / Channel:** Phil’s Lab
+- **Direct Link:** [https://www.youtube.com/watch?v=rdmJgQW5JrQ](https://www.youtube.com/watch?v=rdmJgQW5JrQ)
+- **Platform:** YouTube
+- **Duration:** 23m 9s | **Published Date:** 2026-05-04
+- **Curriculum Alignment:** Stage - *CoreSight SWO, ITM Printf & DWT Live Trace*
+- **Prerequisites:** SWD debugging, Cortex-M peripherals
+- **Educational Value:** Practical demonstration of CoreSight Serial Wire Output (SWO), ITM stimulus port 0 printf logging without UART overhead, and DWT hardware watchpoint/live variable tracing on STM32.
+- **Concepts Not Covered (Gap Analysis):** Demonstrated in STM32CubeIDE on STM32H7; NUCLEO-G474RE routes SWO on PB3 via ST-LINK/V3E (pair with nvic-systick-register-map.md for bare-metal DWT->CYCCNT and ITM_SendChar).
+
+### Video 70: STM32G4 OLT - 9 . System Debug
+- **Instructor / Channel:** STMicroelectronics
+- **Direct Link:** [https://www.youtube.com/watch?v=t5EH2DNKbAU](https://www.youtube.com/watch?v=t5EH2DNKbAU)
+- **Platform:** YouTube
+- **Duration:** 15m 8s | **Published Date:** 2019-10-08
+- **Curriculum Alignment:** Stage - *STM32G4 CoreSight System Debug Architecture*
+- **Prerequisites:** ARM Cortex-M4 architecture, SWD
+- **Educational Value:** Official STMicroelectronics STM32G4 Online Training detailing STM32G4 CoreSight debug blocks: SWJ-DP, FPB breakpoints, DWT watchpoints/cycle counter, ITM/TPIU/SWO, ETM, and DBGMCU peripheral freeze.
+- **Concepts Not Covered (Gap Analysis):** Architectural hardware reference lecture without live GDB commands; pair with Video #69, ST AN4989, and 05-toolchain-and-debugging/README.md.
 

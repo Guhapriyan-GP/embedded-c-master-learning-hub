@@ -1,0 +1,61 @@
+# Learner Progress Dashboard (NUCLEO-G474RE Bare-Metal Track)
+
+Use this dashboard as your personal engineering logbook. Check off each box (`[ ]` → `[x]`) **only after passing the stage's Mastery Gate** in [`REVISION_NOTES_AND_MASTERY_GATES.md`](REVISION_NOTES_AND_MASTERY_GATES.md).
+
+> **Hardware Honesty Legend:**
+> - **Host Only:** Runs natively on Windows 11 via `gcc` (`make -C tests test`).
+> - **Onboard Only:** Requires **only** the bare NUCLEO-G474RE board + USB cable (`LD2` `PA5`, `B1` `PC13`, `USART2` VCP `PA2/PA3`, internal `TIM2`, `ADC1` temp/VREFINT, `CORDIC`/`FMAC`, `FDCAN1` loopback, `IWDG`, `MPU`).
+> - **External Pending:** Requires breadboard/external parts (potentiometer, RGB LED, SPI sensor, I2C OLED, multimeter on `JP6`, or oscilloscope/logic analyzer).
+
+---
+
+## Quick Status Summary (Update As You Go)
+
+- [ ] **Environment Setup Complete** ([`BEGINNER_SETUP_WINDOWS11.md`](BEGINNER_SETUP_WINDOWS11.md) — `validate_repo.py` 0 FAIL, `make -C tests test` 113/113 PASS, starter template builds cleanly)
+- [ ] **Level 1 (Essential) Mastery Gate Passed** (`Stages 01b, 02, 03, 04, 05, 06, 07 [08-gpio]`)
+- [ ] **Level 2 (Intermediate) Mastery Gate Passed** (`Stages 08–15`, Core Peripherals, DMA, Low-Power, Watchdogs & FreeRTOS Basics)
+- [ ] **Level 3 (Advanced) Mastery Gate Passed** (`HRTIM1`, `FDCAN`, `OPAMP`/`COMP`, `CORDIC`/`FMAC`, Flash/Bootloader/Security, `MPU`, MISRA/TDD/CI & Capstone)
+
+---
+
+## Level 1 — Essential Foundations (Mandatory Core & Zero-Wire Bring-Up)
+
+| Stage & Folder | Key Concept IDs | Theory | Code / Lab | Hardware Verification | Assessment Checkpoint | Next Recommended Topic |
+|---|---|---:|---:|---|---|---|
+| **00. Win11 & VS Code Setup**<br>[`BEGINNER_SETUP_WINDOWS11.md`](BEGINNER_SETUP_WINDOWS11.md) | `TOOL-GCC-001`, `TOOL-OCD-001`, `TOOL-FLASH-001` | [ ] | [ ] Template build (`make`) | [ ] Onboard SWD detect (`STM32_Programmer_CLI`) | `validate_repo.py` passes (`0 FAIL`) | Stage 01b |
+| **01b. Digital Electronics & MB1367 HW**<br>[`01b-digital-electronics-and-hw-integration/`](../01b-digital-electronics-and-hw-integration/README.md) | `DIG-ELEC-001..004`, `HWSW-PCB-001..002`, `HWSW-LAB-001..002` | [ ] | [ ] Resistor, RC & I2C $R_p$ math | [ ] Onboard `JP5`/`JP6`/`LD2`/`B1` check | Verify `JP6` IDD vs `JP5`, Active-HIGH `PC13`, `PB8`/`PA9` traps | Stage 02 |
+| **02. ISO C11 Language Foundations**<br>[`02-c-fundamentals/`](../02-c-fundamentals/README.md) | `C-TYPE-*`, `C-INT-*`, `C-BIT-*`, `C-PTR-*`, `C-STRUCT-*`, `C-UB-*` | [ ] | [ ] `make -C tests test` (`35/35`) | [ ] Host Only (`gcc`) | [ ] [Stage 01 Exam](../24-assessments/stage-01-c-mastery-exam.md) ($\ge 85\%$) | Stage 03 |
+| **03. Embedded C & MMIO Architecture**<br>[`03-embedded-c/`](../03-embedded-c/README.md) | `EMB-MMIO-001`, `EMB-VOL-001..003`, `EMB-REG-003`, `EMB-ATOM-001..004`, `EMB-CMSIS-001` | [ ] | [ ] [Worked Example 1](WORKED_EXAMPLES.md) | [ ] Onboard (`PA5` `BSRR` blink) | [ ] [Stage 02 Exam](../24-assessments/stage-02-embedded-c-register-exam.md) ($\ge 85\%$) | Stage 04 |
+| **04. ARM Cortex-M4F Core & Exceptions**<br>[`04-arm-cortex-m/`](../04-arm-cortex-m/README.md) | `ARM-CORE-001..005`, `ARM-ISA-001..002`, `ARM-ABI-001..002`, `ARM-EXC-001..002`, `ARM-FPU-001`, `ARM-FLT-001` | [ ] | [ ] [Worked Example 6](WORKED_EXAMPLES.md) | [ ] Onboard (GDB `x/8wx $sp`, `fault_regs`) | Decode 8-word frame & `EXC_RETURN` in GDB | Stage 05 |
+| **05. GNU Toolchain, Linker & GDB**<br>[`05-toolchain-and-debugging/`](../05-toolchain-and-debugging/README.md) | `TOOL-GCC-001`, `TOOL-LD-001`, `ARM-EXC-003`, `ARM-DBG-001`, `PROF-STK-001`, `PROF-WCET-001` | [ ] | [ ] Inspect `firmware.elf` (`readelf -SW`, `.map`, `.su`) | [ ] Onboard (VS Code `F5` + SVD) | [ ] [Stage 03 Exam](../24-assessments/stage-03-arm-cortex-m-architecture-exam.md) ($\ge 85\%$) | Stage 06 |
+| **06. STM32G474RE Platform & Errata**<br>[`06-stm32-fundamentals/`](../06-stm32-fundamentals/README.md) | `STM32-ARCH-001`, `STM32-SRAM-001`, `STM32-BOOT-001`, `STM32-ERRATA-001` | [ ] | [ ] Verify LQFP64 limits in `stm32g474xx.h` | [ ] Onboard (Memory map check in GDB) | Explain CCM-SRAM `0x10000000` vs `0x20018000` alias | Stage 07 (`08-gpio/`) |
+| **07 (06A). Basic GPIO on 16 MHz HSI16**<br>[`08-gpio/`](../08-gpio/README.md) *(Study before RCC!)* | `PERIPH-GPIO-001..005`, `GPIO-AF-001`, `CS-FSM-001` | [ ] | [ ] [Lab 01](../18-practical-laboratory/lab-01-baremetal-gpio-led-blinky/README.md)<br>[ ] [Lab 02](../18-practical-laboratory/lab-02-gpio-pushbutton-debouncing/README.md) | [ ] Onboard Only (`PA5` `LD2` + `PC13` `B1`) | [Worked Example 2](WORKED_EXAMPLES.md) + 3-way Register/LL/HAL diff | **Level 1 Gate** → Stage 08 (`07-rcc-and-clocks/`) |
+
+---
+
+## Level 2 — Intermediate Production Firmware (Clocks, IRQs, Buses, DMA, Low-Power & RTOS)
+
+| Stage & Folder | Key Concept IDs | Theory | Code / Lab | Hardware Verification | Assessment Checkpoint | Next Recommended Topic |
+|---|---|---:|---:|---|---|---|
+| **08 (06B). PWR Boost, Flash 4WS & 170 MHz RCC**<br>[`07-rcc-and-clocks/`](../07-rcc-and-clocks/README.md) | `STM32-RCC-001..003`, `CLK-PLL-001`, `CLK-MCO-001`, `STM32-PWR-001`, `STM32-FLASH-001` | [ ] | [ ] [Lab 03](../18-practical-laboratory/lab-03-rcc-pll-170mhz-clock-switch/README.md)<br>[ ] [Worked Example 3](WORKED_EXAMPLES.md) | [ ] Onboard (`clock_regs` in GDB)<br>[ ] External Pending (`PA8` MCO scope) | Verify `VOSF=0`, `CR5.R1MODE=0`, `4WS`, `HPRE=/2` ramp | Stage 09 (`10-interrupts/`) |
+| **09 (07). SysTick, NVIC & EXTI**<br>[`10-interrupts/`](../10-interrupts/README.md) *(Study before Timers!)* | `ARM-SYST-001`, `ARM-NVIC-001`, `PERIPH-EXTI-001..002`, `RT-IRQ-001..002` | [ ] | [ ] [Lab 04](../18-practical-laboratory/lab-04-systick-accurate-delay-generator/README.md)<br>[ ] [Lab 05](../18-practical-laboratory/lab-05-exti-pushbutton-interrupt/README.md) | [ ] Onboard Only (`PC13` rising-edge EXTI13) | [Worked Example 4](WORKED_EXAMPLES.md) (`EXTI->PR1 = mask` + `__DSB()`) | Stage 10 (`09-timers/`) |
+| **10 (08). General-Purpose & PWM Timers**<br>[`09-timers/`](../09-timers/README.md) | `PERIPH-TIM-001..003`, `PERIPH-PWM-001`, `PERIPH-BDTR-001` | [ ] | [ ] [Lab 06](../18-practical-laboratory/lab-06-general-purpose-timer-periodic-interrupt/README.md)<br>[ ] [Lab 07](../18-practical-laboratory/lab-07-timer-pwm-rgb-led-fading/README.md) | [ ] Onboard (`Lab 06` `TIM2` → `LD2`)<br>[ ] External Pending (`Lab 07` RGB LED) | [Worked Example 5](WORKED_EXAMPLES.md) (`EGR=UG` & `rc_w0` `SR = ~UIF`) | Stage 11 (`11-communication/`) |
+| **11 (09). Serial Buses (`USART`, `SPI`, `I2C`)**<br>[`11-communication/`](../11-communication/README.md) | `PERIPH-UART-001..002`, `PERIPH-SPI-001`, `PERIPH-I2C-001..003` | [ ] | [ ] [Lab 08](../18-practical-laboratory/lab-08-usart-baremetal-driver-printf/README.md)<br>[ ] [Lab 11](../18-practical-laboratory/lab-11-spi-master-sensor-interfacing/README.md)<br>[ ] [Lab 12](../18-practical-laboratory/lab-12-i2c-master-ssd1306-oled/README.md) | [ ] Onboard (`Lab 08` ST-LINK VCP `PA2/PA3`)<br>[ ] External Pending (`Lab 11` SPI, `Lab 12` I2C) | Echo & `printf` on VCP; explain `FRXTH=1` & `PB8-BOOT0` | Stage 12 (`12-adc-dac-analog/`) |
+| **12 (10). Mixed-Signal (`ADC` & `DAC`)**<br>[`12-adc-dac-analog/`](../12-adc-dac-analog/README.md) | `PERIPH-ADC-001..002`, `PERIPH-DAC-001` | [ ] | [ ] [Lab 09](../18-practical-laboratory/lab-09-adc-single-channel-potentiometer/README.md) | [ ] Onboard (`VREFINT`/`TEMP` channels)<br>[ ] External Pending (Potentiometer on `PA0`) | Verify `CKMODE=11` (`42.5 MHz <= 60 MHz`) & `DEEPPWD=0` | Stage 13 (`13-dma/`) |
+| **13 (11). DMA1/2 & DMAMUX1**<br>[`13-dma/`](../13-dma/README.md) | `PERIPH-DMA-001..003`, `DMA-CONT-001` | [ ] | [ ] [Lab 10](../18-practical-laboratory/lab-10-adc-dma-multichannel-circular-buffer/README.md) | [ ] Onboard (`ADC1_IN16` temp + DMA ping-pong)<br>[ ] External Pending (Ext channels) | [ ] [Stage 04 Exam](../24-assessments/stage-04-stm32-peripherals-exam.md) ($\ge 85\%$) | Stage 14 (`14-memory-and-storage/`) |
+| **14 (12). Dual-Bank Flash & CRC**<br>[`14-memory-and-storage/`](../14-memory-and-storage/README.md) | `STM32-FLASH-002`, `PERIPH-CRC-001`, `BOOT-JUMP-001` | [ ] | [ ] Review 64-bit ECC write & 9-step jump | [ ] Onboard (CRC-32 + Option byte read-only check) | Explain `DBANK=1` 2 KB pages & `DCRST` ES0430 flush | Stage 15 (`15-power-management/`) |
+| **15 (13). Watchdogs & Low-Power Modes**<br>[`15-power-management/`](../15-power-management/README.md) | `RT-WDG-001..002`, `STM32-DBGMCU-001`, `STM32-PWR-002`, `RT-PWR-001`, `HWSW-PWR-001` | [ ] | [ ] [Lab 13](../18-practical-laboratory/lab-13-iwdg-hardware-watchdog/README.md)<br>[ ] [Lab 14](../18-practical-laboratory/lab-14-low-power-stop-mode-wakeup/README.md) | [ ] Onboard (`IWDG` reset + Stop 0 EXTI13 wake)<br>[ ] External Pending (`JP6` µA meter) | Verify `RCC->CSR.IWDGRSTF` & `DBGMCU` freeze in GDB | Stage 16 (`16-rtos/`) |
+| **16 (14). FreeRTOS `ARM_CM4F` Core**<br>[`16-rtos/`](../16-rtos/README.md) | `RTOS-ARCH-001`, `RTOS-CTX-001`, `RTOS-IPC-001`, `RTOS-SYNC-001..004`, `RTOS-ISR-001..002`, `RTOS-MEM-001` | [ ] | [ ] [Lab 15](../18-practical-laboratory/lab-15-freertos-multitask-producer-consumer/README.md) *(Statically Reviewed)* | [ ] External Pending (Vendor FreeRTOS-Kernel to build) | Explain `NVIC_SetPriorityGrouping(0)` & `BASEPRI` | **Level 2 Gate** → Level 3 Specialist |
+
+---
+
+## Level 3 — Advanced STM32G474RE Specialist & Production Engineering
+
+| Topic & Folder | Key Concept IDs | Theory | Code / Lab | Hardware Verification | Assessment Checkpoint | Next Recommended Topic |
+|---|---|---:|---:|---|---|---|
+| **Analog Control Loop (`DAC` + `OPAMP` + `COMP` → `TIM1_BKIN`)**<br>[`12-adc-dac-analog/`](../12-adc-dac-analog/README.md) | `G4-OPAMP-001`, `G4-COMP-001`, `PERIPH-BDTR-002`, `ANA-VREF-001` | [ ] | [ ] [Lab 16](../18-practical-laboratory/lab-16-dac-opamp-comp-hardware-break/README.md) | [ ] Onboard (Internal loop) / External Pending (Scope `<50 ns` trip) | Verify `MOE` cleared by hardware on comparator trip | Hardware Math (`CORDIC`/`FMAC`) |
+| **Hardware Math (`CORDIC` & `FMAC`)**<br>[`13-dma/`](../13-dma/README.md) | `G4-CORDIC-001`, `G4-FMAC-001`, `RT-TIME-001` | [ ] | [ ] [Lab 17](../18-practical-laboratory/lab-17-cordic-fmac-hardware-math/README.md) | [ ] Onboard Only (`DWT->CYCCNT` benchmark) | Compare `CORDIC` `q1.31` vs Cortex-M4F FPU cycles | `FDCAN` & `HRTIM1` |
+| **Automotive `FDCAN1` + `CRC-32` & `HRTIM1`**<br>[`11-communication/`](../11-communication/README.md), [`09-timers/`](../09-timers/README.md) | `G4-FDCAN-001`, `G4-HRTIM-001`, `PERIPH-USB-001`, `G4-UCPD-001` | [ ] | [ ] [Lab 18](../18-practical-laboratory/lab-18-fdcan-loopback-and-crc/README.md) | [ ] Onboard Only (`FDCAN1` internal loopback) | Inspect Message RAM `0x4000A400` in GDB | MPU & HardFault Forensics |
+| **8-Region MPU & `.noinit` HardFault Logger**<br>[`04-arm-cortex-m/`](../04-arm-cortex-m/README.md), [`17-advanced-firmware-engineering/`](../17-advanced-firmware-engineering/README.md) | `ARM-MPU-001`, `REL-CRASH-001`, `MEM-NOINIT-001` | [ ] | [ ] [Lab 19](../18-practical-laboratory/lab-19-hardfault-mpu-and-crash-diagnostics/README.md) | [ ] Onboard Only (Trigger stack guard & read `g_crash_log`) | Recover `g_crash_log` after reset via `crash_log` macro | Host TDD, MISRA & CI |
+| **Host TDD, Fake CMSIS, `-fstack-usage` & Standards**<br>[`17-advanced-firmware-engineering/`](../17-advanced-firmware-engineering/README.md) | `TEST-UNIT-001..002`, `TEST-MOCK-001`, `PROF-STD-001..004`, `PROF-SA-001..004`, `PROF-CI-001` | [ ] | [ ] [Lab 20](../18-practical-laboratory/lab-20-host-unit-testing-and-driver-mocking/README.md)<br>[ ] `make -C tests test` (`78/78`) | [ ] Host Only (`gcc` + `.su` stack audit) | [ ] [Stage 05 Exam](../24-assessments/stage-05-rtos-and-advanced-firmware-exam.md) ($\ge 85\%$) | Bootloader, Security & Capstones |
+| **Bootloaders, Hardware Security & Capstones**<br>[`14-memory-and-storage/`](../14-memory-and-storage/README.md), [`19-projects/`](../19-projects/README.md) | `BOOT-*`, `SEC-*`, `APP-INST-001`, `APP-LOG-001`, `APP-PWR-001` | [ ] | [ ] Choose Capstone `01`, `02`, or `03` | [ ] External Pending (Never set `RDP` Level 2 `0xCC`!) | **Level 3 Gate:** Complete 1 full Capstone implementation | Portfolio & Hardware Bench Sign-Off |
