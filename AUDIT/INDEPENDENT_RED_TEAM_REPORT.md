@@ -732,3 +732,123 @@ Resolve the **4 HIGH** items below before final commit and push to GitHub:
 3. **`[R12-HIGH-03]`** Harden `scripts/validate_repo.py` (`v4.0.0` → `v4.1.0`) to close the 5 proven blind spots (`\texttt`/`\textbf`/`\mbox` + bare `\_` + unclosed `$`/braces in MathJax, table-cell bit positions, `#anchor` verification, register-map/lab C-snippet compile check, and adding the 6 new Section 9 reports to `REQUIRED_AUDIT_FILES`).
 4. **`[R12-MED-01..04]`** Fix `lab-08` HAL RX buffer race (`volatile` + ring buffer / post-read re-arm), clean residual Finding A conflation (`learning-sequence.md:76`, `lab-05:70/324`, `exti_g4.h:7–8`, `tim_g4.h:11–12`), escape `|` in `AUDIT/TECHNICAL_DEFECTS.md` L52, refresh `AUDIT/EDUCATIONAL_QUALITY_REPORT.md` L79–80/130–133, and align `learning-sequence.md` stage numbers.
 5. **`[R12-LOW-01..03]`** Fix `exti-syscfg-register-map.md` L61 tag, `official-st-documentation.md` L30 (`RTC Ch 37`), and add 1-sentence AN321 §4.9 clock-domain synchronizer nuance to `10-interrupts/README.md` L85.
+
+
+
+---
+---
+
+# Part IV — Audit Round 2 Independent Red-Team Review (Agent 7 — 2026-11-18)
+
+> **Historical Preservation Notice:** Parts I (Lines 1–321), II (Lines 326–561), and III (Lines 567–734) above are preserved verbatim. Part IV below is an independent, adversarial verification of all Audit Round 2 remediations on branch `feature/complete-remediation`, conducted directly against repository files, live tool executions, compiler disassembly, and primary ARM/ST documentation without relying on any implementation agent's claims.
+
+**Auditor Role:** Agent 7 — Independent Red-Team Reviewer (Audit Round 2 Final Verification)  
+**Audit Date:** `2026-11-18`  
+**Target Repository / Branch:** `D:\General_ant\embedded-c-master-learning-hub` (`feature/complete-remediation`)  
+**Primary Ground-Truth Authorities Used:**
+- ARM Cortex-M4 Software Developers Errata Notice (**Erratum 838869**, Category B / Rare, Cortex-M4 r0p1 `__CM4_REV = 0x0001U`) & **ST ES0430 §2.1.3**
+- **ARM AN321 (`DAI0321A`) §4.9** (*Disabling interrupts at peripherals*)
+- Vendored CMSIS headers (`stm32g474xx.h`, `core_cm4.h`, `cmsis_gcc.h`) & pinned `FreeRTOS-Kernel V11.1.0` (`portable/GCC/ARM_CM4F/portmacro.h`)
+- Empirical verification: live `python scripts/validate_repo.py --skip-builds` & `python scripts/validate_repo.py`, full-repository Python regex audits across all `154` non-`.git`/non-`FreeRTOS-Kernel`/non-`AUDIT` `.md`/`.h`/`.c` files (without distance truncation), live `arm-none-eabi-gcc 14.3.1 -O2 -S` Thumb-2 disassembly of `lab-05` Approach A `EXTI15_10_IRQHandler`, and independent recursive walk + `git` inspection of `D:\General_ant\embedded-c-master-learning-hub-backup`.
+
+---
+
+## IV.1 Executive Verdict
+
+**AUDIT ROUND 2 INDEPENDENT RED-TEAM VERDICT: `CONDITIONAL HOLD` — `0 CRITICAL`, `0 HIGH`, `2 MEDIUM`, `3 LOW`.**
+
+Audit Round 2 delivered major, independently verified improvements across the repository: `0 CRITICAL` and `0 HIGH` defects remain; `10-interrupts/README.md` §3.2 & §3.6, `04-arm-cortex-m/README.md`, `exti-syscfg-register-map.md`, `exti_g4.h`/`.c`, `tim_g4.h`, and `gpio_g4.h` achieve primary-source ARM/ST precision; repo-wide scans confirm **`0` defective `"zero-latency"` ISR claims** and **`0` overstated `"atomic toggle"` claims**; `scripts/validate_repo.py` v4.2.0 passes both `--skip-builds` (`23 PASS / 1 WARN / 11 UNVERIFIED / 0 ERROR`) and full mode (`32 PASS / 1 WARN / 2 UNVERIFIED / 0 ERROR`, `594/594` host tests, `0` MathJax violations across `133` `.md` files) with honest `UNVERIFIED` tagging for skipped stages and absent `mmdc`; and the local baseline backup remains **100% untouched** (`565` files, `5,734,859` bytes, `HEAD = 585dc4fa`).
+
+However, independent adversarial inspection and `-O2` Thumb-2 disassembly uncovered **2 genuine `MEDIUM` technical defects** (plus **3 `LOW` hygiene/consistency items**) that escaped Round 2's automated scans and should be closed before final merge sign-off:
+
+| Severity | Count | Finding IDs & Summary |
+|---|---:|---|
+| **CRITICAL** | **0** | None. |
+| **HIGH** | **0** | None. |
+| **MEDIUM** | **2** | **`[R2-RT-MED-01]`** Mid-ISR `__DSB();` placement in `lab-05` Approaches A & B (and `lab-06`) leaves trailing buffered `STR` instructions (`GPIOA->BSRR`, `g_button_irq_count++` / `g_tim2_ticks++`) immediately preceding `BX LR` (empirically proven via `-O2` Thumb-2 disassembly, contradicting `10-interrupts/README.md` §3.6 L107 and `lab-05` L73/L362). **`[R2-RT-MED-02]`** Residual overstated `strictly mandatory` + `__DSB()` wording at `lab-05/README.md` L60 (missed by Round 2's 120-char windowed grep, contradicting the `"0 matches"` claim in `ROUND_2_FINDINGS.md:29` / `ROUND_2_REMEDIATION_REPORT.md:49`) plus subtle Erratum 838869 / double-trigger symptom conflation in `lab-05/README.md` L353. |
+| **LOW** | **3** | **`[R2-RT-LOW-01]`** `scripts/validate_repo.py` `REQUIRED_AUDIT_FILES` (L130–160) still checks `29` files and does not yet include the 3 new `AUDIT/ROUND_2_*.md` reports. **`[R2-RT-LOW-02]`** Stale pre-consolidation counts in `AUDIT/VALIDATOR_QUALITY_REPORT.md` L72/L76 (`142` files / `1,137` links / `130` `.md` files vs actual live `145` files / `1,192` links / `133` `.md` files). **`[R2-RT-LOW-03]`** Directory-prefix vs logical-stage-number labeling drift in newly added Section 1 `Prerequisites` bullets across several labs (e.g., `Stage 10` for `10-interrupts/` which is `# Stage 08`, `Stage 08` for `08-gpio/` which is `# Stage 07`, `Stage 17` for `17-advanced-firmware-engineering/` which is `# Stage 16`), plus `lab-15` L215–216 placing `__DSB()` before `portYIELD_FROM_ISR()` unlike `16-rtos/README.md` L197–198. |
+
+---
+
+## IV.2 Independent Verification Matrix (Checklist Items 1–6)
+
+| # | Independent Check Area | Artifacts Inspected / Commands Executed | Independent Measured Evidence | Verdict |
+|---:|---|---|---|---|
+| **01** | **ARM Erratum 838869 & `__DSB()` Precision (Theory & Drivers)** | `10-interrupts/README.md` §3.6/§8.2, `04-arm-cortex-m/README.md` §3.8/§7/§10, `06-stm32-fundamentals/README.md` L145, `02-c-fundamentals/advanced-c-ub-memory-model.md` L286, `exti-syscfg-register-map.md`, `exti_g4.h`/`.c`, `tim_g4.h`, `official-st-documentation.md` L49, `embedded-systems-glossary.md` L27 | Exact ARM title (*"Store immediate overlapping exception return operation might vector to incorrect interrupt"*), Category B / Rare, 6 trigger conditions, wrong-vectoring vs AN321 §4.9 APB bridge separation, direct `rc_w1`/`rc_w0` writes, and trailing `__DSB()` in `10-interrupts` L308, `exti-syscfg-register-map.md` L108, and `exti_g4.c` L155 all verified accurate against ARM Errata Notice & ST ES0430 §2.1.3. | **PASS** |
+| **02** | **ARM Erratum 838869 & `__DSB()` Precision (Labs `05` & `06`)** | `lab-05/README.md` L60, L71–73, L92–112, L176–190, L250–255, L353, L362; `lab-06/README.md` L133–152; empirical `arm-none-eabi-gcc 14.3.1 -O2 -S` disassembly | **2 MEDIUM defects caught:** (1) `-O2` disassembly of `lab-05` Approach A proves `EXTI15_10_IRQHandler` is a leaf ISR ending in `str r3, [r2]` followed immediately by `bx lr` because `__DSB()` sits mid-ISR at L100 (same in Approach B L183 and `lab-06` L140); (2) `lab-05` L60 retains `"strictly mandatory"` for `__DSB()`, and L353 lists Erratum 838869 under the `"Occasional double-trigger"` symptom cell. | **FAIL (`2 MED`)** |
+| **03** | **Concurrency & Atomic Toggle Terminology (Repo-Wide Scan)** | Independent Python scan across all `154` non-`.git`/non-`FreeRTOS-Kernel`/non-`AUDIT` `.md`/`.h`/`.c` files; manual audit of `10-interrupts/README.md` §3.2/§8.1 and `lab-05/README.md` §6 L311–315 | `zero[- ]?latency`: `1` raw hit (`10-interrupts/README.md:60` explicit anti-pattern warning -> **`0` defective claims**). `atomic`+`toggle`: `21` raw hits, all `21/21` verified accurate nuance explanations (**`0` `led_toggle_atomic` symbols, `0` defective claims**). `10-interrupts` §8.1 uses `__set_BASEPRI_MAX()` + compiler barrier. `mandatory`+`DSB` full-line scan found `1` residual hit (`lab-05/README.md:60`, `[R2-RT-MED-02]`). | **PARTIAL (`1 MED` on `DSB`)** |
+| **04** | **Lab 05 3-Way Parity & Environment Labeling** | `18-practical-laboratory/lab-05-exti-pushbutton-interrupt/README.md` §6.1, §6.2, §6.3, §12 | All 3 approaches independently init `GPIOA`/`PA5` (explicit initial LOW), `GPIOC`/`PC13` (input, no pull), `SYSCFG`/`EXTI13` rising-edge (falling off), stale `PR1` clear + readback, `NVIC` 4-preempt/0-subprio at prio `3`, `EXTI15_10_IRQHandler`, `(void)EXTI->PR1;`, `__DSB();`, single-writer `LD2` toggle, and `__WFI()`, with explicit standalone CMSIS vs CubeG4-required / `Statically Reviewed` tags. Only parity asymmetry is mid-ISR `__DSB()` in A/B vs exit-tail `__DSB()` in C (`[R2-RT-MED-01]`). | **PARTIAL (`1 MED` parity)** |
+| **05** | **Validator `scripts/validate_repo.py` v4.2.0 Live Execution & Code Review** | Executed `python scripts/validate_repo.py --skip-builds` & `python scripts/validate_repo.py`; audited L1–180, L1450–2080, L2150–2744 | `--skip-builds`: **`23 INFO/PASS \| 1 WARNING \| 11 UNVERIFIED \| 0 ERROR`** (`exit 0`) — all 9 skipped stages emit `UNVERIFIED` (never `PASS`), `mermaid_render` emits `UNVERIFIED` (`mmdc` absent). Full run: **`32 INFO/PASS \| 1 WARNING \| 2 UNVERIFIED \| 0 ERROR`** (`exit 0`) — `20/20` labs pass `labs_prerequisites`, `0` MathJax violations across `133` `.md` files (`1,192` links, `12` `#anchors`), `16/16` register snippets, starter `debug`+`release`, ELF `.isr_vector` (`0x08000000`, `472 B`, `512 B` align), FreeRTOS V11.1.0, `3/3` Capstones, and **`594/594`** host assertions PASS. Zero short-circuiting verified in code. (`REQUIRED_AUDIT_FILES` omits 3 Round 2 reports -> `[R2-RT-LOW-01]`.) | **PASS** *(1 LOW)* |
+| **06** | **Round 2 Reports, Clock Profiles & Local Backup Integrity** | `AUDIT/ROUND_2_FINDINGS.md`, `AUDIT/ROUND_2_REMEDIATION_REPORT.md`, `AUDIT/ROUND_2_VALIDATION_RESULTS.md`, `AUDIT/MASTER_REMEDIATION_TRACKER.md`, `AUDIT/VALIDATOR_QUALITY_REPORT.md`; recursive walk + `git` check of `D:\General_ant\embedded-c-master-learning-hub-backup` | All 4 reports exist with `0` broken links, `0` fabricated physical-hardware claims, and both `160 MHz` and `170 MHz` clock profiles verified preserved untouched (`07-rcc`: 18/36, `lab-03`: 17/36, `lab-05`: 6/6, `clock_g4.h`: 7/12). Local backup verified **100% untouched**: **`565` files**, **`5,734,859` bytes**, `HEAD = 585dc4fa081cf7f27e5e437254e814f13f4b46cd`, clean `git status`. Minor report count staleness in `VALIDATOR_QUALITY_REPORT.md` L72/L76 (`[R2-RT-LOW-02]`). | **PASS** *(1 LOW)* |
+
+---
+
+## IV.3 Detailed Remaining Findings & Concrete Remediation Actions
+
+### MEDIUM FINDINGS
+
+#### `[R2-RT-MED-01]` Mid-ISR `__DSB();` Placement Leaves Trailing Buffered `STR` Before `BX LR` in `lab-05` Approaches A & B (and `lab-06`) — Empirically Proven via `-O2` Disassembly
+- **Files & Lines:**
+  - `18-practical-laboratory/lab-05-exti-pushbutton-interrupt/README.md` L92–112 (Approach A) & L176–190 (Approach B)
+  - `18-practical-laboratory/lab-06-general-purpose-timer-periodic-interrupt/README.md` L133–152 (`TIM2_IRQHandler`)
+- **Empirical Red-Team Proof (`arm-none-eabi-gcc 14.3.1 -mcpu=cortex-m4 -mthumb -O2 -S` on `lab-05` Approach A):**
+  ```text
+  EXTI15_10_IRQHandler:
+      @ link register save eliminated.
+      ...
+      str r2, [r3, #20]       @ EXTI->PR1 = EXTI_PR1_PIF13
+      ldr r3, [r3, #20]       @ (void)EXTI->PR1
+      dsb 0xF                 @ __DSB() executes TOO EARLY (mid-ISR)!
+      ...
+      str r2, [r3, #24]       @ GPIOA->BSRR = BS5 / BR5
+      ldr r2, .L9+4
+      ldr r3, [r2]
+      adds r3, r3, #1
+      str r3, [r2]            @ Bufferable store-immediate to g_button_irq_count!
+  .L1:
+      bx  lr                  @ Exception return immediately after STR — NO trailing DSB!
+  ```
+- **Why This Matters:** `10-interrupts/README.md` §3.6 (L107) explicitly explains that even after `(void)EXTI->PR1;` flushes the APB2 flag clear, any trailing store-immediate (`GPIOA->BSRR` or `g_button_irq_count++`) executed *after* `__DSB();` can remain in the Cortex-M4 write buffer when the leaf ISR executes `BX LR` — re-exposing the handler to ARM Cortex-M4 r0p1 Erratum 838869 (`ST ES0430 §2.1.3`). This also contradicts `lab-05`'s own prose (L73, L353, L362: *"before exit"*) and creates a structural mismatch against `lab-05` Approach C (L254), `10-interrupts/README.md` L308, `exti-syscfg-register-map.md` L108, and `exti_g4.c` L155 (all of which place `__DSB();` at the tail of the ISR).
+- **Concrete Remediation:** Keep the flag clear + dummy readback (`EXTI->PR1 = EXTI_PR1_PIF13; (void)EXTI->PR1;` / `LL_EXTI_ClearFlag_0_31(...); (void)EXTI->PR1;` / `TIM2->SR = ~TIM_SR_UIF; (void)TIM2->SR;`) early in the ISR for ARM AN321 §4.9 APB bridge commit, and move `__DSB();` to the **tail of the ISR** immediately before `}` (`BX LR`) in `lab-05` Approach A, `lab-05` Approach B, and `lab-06`.
+
+#### `[R2-RT-MED-02]` Residual Overstated `"strictly mandatory"` + `__DSB()` Claim & Erratum 838869 Double-Trigger Symptom Conflation in `lab-05/README.md`
+- **File & Lines:** `18-practical-laboratory/lab-05-exti-pushbutton-interrupt/README.md` L60 & L353 (and grep count claims in `AUDIT/ROUND_2_FINDINGS.md` L29 and `AUDIT/ROUND_2_REMEDIATION_REPORT.md` L49)
+- **Verified Defects:**
+  1. L60 states: *"makes the authoritative **dummy readback + `__DSB()`** sequence (`EXTI->PR1 = EXTI_PR1_PIF13; (void)EXTI->PR1; __DSB();` — satisfying both **ARM AN321 §4.9** APB2 bridge synchronization and **ARM Erratum 838869 / ST ES0430 §2.1.3** store-immediate/exception-return protection) **strictly mandatory**:"* — this escaped Round 2's grep because `mandatory.{0,120}DSB` / `DSB.{0,120}mandatory` capped window distance at 120 characters while the line had ~220 characters between `__DSB()` and `strictly mandatory`.
+  2. L353 (`§9` Troubleshooting) lists Symptom `Occasional double-trigger right after clearing PR1` with Root Cause `Posted APB2 write did not commit at EXTI slave before ISR exit (ARM AN321 §4.9), or store overlapped BX LR (ARM Erratum 838869 / ES0430 §2.1.3)` — placing Erratum 838869 (whose failure mode is **wrong-interrupt vectoring**) under a `"double-trigger"` symptom cell.
+- **Concrete Remediation:** Replace `"strictly mandatory"` at `lab-05/README.md` L60 with `"recommended production practice"`, update L353 Symptom to `"Occasional double-trigger after clearing PR1 or rare wrong-vectoring (Erratum 838869)"` (matching `lab-06` L228), and re-verify full-line `mandatory`+`DSB` grep returns `0` matches.
+
+---
+
+### LOW FINDINGS
+
+- **`[R2-RT-LOW-01]` `scripts/validate_repo.py` `REQUIRED_AUDIT_FILES` (L130–160) Omits the 3 New Round 2 Reports:** Add `AUDIT/ROUND_2_FINDINGS.md`, `AUDIT/ROUND_2_REMEDIATION_REPORT.md`, and `AUDIT/ROUND_2_VALIDATION_RESULTS.md` (`29 -> 32` mandatory audit files) so the validator structurally protects the Round 2 audit suite against accidental deletion.
+- **`[R2-RT-LOW-02]` Stale Pre-Consolidation File/Link Counts in `AUDIT/VALIDATOR_QUALITY_REPORT.md` (L72, L76):** Refresh L72 (`142` -> `145` Markdown/Mermaid files) and L76 (`1,137` links across `130` `.md` files -> `1,192` links across `133` `.md` files) to match the live v4.2.0 output captured in `AUDIT/ROUND_2_VALIDATION_RESULTS.md` after the 3 Round 2 reports were added.
+- **`[R2-RT-LOW-03]` Directory-Prefix vs Logical-Stage-Number Labeling Drift in Lab `Prerequisites` Bullets (`lab-01..20/README.md` §1) & `lab-15` `__DSB()` Ordering:** All `20/20` lab `Prerequisites` links resolve cleanly (`0` broken), but several link labels cite the directory prefix rather than the logical H1 stage number (e.g., `Stage 08` for `08-gpio/` [`# Stage 07`], `Stage 10` for `10-interrupts/` [`# Stage 08`], `Stage 16` for `16-rtos/` [`# Stage 15`], `Stage 17` for `17-advanced-firmware-engineering/` [`# Stage 16`]). Also align `lab-15` L215–216 to place `__DSB();` *after* `portYIELD_FROM_ISR()` for visual consistency with `16-rtos/README.md` L197–198.
+
+---
+
+## IV.4 Section 10 Final Acceptance Criteria Pass/Fail Table (All 10 Criteria)
+
+| # | Section 10 Final Acceptance Criterion | Independent Verdict | Exact Evidence & Remaining Action (If Any) |
+|---:|---|---|---|
+| **1** | **ARM Erratum 838869 & `__DSB()` Precision:** Exact title/conditions vs ARM Errata Notice & ST ES0430 §2.1.3; zero duplicate-EXTI conflation; clean separation from ARM AN321 §4.9 `(void)EXTI->PR1;`; direct `rc_w1` preserved | **PARTIAL** | Theory (`10-interrupts` §3.6, `04-arm-cortex-m`, `06-stm32-fundamentals`), register maps, `exti_g4.h`/`.c`, and `tim_g4.h` **PASS**; blocked from full `PASS` by mid-ISR `__DSB()` in `lab-05` A/B & `lab-06` (`[R2-RT-MED-01]`) and `lab-05` L60/L353 (`[R2-RT-MED-02]`). |
+| **2** | **Concurrency & `BASEPRI` Precision:** Zero defective `"zero-latency"` ISR claims repo-wide; accurate `BASEPRI`/`PRIMASK`/`FAULTMASK`/PRIGROUP/FreeRTOS guidance (`__set_BASEPRI_MAX()`) | **PASS** | Independent scan of `154` non-AUDIT files: **`0` defective `"zero-latency"` claims** (sole hit is anti-pattern warning at `10-interrupts/README.md:60`); `10-interrupts` §3.2 & §8.1 verified exact. |
+| **3** | **Atomic Toggle Precision:** Zero overstated `"atomic toggle"` claims repo-wide; clear separation of cross-pin atomic `BSRR` set/reset vs non-atomic same-pin `ODR`->`BSRR` toggle & single-writer ownership | **PASS** | Independent scan of `154` non-AUDIT files: `21/21` hits are explicit nuance clarifications, **`0` `led_toggle_atomic` symbols**, **`0` defective claims**; `lab-05` §6 L311–315, `08-gpio` §3.4, and `gpio_g4.h` L157–163 verified exact. |
+| **4** | **Lab 05 3-Way Parity & Environment Labeling:** Approaches A (CMSIS), B (LL), and C (HAL) independently complete (`PA5` initial LOW, `PC13`, `SYSCFG`/`EXTI13`, `NVIC`, ISR, readback + `__DSB()`, toggle) with honest standalone vs CubeG4 labeling | **PARTIAL** | Functional init, `PA5` initial LOW, `PC13`, `SYSCFG`/`EXTI13`, `NVIC`, `LD2` toggle, and honest CubeG4-unavailable labeling **PASS**; minor ISR barrier placement asymmetry between Approaches A/B (mid-ISR `__DSB()`) and Approach C (exit-tail `__DSB()`) (`[R2-RT-MED-01]`). |
+| **5** | **Practical Labs Prerequisites (`20/20`):** Explicit `Prerequisites` section/field with valid relative links across all 20 practical laboratories | **PASS** | `20/20` labs verified by both live `validate_repo.py` v4.2.0 (`[labs_prerequisites] PASS`) and independent script (`0` broken links; minor directory-vs-stage-label polish noted in `[R2-RT-LOW-03]`). |
+| **6** | **Validator v4.2.0 Integrity & Zero False `PASS`:** `--skip-builds` emits `UNVERIFIED` (never `PASS`); `mermaid_render` emits `UNVERIFIED` when `mmdc` absent; zero short-circuiting across 9 build/test stages | **PASS** | Independently executed `--skip-builds` (`11 UNVERIFIED`, `0 ERROR`) and full run (`2 UNVERIFIED`, `0 ERROR`); verified code paths in `scripts/validate_repo.py` L2027–2080 & L2459–2678. |
+| **7** | **GitHub MathJax, Links & Register Ground Truth:** `0` MathJax violations across all `.md` files, `0` broken links/`#anchors`, `16/16` RM0440/PM0214 citations & `0` CMSIS register mismatches | **PASS** | Live v4.2.0 confirmed `0` MathJax violations across `133` `.md` files, `1,192/1,192` inline links, `12/12` `#anchors`, `16/16` register citations, `87` bases, `344` offsets, `114` bit positions (`0` mismatches). |
+| **8** | **Firmware Cross-Builds, ELF Layout & Host Unit Tests:** All ARM Cortex-M4F targets + `594/594` host unit tests pass cleanly (`0 ERROR`, exit `0`) | **PASS** | Live v4.2.0 confirmed `16/16` register C snippets, starter template (`debug` + `release`), `.isr_vector` (`0x08000000`, `472 B`, `512 B` align), FreeRTOS V11.1.0, `3/3` Capstones, and `594/594` host assertions (`0` failed, exit `0`). |
+| **9** | **Round 2 Audit Suite, Verification Honesty & Dual Clock Profiles:** All 4 reports present, valid links, zero fabricated physical hardware claims, both `160 MHz` and `170 MHz` profiles preserved | **PASS** | All 4 Round 2/tracker reports verified present with valid links, strict honesty boundaries (`Not Tested on Physical Hardware in Round 2`, CubeG4 `Statically Reviewed`, `mmdc` `UNVERIFIED`), and both `160 MHz` / `170 MHz` profiles preserved (`[R2-RT-LOW-02]` count sync recommended). |
+| **10** | **Local Baseline Backup Immutability:** `D:\General_ant\embedded-c-master-learning-hub-backup` completely unmodified (`565` files, `5,734,859` bytes) | **PASS** | Independent PowerShell recursive check + `git` inspection confirmed **`565` files**, **`5,734,859` bytes**, `HEAD = 585dc4fa081cf7f27e5e437254e814f13f4b46cd`, empty `git status --short`. |
+
+**Final Criteria Tally:** **`8 PASS / 2 PARTIAL / 0 FAIL`** (`0 CRITICAL`, `0 HIGH`, `2 MEDIUM`, `3 LOW`) → **`CONDITIONAL HOLD`** until `[R2-RT-MED-01]` and `[R2-RT-MED-02]` (3 small edits in `lab-05/README.md` and `lab-06/README.md`) are closed.
+
+---
+
+## IV.5 Minimal Closure Actions to Flip `CONDITIONAL HOLD` → `PASS`
+
+1. **`[R2-RT-MED-01]`** Move `__DSB();` from mid-ISR to the **end of the ISR** (immediately before `}`) in `18-practical-laboratory/lab-05-exti-pushbutton-interrupt/README.md` Approach A (L100 → after L110), Approach B (L183 → after L188), and `18-practical-laboratory/lab-06-general-purpose-timer-periodic-interrupt/README.md` (L140 → after L150), keeping the `rc_w1`/`rc_w0` flag clear + dummy readback early in the ISR.
+2. **`[R2-RT-MED-02]`** Replace `"strictly mandatory"` at `18-practical-laboratory/lab-05-exti-pushbutton-interrupt/README.md` L60 with `"recommended production practice"` and update L353 Symptom to separate `"Occasional double-trigger after clearing PR1"` (AN321 §4.9) from `"rare wrong-vectoring"` (ARM Erratum 838869 / ST ES0430 §2.1.3).
+3. **`[R2-RT-LOW-01..03]` *(Optional Polish)*:** Add the 3 `AUDIT/ROUND_2_*.md` files to `REQUIRED_AUDIT_FILES` in `scripts/validate_repo.py`, refresh `AUDIT/VALIDATOR_QUALITY_REPORT.md` L72/L76 counts (`145` files / `1,192` links / `133` `.md` files), align `lab-01..20` `Prerequisites` stage labels to logical H1 stage numbers, and place `__DSB();` after `portYIELD_FROM_ISR()` in `lab-15` L215–216.

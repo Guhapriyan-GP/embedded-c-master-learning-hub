@@ -1,34 +1,37 @@
 #!/usr/bin/env python3
 """
 Regression-Resistant Automated Validation Suite for the
-Embedded C & STM32G474RE Master Learning Hub (v4.1.0).
+Embedded C & STM32G474RE Master Learning Hub (v4.2.0).
 
-Validates all 10 mandatory Section 2.C verification pillars + Agent 12 v4.1.0 hardening:
+Validates all 10 mandatory Section 2.C verification pillars + Round-2 Section 4 hardening:
   1. Core repository structure, governance/AUDIT files (incl. Section 9 reports), and raw ASCII control bytes
   2. Real CMSIS header cross-checking (programmatic parsing of stm32g474xx.h &
      core_cm4.h base addresses, C typedef struct byte offsets, IRQn_Type, and
      _Pos/_Msk bitfields cross-verified directly against all 16 register maps —
-     including both bullet bit positions AND table-cell FIELD[hi:lo] / (bN) ranges)
+     including bullet bit positions, table-cell FIELD[hi:lo] / (bN) ranges,
+     official RM0440 / PM0214 / ARMv7-M citation checks, and explicit scope transparency)
   3. Evidence-based Source-of-Truth Concept Audit (AUDIT/concepts_sot.json):
      350 unique IDs, 27/27 domains, 0 cycles, 0 unknown prereqs, 0 inverted-level
-     edges, PLUS substantive file/field/hardware-status evidence for every COMPLETE concept
-  4. Practical Lab 11-section + Clock Profile + Standardized Verification Record
-     audit across all 20 labs in 18-practical-laboratory/lab-*/README.md
-  5. Full Markdown Link, Internal #anchor Fragment (GFM heading slugification),
-     Reference-Style Link, Image, Expanded GitHub MathJax Safety (_ / \\_ inside
-     \\text/\\mathrm/\\texttt/\\textbf/\\textit/\\mbox, bare \\_ in math, balanced {}
-     braces, closed $/$$ spans), and External URL audit
-  6. Real Mermaid (.mmd) syntax parser: valid header, balanced subgraph/end,
-     balanced quotes and delimiters, valid connectors/arrows, non-zero nodes &
-     edges, and zero HTML tags
+     edges, substantive file/field/hardware-status evidence for every COMPLETE concept,
+     never auto-promoting PARTIAL -> COMPLETE, plus transparent MANUAL REVIEW queue
+  4. Practical Lab 11-section + Prerequisites + Clock Profile + Standardized
+     Verification Record audit across all 20 labs in 18-practical-laboratory/lab-*/README.md
+  5. Local Markdown Link, Internal #anchor Fragment (GFM heading slugification),
+     Reference-Style Link, Image, and Expanded GitHub MathJax Safety audit —
+     cleanly separated from live External URL probing (which tracks 2xx, 3xx redirects
+     to final URL, 403/429 bot-blocks, 404/410 broken links, and offline resilience)
+  6. Mermaid (.mmd) Syntax vs Render separation: full Python structural syntax parser
+     (mermaid_syntax) PLUS runtime probe for 'mmdc' (@mermaid-js/mermaid-cli) rendering
+     (mermaid_render -> Successfully rendered or explicit UNVERIFIED when absent)
   7. Curriculum 13-section + authoritative primary reference + Prev/Next navigation
      audit across all 17 stages (01b + 02-17), plus 12 drivers, FreeRTOS V11.1.0,
-     3 Capstones, and Video CSV integrity
-  8. Firmware builds (strictly distinguishing missing tools -> UNVERIFIED vs
-     build failures -> ERROR), ELF .isr_vector verification (472 B @ 512 B align),
-     and Register-Map C Snippet CMSIS syntax compilation (-fsyntax-only -Wall -Wextra -Werror)
-  9. Host C unit tests (make -C tests clean test -> 0 failed, >= 500 assertions,
-     cleaned up afterward with make -C tests clean)
+     3 Capstones, and strict Video CSV schema/ID/URL integrity
+  8. Non-short-circuiting Firmware & C-Snippet Builds + ELF .isr_vector verification
+     using the exact 9-state build/test reporting taxonomy (TOOLCHAIN_UNAVAILABLE,
+     BUILD_SKIPPED, BUILD_FAILED, BUILD_PASSED, ELF_INSPECTION_UNAVAILABLE,
+     ELF_INSPECTION_PASSED, HOST_TESTS_SKIPPED, HOST_TESTS_FAILED, HOST_TESTS_PASSED)
+  9. Independent Host C unit tests (make -C tests clean test -> 0 failed, >= 500
+     assertions, always cleaned up afterward with make -C tests clean)
  10. Structured Severity Taxonomy (INFO/PASS, WARNING, UNVERIFIED, ERROR) with
      optional JSON report export (--json-report <path>)
 
@@ -57,6 +60,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+VALIDATOR_VERSION = "4.2.0"
 DEFAULT_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 EXCLUDED_DIR_NAMES = {
@@ -152,6 +156,9 @@ REQUIRED_AUDIT_FILES = [
     "AUDIT/LAB_VERIFICATION_MATRIX.md",
     "AUDIT/HARDWARE_VERIFICATION_MATRIX.md",
     "AUDIT/EDUCATIONAL_QUALITY_REPORT.md",
+    "AUDIT/ROUND_2_FINDINGS.md",
+    "AUDIT/ROUND_2_REMEDIATION_REPORT.md",
+    "AUDIT/ROUND_2_VALIDATION_RESULTS.md",
     "AUDIT/FINAL_REMEDIATION_REPORT.md",
 ]
 
@@ -335,7 +342,7 @@ class ValidationReport:
 
     def to_dict(self, repo_root: Path) -> dict[str, Any]:
         return {
-            "validator_version": "4.1.0",
+            "validator_version": VALIDATOR_VERSION,
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "repo_root": str(repo_root),
             "python_version": platform.python_version(),
@@ -616,10 +623,15 @@ def check_cmsis_register_cross_check(repo_root: Path, rep: ValidationReport) -> 
     checked_offsets = 0
     checked_bits = 0
     mismatches: list[str] = []
+    missing_citations: list[str] = []
+    official_ref_re = re.compile(r"\b(?:RM0440|PM0214|ARMv7-M)\b")
 
     for md in reg_files:
         txt = md.read_text(encoding="utf-8", errors="replace")
         lines = txt.splitlines()
+
+        if not official_ref_re.search(txt):
+            missing_citations.append(f"{md.name}: missing official reference citation (RM0440 or PM0214/ARMv7-M)")
 
         # Pass A: Cross-verify peripheral base address declarations
         for lineno, ln in enumerate(lines, 1):
@@ -924,18 +936,32 @@ def check_cmsis_register_cross_check(repo_root: Path, rep: ValidationReport) -> 
                             )
                         break
 
+    cited_files = len(reg_files) - len(missing_citations)
+    scope_note = (
+        "scope limited to parsed table entries, bullet bit positions & CMSIS C snippets, "
+        "not every RM0440 reset value or unparsed prose field"
+    )
     rep.metrics["cmsis_cross_check"] = {
         "register_map_files": len(reg_files),
+        "cited_official_reference_files": cited_files,
+        "missing_citations": len(missing_citations),
         "verified_bases": checked_bases,
         "verified_offsets": checked_offsets,
         "verified_bit_positions": checked_bits,
         "mismatches": len(mismatches),
+        "scope_boundary": scope_note,
     }
+    if missing_citations:
+        rep.err(
+            "cmsis_registers",
+            f"Official reference citation check FAILED: {len(missing_citations)}/{len(reg_files)} register map(s) missing RM0440 or PM0214/ARMv7-M citation",
+            missing_citations,
+        )
     if mismatches:
         rep.err(
             "cmsis_registers",
             f"CMSIS ground-truth cross-check FAILED with {len(mismatches)} mismatch(es) "
-            f"(checked {checked_bases} bases, {checked_offsets} offsets, {checked_bits} bit positions)",
+            f"(verified {checked_bases} bases, {checked_offsets} struct offsets, {checked_bits} bit positions across {len(reg_files)} maps)",
             mismatches,
         )
     elif checked_bases < 50 or checked_offsets < 250:
@@ -946,9 +972,9 @@ def check_cmsis_register_cross_check(repo_root: Path, rep: ValidationReport) -> 
     else:
         rep.info(
             "cmsis_registers",
-            f"CMSIS ground-truth cross-check passed across {len(reg_files)} register maps: "
-            f"{checked_bases} base addresses, {checked_offsets} struct register offsets, "
-            f"and {checked_bits} bit positions verified against stm32g474xx.h & core_cm4.h (0 mismatches).",
+            f"CMSIS ground-truth cross-check passed ({cited_files}/{len(reg_files)} maps cite RM0440 or PM0214/ARMv7-M): "
+            f"verified {checked_bases} bases, {checked_offsets} struct offsets, {checked_bits} bit positions "
+            f"across {len(reg_files)} maps — {scope_note} (0 mismatches).",
         )
 
 
@@ -1095,11 +1121,23 @@ def check_sot_concepts(repo_root: Path, rep: ValidationReport) -> None:
         )
 
     # Evidence-based audit for EVERY concept marked current_status == "COMPLETE"
+    # Policy: NEVER auto-promote PARTIAL -> COMPLETE; queue ambiguous COMPLETE records for manual review.
     complete_concepts = [c for c in concepts if c.get("current_status") == "COMPLETE"]
+    partial_concepts = [c for c in concepts if c.get("current_status") == "PARTIAL"]
     field_errors: list[str] = []
     evidence_errors: list[str] = []
     hw_contradictions: list[str] = []
-    hw_pending_warnings: list[str] = []
+    hw_pending_ids: list[str] = []
+    no_explicit_impl_path_ids: list[str] = []
+    manual_review_queue: list[str] = []
+
+    explicit_impl_path_re = re.compile(
+        r"(?:18-practical-laboratory/|19-projects/|23-code-library/|tests/|Drivers/|"
+        r"\blab-\d+|\bLabs?\s+\d+|\bCapstone\s+\d+|\btest_\w+\.c|\b\w+_g4\.[ch]|"
+        r"\bring_buffer\.[ch]|\bfault_handler\.[ch]|\bstartup_stm32g474\w*\.c|"
+        r"\bstm32g474\w*\.ld|\bFreeRTOS)",
+        re.I,
+    )
 
     # Cache file text reads for speed
     file_cache: dict[str, str] = {}
@@ -1161,9 +1199,12 @@ def check_sot_concepts(repo_root: Path, rep: ValidationReport) -> None:
                             f"nor >= {needed} title keywords (matched {matched_kws} of {kws[:6]})"
                         )
 
-        # 3. Hardware status honesty check
+        # 3. Hardware status honesty & Manual-Review Queue (v4.2.0 — Section 4.B)
         hw = c.get("hardware_status", "")
-        impl_low = str(c.get("practical_implementation", "")).lower()
+        impl_raw = str(c.get("practical_implementation", ""))
+        impl_low = impl_raw.lower()
+        review_reasons: list[str] = []
+
         if hw in ("EXTERNAL_HARDWARE_PENDING", "NEEDS_BENCH_INSTRUMENT"):
             # Contradiction if implementation claims live physical board test without pending caveat
             has_pending_caveat = bool(re.search(r"pending|untested|not\s+tested|external.*required", impl_low))
@@ -1175,14 +1216,27 @@ def check_sot_concepts(repo_root: Path, rep: ValidationReport) -> None:
                     f"{cid}: hardware_status={hw} contradicts practical_implementation claiming live hardware test"
                 )
             else:
-                hw_pending_warnings.append(f"{cid}: COMPLETE with hardware_status={hw}")
+                hw_pending_ids.append(cid)
+                review_reasons.append(f"hardware_status={hw}")
+
+        if not explicit_impl_path_re.search(impl_raw):
+            no_explicit_impl_path_ids.append(cid)
+            review_reasons.append("practical_implementation lacks explicit lab/driver/test path")
+
+        if review_reasons:
+            manual_review_queue.append(f"{cid}: {'; '.join(review_reasons)}")
 
     rep.metrics["sot_complete_audit"] = {
         "complete_concepts": len(complete_concepts),
+        "partial_concepts": len(partial_concepts),
         "field_errors": len(field_errors),
         "evidence_errors": len(evidence_errors),
         "hw_contradictions": len(hw_contradictions),
-        "hw_pending_warnings": len(hw_pending_warnings),
+        "hw_pending_warnings": len(hw_pending_ids),
+        "lacks_explicit_impl_path": len(no_explicit_impl_path_ids),
+        "manual_review_queue_total": len(manual_review_queue),
+        "hw_pending_ids": hw_pending_ids,
+        "lacks_explicit_impl_path_ids": no_explicit_impl_path_ids,
     }
 
     if field_errors:
@@ -1206,19 +1260,23 @@ def check_sot_concepts(repo_root: Path, rep: ValidationReport) -> None:
     if not (field_errors or evidence_errors or hw_contradictions):
         rep.info(
             "sot_evidence",
-            f"All {len(complete_concepts)} COMPLETE concepts verified with substantive repository evidence and metadata fields.",
+            f"All {len(complete_concepts)} COMPLETE concepts verified with substantive repository evidence and metadata fields "
+            f"({len(partial_concepts)} PARTIAL concepts preserved untouched; never auto-promoted).",
         )
-    if hw_pending_warnings:
+    if manual_review_queue:
+        overlap = len(set(hw_pending_ids) & set(no_explicit_impl_path_ids))
         rep.warn(
-            "sot_evidence",
-            f"{len(hw_pending_warnings)} COMPLETE concept(s) have hardware_status in "
-            "EXTERNAL_HARDWARE_PENDING/NEEDS_BENCH_INSTRUMENT (code/docs complete, physical external bench pending)",
-            hw_pending_warnings,
+            "sot_manual_review",
+            f"WARNING (MANUAL REVIEW RECOMMENDED): {len(manual_review_queue)} COMPLETE concept(s) flagged for manual review "
+            f"({len(hw_pending_ids)} hardware_status in EXTERNAL_HARDWARE_PENDING/NEEDS_BENCH_INSTRUMENT, "
+            f"{len(no_explicit_impl_path_ids)} lacking an explicit lab/driver/test path in practical_implementation; "
+            f"{overlap} flagged for both).",
+            manual_review_queue,
         )
 
 
 # =============================================================================
-# 4. Practical Lab 11-Section + Clock Profile + Verification Record Audit
+# 4. Practical Lab 11-Section + Prerequisites + Clock Profile + Verification Record Audit
 # =============================================================================
 LAB_REQUIRED_SECTIONS: list[tuple[str, str]] = [
     ("Objective", r"^#{2,3}\s+.*Objective"),
@@ -1236,6 +1294,12 @@ LAB_REQUIRED_SECTIONS: list[tuple[str, str]] = [
     ("Standardized Verification Record", r"^#{2,3}\s+.*(?:Standardized\s+)?Verification\s+Record"),
 ]
 
+LAB_PREREQUISITES_RE = re.compile(
+    r"(?:^#{2,4}\s+.*Prerequisites|\*\*Prerequisites:?\*\*|\*\*Prerequisites:\s)",
+    re.M | re.I,
+)
+LAB_PREREQUISITES_STRICT = True
+
 
 def check_labs(repo_root: Path, rep: ValidationReport) -> None:
     labs_dir = repo_root / "18-practical-laboratory"
@@ -1248,6 +1312,7 @@ def check_labs(repo_root: Path, rep: ValidationReport) -> None:
         return
 
     lab_errors: list[str] = []
+    missing_prereq: list[str] = []
     for lab_dir in labs:
         readme = lab_dir / "README.md"
         if not readme.is_file():
@@ -1261,8 +1326,15 @@ def check_labs(repo_root: Path, rep: ValidationReport) -> None:
         ]
         if missing:
             lab_errors.append(f"{lab_dir.name}: missing {len(missing)} section(s): {', '.join(missing)}")
+        if not LAB_PREREQUISITES_RE.search(txt):
+            missing_prereq.append(f"{lab_dir.name}: missing Prerequisites heading or bold field")
 
-    rep.metrics["labs"] = {"total": len(labs), "failing": len(lab_errors)}
+    rep.metrics["labs"] = {
+        "total": len(labs),
+        "failing_core_sections": len(lab_errors),
+        "missing_prerequisites": len(missing_prereq),
+        "prerequisites_strict_error": LAB_PREREQUISITES_STRICT,
+    }
     if lab_errors:
         rep.err("labs", f"{len(lab_errors)}/{len(labs)} practical labs missing mandatory sections", lab_errors)
     else:
@@ -1270,6 +1342,25 @@ def check_labs(repo_root: Path, rep: ValidationReport) -> None:
             "labs",
             f"All {len(labs)}/20 practical labs verified with all 11 core sections + "
             "Clock Profile Declaration + Standardized Verification Record.",
+        )
+
+    if missing_prereq:
+        if LAB_PREREQUISITES_STRICT:
+            rep.err(
+                "labs_prerequisites",
+                f"{len(missing_prereq)}/{len(labs)} practical lab(s) missing explicit Prerequisites declaration",
+                missing_prereq,
+            )
+        else:
+            rep.warn(
+                "labs_prerequisites",
+                f"{len(missing_prereq)}/{len(labs)} practical lab(s) missing explicit Prerequisites declaration",
+                missing_prereq,
+            )
+    else:
+        rep.info(
+            "labs_prerequisites",
+            f"All {len(labs)}/20 practical labs include an explicit Prerequisites heading or bold field.",
         )
 
 
@@ -1449,24 +1540,53 @@ def extract_gfm_anchors(md_path: Path) -> set[str]:
     return anchors
 
 
+class _TrackingRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Records exact HTTP 3xx redirect hops while following redirects normally."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.redirects: list[tuple[int, str]] = []
+
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Any:
+        self.redirects.append((int(code), str(newurl)))
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def probe_single_url(url: str, timeout: float = 6.0) -> tuple[str, str, str]:
-    """Probe one external URL and classify: accessible | bot_blocked | broken | unverified."""
+    """
+    Probe one external URL and classify into exact v4.2.0 taxonomy:
+      - accessible     : HTTP 2xx with no redirect
+      - redirected     : HTTP 3xx -> final URL ending in 2xx
+      - bot_blocked    : HTTP 403 / 429
+      - broken         : definite HTTP 404 / 410 dead link
+      - network_failed : DNS error, connection refused, timeout, SSL/OSError, or 5xx/other
+    """
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; EmbeddedC-MasterHub-Validator/4.0; +https://github.com)",
+        "User-Agent": f"Mozilla/5.0 (compatible; EmbeddedC-MasterHub-Validator/{VALIDATOR_VERSION}; +https://github.com)",
         "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
     }
     for method in ("HEAD", "GET"):
+        redir_handler = _TrackingRedirectHandler()
+        opener = urllib.request.build_opener(redir_handler)
         req = urllib.request.Request(url, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                code = resp.getcode() or 200
-                if 200 <= code < 400:
+            with opener.open(req, timeout=timeout) as resp:
+                code = int(resp.getcode() or 200)
+                final_url = str(resp.geturl() or url)
+                if 200 <= code < 300:
+                    if redir_handler.redirects:
+                        first_code = redir_handler.redirects[0][0]
+                        return (url, "redirected", f"HTTP {first_code} -> {code} ({final_url})")
+                    if final_url != url:
+                        return (url, "redirected", f"HTTP 3xx -> {code} ({final_url})")
                     return (url, "accessible", f"HTTP {code}")
+                if 300 <= code < 400:
+                    return (url, "redirected", f"HTTP {code} -> {final_url}")
                 if code in (403, 429):
                     return (url, "bot_blocked", f"HTTP {code}")
                 if code in (404, 410):
                     return (url, "broken", f"HTTP {code}")
-                return (url, "unverified", f"HTTP {code}")
+                return (url, "network_failed", f"HTTP {code}")
         except urllib.error.HTTPError as e:
             if method == "HEAD" and e.code in (403, 405, 501):
                 continue
@@ -1474,22 +1594,27 @@ def probe_single_url(url: str, timeout: float = 6.0) -> tuple[str, str, str]:
                 return (url, "bot_blocked", f"HTTP {e.code}")
             if e.code in (404, 410):
                 return (url, "broken", f"HTTP {e.code}")
-            return (url, "unverified", f"HTTP {e.code}")
+            return (url, "network_failed", f"HTTP {e.code}")
         except urllib.error.URLError as e:
             reason = e.reason
             if isinstance(reason, socket.gaierror):
-                return (url, "broken", f"DNS error: {reason}")
-            return (url, "unverified", f"URLError: {reason}")
+                return (url, "network_failed", f"DNS error: {reason}")
+            return (url, "network_failed", f"URLError: {reason}")
         except (TimeoutError, socket.timeout, OSError) as e:
-            return (url, "unverified", f"Timeout/IO: {e}")
-    return (url, "unverified", "Exhausted retries")
+            return (url, "network_failed", f"Timeout/IO: {e}")
+    return (url, "network_failed", "Exhausted retries")
 
 
-def check_markdown_links_mathjax_urls(
-    repo_root: Path,
-    rep: ValidationReport,
-    check_external_urls: bool = False,
-) -> None:
+def check_markdown_links_and_mathjax(repo_root: Path, rep: ValidationReport) -> set[str]:
+    """
+    Local-only Markdown validation (Section 4.F):
+      - Inline relative links
+      - Internal #anchor GFM heading fragments
+      - Local image references
+      - Reference-style links & definitions
+      - Expanded GitHub MathJax safety
+    Returns the deduplicated set of external HTTP(S) URLs for cleanly separated probing.
+    """
     inline_link_re = re.compile(r"(!?)\[[^\]]*\]\(([^)]+)\)")
     ref_def_re = re.compile(r"^\s*\[([^\]]+)\]:\s*<?(\S+?)>?(?:\s|$)")
     # Negative lookbehind (?<!\w) prevents matching C 2D arrays like buf[32][2]
@@ -1552,7 +1677,7 @@ def check_markdown_links_mathjax_urls(
                     elif frag:
                         verify_anchor(md, rel, lineno, raw_target, res, frag)
 
-        # 2. Scan inline links, images, #anchors, reference-style links, and external URLs
+        # 2. Scan inline links, images, #anchors, reference-style links, and collect external URLs
         for lineno, line in non_fenced:
             if ref_def_re.match(line):
                 continue
@@ -1660,45 +1785,110 @@ def check_markdown_links_mathjax_urls(
     else:
         rep.info("mathjax", f"Expanded GitHub MathJax safety passed across all {len(md_files)} .md files (0 violations).")
 
-    # External URL reporting
+    return ext_urls
+
+
+def check_external_urls_live(
+    ext_urls: set[str],
+    rep: ValidationReport,
+    check_external_urls: bool = False,
+) -> None:
+    """
+    External URL probe cleanly separated from local Markdown checks (Section 4.E):
+      - Tracks accessible (2xx), redirected (3xx -> final URL), bot_blocked (403/429),
+        broken (definite HTTP 404/410), and network/DNS/timeout failures.
+      - Offline Resilience Rule: if network connectivity is unavailable (0 HTTP responses),
+        emit UNVERIFIED (never ERROR); only emit ERROR on definite HTTP 404/410 when online.
+    """
     if not check_external_urls:
+        rep.metrics["external_url_probe"] = {"mode": "skipped", "unique_urls": len(ext_urls)}
         rep.unverified_item(
             "external_urls",
             f"{len(ext_urls)} unique external URLs UNVERIFIED (pass --check-external-urls to probe live).",
         )
-    else:
-        sorted_urls = sorted(ext_urls)
-        results: dict[str, list[str]] = {
-            "accessible": [],
-            "bot_blocked": [],
-            "broken": [],
-            "unverified": [],
-        }
-        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
-            futs = [pool.submit(probe_single_url, u) for u in sorted_urls]
-            for fut in concurrent.futures.as_completed(futs):
-                u, cat, detail = fut.result()
-                results[cat].append(f"{u} ({detail})")
+        return
 
-        rep.metrics["external_url_probe"] = {k: len(v) for k, v in results.items()}
-        rep.info(
+    sorted_urls = sorted(ext_urls)
+    results: dict[str, list[str]] = {
+        "accessible": [],
+        "redirected": [],
+        "bot_blocked": [],
+        "broken": [],
+        "network_failed": [],
+    }
+    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
+        futs = [pool.submit(probe_single_url, u) for u in sorted_urls]
+        for fut in concurrent.futures.as_completed(futs):
+            u, cat, detail = fut.result()
+            results[cat].append(f"{u} ({detail})")
+
+    http_responses = (
+        len(results["accessible"])
+        + len(results["redirected"])
+        + len(results["bot_blocked"])
+        + len(results["broken"])
+    )
+    offline = (http_responses == 0) and (len(results["network_failed"]) > 0)
+
+    rep.metrics["external_url_probe"] = {
+        "mode": "offline_detected" if offline else "live",
+        "unique_urls": len(sorted_urls),
+        "accessible_2xx": len(results["accessible"]),
+        "redirected_3xx": len(results["redirected"]),
+        "bot_blocked_403_429": len(results["bot_blocked"]),
+        "broken_404_410": len(results["broken"]),
+        "network_dns_timeout_failed": len(results["network_failed"]),
+        "redirected_details": sorted(results["redirected"]),
+    }
+
+    if offline:
+        rep.unverified_item(
             "external_urls",
-            f"Live external URL probe ({len(sorted_urls)} URLs): "
-            f"{len(results['accessible'])} accessible, "
-            f"{len(results['bot_blocked'])} bot-blocked (403/429), "
-            f"{len(results['broken'])} broken (404/DNS), "
-            f"{len(results['unverified'])} timeout/unverified.",
+            f"Offline resilience triggered: network connectivity unavailable "
+            f"(0/{len(sorted_urls)} HTTP responses, {len(results['network_failed'])} DNS/connection/timeout failures) "
+            "— external URLs UNVERIFIED (not counted as ERROR).",
+            sorted(results["network_failed"]),
         )
-        if results["broken"]:
-            rep.err("external_urls", f"{len(results['broken'])} broken external URL(s) (404/DNS)", sorted(results["broken"]))
-        if results["bot_blocked"]:
-            rep.warn("external_urls", f"{len(results['bot_blocked'])} bot-blocked external URL(s) (403/429)", sorted(results["bot_blocked"]))
-        if results["unverified"]:
-            rep.unverified_item(
-                "external_urls",
-                f"{len(results['unverified'])} external URL(s) timed out / unverified",
-                sorted(results["unverified"]),
-            )
+        return
+
+    rep.info(
+        "external_urls",
+        f"Live external URL probe ({len(sorted_urls)} URLs): "
+        f"{len(results['accessible'])} accessible (2xx), "
+        f"{len(results['redirected'])} redirected (3xx -> final URL), "
+        f"{len(results['bot_blocked'])} bot-blocked (403/429), "
+        f"{len(results['broken'])} broken (404/410), "
+        f"{len(results['network_failed'])} network/DNS/timeout failures.",
+        sorted(results["redirected"]) if results["redirected"] else None,
+    )
+    if results["broken"]:
+        rep.err(
+            "external_urls",
+            f"{len(results['broken'])} broken external URL(s) (definite HTTP 404/410)",
+            sorted(results["broken"]),
+        )
+    if results["bot_blocked"]:
+        rep.warn(
+            "external_urls",
+            f"{len(results['bot_blocked'])} bot-blocked external URL(s) (HTTP 403/429)",
+            sorted(results["bot_blocked"]),
+        )
+    if results["network_failed"]:
+        rep.unverified_item(
+            "external_urls",
+            f"{len(results['network_failed'])} external URL(s) failed due to network/DNS/timeout (UNVERIFIED, not ERROR)",
+            sorted(results["network_failed"]),
+        )
+
+
+def check_markdown_links_mathjax_urls(
+    repo_root: Path,
+    rep: ValidationReport,
+    check_external_urls: bool = False,
+) -> None:
+    """Backward-compatible wrapper invoking local Markdown checks then separated external URL checks."""
+    ext_urls = check_markdown_links_and_mathjax(repo_root, rep)
+    check_external_urls_live(ext_urls, rep, check_external_urls=check_external_urls)
 
 
 # =============================================================================
@@ -1838,24 +2028,85 @@ def validate_single_mermaid(mmd_path: Path, repo_root: Path) -> list[str]:
 
 
 def check_mermaid_diagrams(repo_root: Path, rep: ValidationReport) -> None:
+    """
+    Mermaid Validation with Explicit Syntax vs Render Separation (Section 4.D):
+      - mermaid_syntax: full Python structural syntax validation (headers, balanced blocks/quotes/
+        delimiters, valid connectors, non-zero nodes/edges, 0 HTML tags).
+      - mermaid_render: actively probes shutil.which('mmdc') (@mermaid-js/mermaid-cli); renders
+        each .mmd to temp SVG if available, or explicitly reports UNVERIFIED when absent.
+    """
     mmd_files = iter_repo_files(repo_root, ".mmd")
     if not mmd_files:
-        rep.err("mermaid", "No .mmd Mermaid diagram files found.")
+        rep.err("mermaid_syntax", "No .mmd Mermaid diagram files found.")
         return
 
     all_issues: list[str] = []
     for mmd in mmd_files:
         all_issues.extend(validate_single_mermaid(mmd, repo_root))
 
-    rep.metrics["mermaid"] = {"files": len(mmd_files), "issues": len(all_issues)}
+    syntax_ok = len(all_issues) == 0
     if all_issues:
-        rep.err("mermaid", f"Mermaid syntax audit FAILED with {len(all_issues)} issue(s)", all_issues)
+        rep.err("mermaid_syntax", f"Mermaid static structural syntax validation FAILED with {len(all_issues)} issue(s)", all_issues)
     else:
         rep.info(
-            "mermaid",
-            f"All {len(mmd_files)} Mermaid (.mmd) diagrams passed full syntax audit "
-            "(valid headers, balanced subgraphs/quotes/delimiters, valid arrows, non-zero nodes/edges, 0 HTML tags).",
+            "mermaid_syntax",
+            f"All {len(mmd_files)} Mermaid (.mmd) diagrams passed static structural syntax validation.",
         )
+
+    mmdc_exe = shutil.which("mmdc")
+    render_status = "UNVERIFIED_TOOLING_UNAVAILABLE"
+    rendered_count = 0
+    render_failures: list[str] = []
+
+    if not mmdc_exe:
+        rep.unverified_item(
+            "mermaid_render",
+            "Mermaid visual rendering NOT TESTED — 'mmdc' (@mermaid-js/mermaid-cli) tooling unavailable on host.",
+        )
+    else:
+        with tempfile.TemporaryDirectory() as td:
+            for idx, mmd in enumerate(mmd_files, 1):
+                out_svg = Path(td) / f"diagram_{idx}_{mmd.stem}.svg"
+                rel = str(mmd.relative_to(repo_root))
+                try:
+                    proc = subprocess.run(
+                        [mmdc_exe, "-i", str(mmd), "-o", str(out_svg)],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    if proc.returncode != 0 or not out_svg.is_file() or out_svg.stat().st_size == 0:
+                        err_msg = (proc.stderr or proc.stdout).strip().splitlines()
+                        tail = err_msg[-1] if err_msg else f"exit {proc.returncode}"
+                        render_failures.append(f"{rel}: mmdc render failed ({tail})")
+                    else:
+                        rendered_count += 1
+                except (subprocess.TimeoutExpired, OSError) as exc:
+                    render_failures.append(f"{rel}: mmdc render error ({exc})")
+
+        if render_failures:
+            render_status = "RENDER_FAILED"
+            rep.err(
+                "mermaid_render",
+                f"Mermaid visual rendering via mmdc FAILED on {len(render_failures)}/{len(mmd_files)} diagram(s)",
+                render_failures,
+            )
+        else:
+            render_status = "RENDERED"
+            rep.info(
+                "mermaid_render",
+                f"Successfully rendered all {rendered_count}/{len(mmd_files)} Mermaid (.mmd) diagrams to SVG via mmdc.",
+            )
+
+    rep.metrics["mermaid"] = {
+        "files": len(mmd_files),
+        "syntax_issues": len(all_issues),
+        "syntax_validated": syntax_ok,
+        "mmdc_available": bool(mmdc_exe),
+        "render_status": render_status,
+        "rendered_count": rendered_count,
+        "render_failures": len(render_failures),
+    }
 
 
 # =============================================================================
@@ -1952,23 +2203,107 @@ def check_curriculum_and_artifacts(repo_root: Path, rep: ValidationReport) -> No
         rep.info("capstones", f"All {len(CAPSTONE_DIRS)}/3 Capstone firmware projects verified in 19-projects/.")
 
     csv_path = repo_root / "22-video-library" / "video-database.csv"
+    expected_video_cols = [
+        "index",
+        "title",
+        "instructor_channel",
+        "url",
+        "platform",
+        "duration",
+        "publication_date",
+        "curriculum_category",
+        "curriculum_subtopic",
+        "prerequisites",
+        "educational_value",
+        "missing_concepts",
+    ]
+    https_url_re = re.compile(r"^https://[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:/[^\s]*)?$")
     if not csv_path.is_file():
         rep.err("video_db", "22-video-library/video-database.csv missing.")
     else:
         with csv_path.open("r", encoding="utf-8") as f:
-            rows = list(csv.DictReader(f))
-        bad_urls = [r.get("index", "?") for r in rows if not r.get("url", "").startswith("https://")]
-        yt_ids = [m.group(1) for r in rows if (m := re.search(r"v=([A-Za-z0-9_-]{11})", r.get("url", "")))]
-        dupes = len(yt_ids) - len(set(yt_ids))
-        if len(rows) < 70 or bad_urls or dupes > 0:
-            rep.err("video_db", f"Video DB check failed: rows={len(rows)} (<70?), bad_urls={bad_urls}, dupes={dupes}")
+            reader = csv.DictReader(f)
+            actual_cols = list(reader.fieldnames or [])
+            rows = list(reader)
+
+        csv_errors: list[str] = []
+        if actual_cols != expected_video_cols:
+            missing_cols = [c for c in expected_video_cols if c not in actual_cols]
+            extra_cols = [c for c in actual_cols if c not in expected_video_cols]
+            csv_errors.append(
+                f"CSV schema column mismatch (missing={missing_cols}, extra={extra_cols}, actual={actual_cols})"
+            )
+        if len(rows) < 70:
+            csv_errors.append(f"Expected >= 70 video entries, found {len(rows)}")
+
+        seen_indices: set[str] = set()
+        seen_urls: set[str] = set()
+        seen_yt_ids: set[str] = set()
+        for row_num, r in enumerate(rows, 2):
+            idx_val = (r.get("index") or "").strip()
+            url_val = (r.get("url") or "").strip()
+            title_val = (r.get("title") or "").strip()
+            if not idx_val:
+                csv_errors.append(f"row {row_num}: missing 'index'")
+            elif idx_val in seen_indices:
+                csv_errors.append(f"row {row_num}: duplicate index '{idx_val}'")
+            else:
+                seen_indices.add(idx_val)
+
+            if not title_val:
+                csv_errors.append(f"row {row_num} (index={idx_val}): empty title")
+
+            if not https_url_re.match(url_val):
+                csv_errors.append(f"row {row_num} (index={idx_val}): invalid HTTPS URL '{url_val}'")
+            elif url_val in seen_urls:
+                csv_errors.append(f"row {row_num} (index={idx_val}): duplicate URL '{url_val}'")
+            else:
+                seen_urls.add(url_val)
+
+            yt_m = re.search(r"v=([A-Za-z0-9_-]{11})", url_val)
+            if yt_m:
+                yt_id = yt_m.group(1)
+                if yt_id in seen_yt_ids:
+                    csv_errors.append(f"row {row_num} (index={idx_val}): duplicate YouTube ID '{yt_id}'")
+                else:
+                    seen_yt_ids.add(yt_id)
+
+        rep.metrics["video_db"] = {
+            "rows": len(rows),
+            "columns_match": actual_cols == expected_video_cols,
+            "unique_indices": len(seen_indices),
+            "unique_urls": len(seen_urls),
+            "unique_youtube_ids": len(seen_yt_ids),
+            "errors": len(csv_errors),
+        }
+        if csv_errors:
+            rep.err("video_db", f"Video DB schema/URL audit FAILED ({len(csv_errors)} issue(s))", csv_errors)
         else:
-            rep.info("video_db", f"Video database CSV verified: {len(rows)} entries (>=70), valid HTTPS URLs, 0 duplicate YouTube IDs.")
+            rep.info(
+                "video_db",
+                f"Video database CSV schema verified: {len(rows)} entries (>=70), "
+                f"{len(expected_video_cols)}/12 exact columns, {len(seen_indices)} unique IDs, "
+                f"{len(seen_urls)} valid unique HTTPS URLs, 0 duplicate YouTube IDs.",
+            )
 
 
 # =============================================================================
-# 8 & 9. Firmware Builds & Host Unit Tests (Missing Tools -> UNVERIFIED!)
+# 8 & 9. Firmware Builds, ELF Inspection & Host Unit Tests
+#        (Exact 9-State Taxonomy & ZERO Short-Circuiting — Section 4.G)
 # =============================================================================
+BUILD_TEST_STATUS_TAXONOMY = frozenset({
+    "TOOLCHAIN_UNAVAILABLE",       # UNVERIFIED
+    "BUILD_SKIPPED",               # UNVERIFIED (never PASS!)
+    "BUILD_FAILED",                # ERROR
+    "BUILD_PASSED",                # INFO/PASS
+    "HOST_TESTS_SKIPPED",          # UNVERIFIED
+    "HOST_TESTS_FAILED",           # ERROR
+    "HOST_TESTS_PASSED",           # INFO/PASS
+    "ELF_INSPECTION_UNAVAILABLE",  # UNVERIFIED
+    "ELF_INSPECTION_PASSED",       # INFO/PASS
+})
+
+
 def find_arm_tool(name: str) -> str | None:
     found = shutil.which(name)
     if found:
@@ -1981,21 +2316,31 @@ def find_arm_tool(name: str) -> str | None:
     return None
 
 
-def check_register_map_c_snippets(repo_root: Path, rep: ValidationReport, gcc_arm: str | None) -> None:
-    """Compile standalone CMSIS C code blocks in 20-technical-diagrams/registers/*.md (v4.1.0 — Blind Spot M7)."""
+def check_register_map_c_snippets(
+    repo_root: Path,
+    rep: ValidationReport,
+    gcc_arm: str | None,
+    stage_states: dict[str, str] | None = None,
+) -> str:
+    """Compile standalone CMSIS C code blocks in 20-technical-diagrams/registers/*.md (v4.1.0 M7 + v4.2.0 9-state)."""
+    def _record(state: str) -> str:
+        if stage_states is not None:
+            stage_states["register_snippets"] = state
+        return state
+
     if not gcc_arm:
         rep.unverified_item(
             "register_snippets",
-            "Register-map C snippet compilation UNVERIFIED: missing required tool arm-none-eabi-gcc.",
+            "TOOLCHAIN_UNAVAILABLE: Register-map C snippet compilation unverified (missing required tool arm-none-eabi-gcc).",
         )
-        return
+        return _record("TOOLCHAIN_UNAVAILABLE")
 
     reg_dir = repo_root / "20-technical-diagrams" / "registers"
     inc_dev = repo_root / "23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include"
     inc_core = repo_root / "23-code-library/Drivers/CMSIS/Core/Include"
     if not reg_dir.is_dir() or not inc_dev.is_dir() or not inc_core.is_dir():
-        rep.err("register_snippets", "Register-map directory or CMSIS Include directories missing.")
-        return
+        rep.err("register_snippets", "BUILD_FAILED: Register-map directory or CMSIS Include directories missing.")
+        return _record("BUILD_FAILED")
 
     compiled = 0
     skipped = 0
@@ -2011,108 +2356,211 @@ def check_register_map_c_snippets(repo_root: Path, rep: ValidationReport, gcc_ar
                 compiled += 1
                 src = Path(td) / f"{md.stem}_{idx}.c"
                 src.write_text(code, encoding="utf-8")
-                proc = subprocess.run(
-                    [
-                        gcc_arm,
-                        "-mcpu=cortex-m4",
-                        "-mthumb",
-                        "-mfpu=fpv4-sp-d16",
-                        "-mfloat-abi=hard",
-                        "-std=c11",
-                        "-O2",
-                        "-Wall",
-                        "-Wextra",
-                        "-Werror",
-                        "-fsyntax-only",
-                        "-DSTM32G474xx",
-                        f"-I{inc_dev}",
-                        f"-I{inc_core}",
-                        str(src),
-                    ],
-                    capture_output=True,
-                    text=True,
-                )
-                if proc.returncode != 0:
-                    err_lines = (proc.stderr or proc.stdout).strip().splitlines()
-                    err_line = next((ln for ln in err_lines if "error:" in ln), err_lines[0] if err_lines else "compile error")
-                    # Strip temp directory prefix for clean, portable diagnostics
-                    err_line = re.sub(r"^.*?[\\/]([^\\/]+\.c:\d+:\d+:)", r"\1", err_line)
-                    failures.append(f"{md.name} C-block #{idx}: {err_line}")
+                try:
+                    proc = subprocess.run(
+                        [
+                            gcc_arm,
+                            "-mcpu=cortex-m4",
+                            "-mthumb",
+                            "-mfpu=fpv4-sp-d16",
+                            "-mfloat-abi=hard",
+                            "-std=c11",
+                            "-O2",
+                            "-Wall",
+                            "-Wextra",
+                            "-Werror",
+                            "-fsyntax-only",
+                            "-DSTM32G474xx",
+                            f"-I{inc_dev}",
+                            f"-I{inc_core}",
+                            str(src),
+                        ],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if proc.returncode != 0:
+                        err_lines = (proc.stderr or proc.stdout).strip().splitlines()
+                        err_line = next((ln for ln in err_lines if "error:" in ln), err_lines[0] if err_lines else "compile error")
+                        err_line = re.sub(r"^.*?[\\/]([^\\/]+\.c:\d+:\d+:)", r"\1", err_line)
+                        failures.append(f"{md.name} C-block #{idx}: {err_line}")
+                except OSError as exc:
+                    failures.append(f"{md.name} C-block #{idx}: {exc}")
 
     rep.metrics["register_snippets"] = {"compiled": compiled, "skipped_fragments": skipped, "failures": len(failures)}
     if failures:
         rep.err(
             "register_snippets",
-            f"Register-map C snippet CMSIS compilation FAILED ({len(failures)}/{compiled} block(s))",
+            f"BUILD_FAILED: Register-map C snippet CMSIS compilation failed ({len(failures)}/{compiled} block(s))",
             failures,
         )
-    elif compiled == 0:
-        rep.err("register_snippets", "No standalone CMSIS C code blocks found in 20-technical-diagrams/registers/*.md.")
-    else:
-        rep.info(
-            "register_snippets",
-            f"All {compiled}/{compiled} standalone CMSIS C snippets in 20-technical-diagrams/registers/*.md "
-            f"syntax-compiled cleanly (-fsyntax-only -Wall -Wextra -Werror; {skipped} prose fragment(s) skipped).",
+        return _record("BUILD_FAILED")
+    if compiled == 0:
+        rep.err("register_snippets", "BUILD_FAILED: No standalone CMSIS C code blocks found in 20-technical-diagrams/registers/*.md.")
+        return _record("BUILD_FAILED")
+
+    rep.info(
+        "register_snippets",
+        f"BUILD_PASSED: All {compiled}/{compiled} standalone CMSIS C snippets in 20-technical-diagrams/registers/*.md "
+        f"syntax-compiled cleanly (-fsyntax-only -Wall -Wextra -Werror; {skipped} prose fragment(s) skipped).",
+    )
+    return _record("BUILD_PASSED")
+
+
+def _run_independent_make_stage(
+    stage_key: str,
+    label: str,
+    cwd: Path,
+    make_args: list[str],
+    make_exe: str | None,
+    gcc_arm: str | None,
+    env: dict[str, str] | None,
+    rep: ValidationReport,
+    stage_states: dict[str, str],
+) -> bool:
+    """Execute one independent firmware make stage without ever short-circuiting subsequent stages."""
+    if not make_exe or not gcc_arm:
+        missing = [t for t, p in (("make", make_exe), ("arm-none-eabi-gcc", gcc_arm)) if not p]
+        stage_states[stage_key] = "TOOLCHAIN_UNAVAILABLE"
+        rep.unverified_item(
+            stage_key,
+            f"TOOLCHAIN_UNAVAILABLE: {label} unverified (missing required tool(s): {', '.join(missing)}).",
         )
+        return False
+
+    if not cwd.is_dir():
+        stage_states[stage_key] = "BUILD_FAILED"
+        rep.err(stage_key, f"BUILD_FAILED: {label} directory missing ({cwd}).")
+        return False
+
+    try:
+        proc = subprocess.run(
+            [make_exe, *make_args],
+            cwd=cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        stage_states[stage_key] = "BUILD_FAILED"
+        rep.err(stage_key, f"BUILD_FAILED: {label} invocation error ({exc}).")
+        return False
+
+    if proc.returncode != 0:
+        stage_states[stage_key] = "BUILD_FAILED"
+        rep.err(
+            stage_key,
+            f"BUILD_FAILED: {label} failed (exit {proc.returncode})",
+            (proc.stderr or proc.stdout).splitlines()[-10:],
+        )
+        return False
+
+    stage_states[stage_key] = "BUILD_PASSED"
+    rep.info(stage_key, f"BUILD_PASSED: {label} compiled cleanly (exit 0).")
+    return True
 
 
 def check_builds_and_tests(repo_root: Path, rep: ValidationReport, skip_builds: bool = False) -> None:
+    """
+    Execute all 9 independent build, ELF inspection, and host unit-test stages with ZERO short-circuiting.
+    Every stage always executes and records its exact standardized tag from the 9-state taxonomy.
+    """
+    stage_states: dict[str, str] = {}
+
     if skip_builds:
-        rep.unverified_item("firmware_builds", "Firmware compilation skipped via --skip-builds.")
-        rep.unverified_item("register_snippets", "Register-map C snippet compilation skipped via --skip-builds.")
-        rep.unverified_item("host_tests", "Host C unit tests skipped via --skip-builds.")
+        skipped_build_stages = [
+            ("register_snippets", "Register-map C snippet compilation"),
+            ("firmware_build_template_debug", "Starter template + 12 drivers (BUILD_TYPE=debug)"),
+            ("firmware_build_template_release", "Starter template + 12 drivers (BUILD_TYPE=release)"),
+            ("firmware_build_freertos", "FreeRTOS V11.1.0 firmware (23-code-library/freertos/)"),
+            ("firmware_build_capstone_01", f"Capstone 01 ({CAPSTONE_DIRS[0]})"),
+            ("firmware_build_capstone_02", f"Capstone 02 ({CAPSTONE_DIRS[1]})"),
+            ("firmware_build_capstone_03", f"Capstone 03 ({CAPSTONE_DIRS[2]})"),
+        ]
+        for key, label in skipped_build_stages:
+            stage_states[key] = "BUILD_SKIPPED"
+            rep.unverified_item(key, f"BUILD_SKIPPED: {label} skipped via --skip-builds.")
+        stage_states["firmware_elf"] = "ELF_INSPECTION_UNAVAILABLE"
+        rep.unverified_item(
+            "firmware_elf",
+            "ELF_INSPECTION_UNAVAILABLE: ELF .isr_vector inspection skipped via --skip-builds.",
+        )
+        stage_states["host_tests"] = "HOST_TESTS_SKIPPED"
+        rep.unverified_item("host_tests", "HOST_TESTS_SKIPPED: Host C unit tests skipped via --skip-builds.")
+        rep.metrics["build_stage_states"] = stage_states
         return
 
     make_exe = shutil.which("make") or find_arm_tool("make")
     gcc_arm = find_arm_tool("arm-none-eabi-gcc")
     readelf_arm = find_arm_tool("arm-none-eabi-readelf")
 
-    # Register-map C snippet CMSIS compile check (runs whenever arm-none-eabi-gcc is available)
-    check_register_map_c_snippets(repo_root, rep, gcc_arm)
-
-    if not make_exe or not gcc_arm:
-        missing = [t for t, p in (("make", make_exe), ("arm-none-eabi-gcc", gcc_arm)) if not p]
-        rep.unverified_item(
-            "firmware_builds",
-            f"Firmware builds UNVERIFIED: missing required tool(s): {', '.join(missing)}.",
-        )
-    else:
+    env: dict[str, str] | None = None
+    if make_exe and gcc_arm:
         env = os.environ.copy()
         arm_bin = str(Path(gcc_arm).parent)
         make_bin = str(Path(make_exe).parent)
         env["PATH"] = f"{arm_bin}{os.pathsep}{make_bin}{os.pathsep}{env.get('PATH', '')}"
 
-        # 1. Starter template (debug + release)
-        tpl_dir = repo_root / "23-code-library" / "templates"
-        for build_type in ("debug", "release"):
-            proc = subprocess.run(
-                [make_exe, f"BUILD_TYPE={build_type}", "clean", "all"],
-                cwd=tpl_dir,
-                env=env,
-                capture_output=True,
-                text=True,
-            )
-            if proc.returncode != 0:
-                rep.err(
-                    "firmware_builds",
-                    f"Starter template build (BUILD_TYPE={build_type}) FAILED (exit {proc.returncode})",
-                    (proc.stderr or proc.stdout).splitlines()[-10:],
-                )
-                break
-        else:
-            rep.info("firmware_builds", "Starter template + 12 drivers compiled cleanly (BUILD_TYPE=debug & release).")
+    # Stage 1: Register-map C snippet CMSIS compile check (independent)
+    check_register_map_c_snippets(repo_root, rep, gcc_arm, stage_states=stage_states)
 
-        # Verify ELF .isr_vector
-        elf_path = tpl_dir / "build" / "firmware.elf"
-        if not elf_path.is_file() and (tpl_dir / "build").is_dir():
-            elves = list((tpl_dir / "build").rglob("*.elf"))
-            if elves:
-                elf_path = elves[0]
-        if not readelf_arm:
-            rep.unverified_item("firmware_elf", "ELF .isr_vector check UNVERIFIED: arm-none-eabi-readelf not found.")
-        elif not elf_path.is_file():
-            rep.err("firmware_elf", f"Expected ELF output missing at {elf_path.relative_to(repo_root)}.")
+    # Stage 2: Starter template debug build (independent — NEVER short-circuits release!)
+    tpl_dir = repo_root / "23-code-library" / "templates"
+    debug_ok = _run_independent_make_stage(
+        "firmware_build_template_debug",
+        "Starter template + 12 drivers (BUILD_TYPE=debug)",
+        tpl_dir,
+        ["BUILD_TYPE=debug", "clean", "all"],
+        make_exe,
+        gcc_arm,
+        env,
+        rep,
+        stage_states,
+    )
+
+    # Stage 3: Starter template release build (independent — ALWAYS executes even if debug failed!)
+    release_ok = _run_independent_make_stage(
+        "firmware_build_template_release",
+        "Starter template + 12 drivers (BUILD_TYPE=release)",
+        tpl_dir,
+        ["BUILD_TYPE=release", "clean", "all"],
+        make_exe,
+        gcc_arm,
+        env,
+        rep,
+        stage_states,
+    )
+
+    # Stage 4: ELF .isr_vector inspection (independent — ALWAYS runs!)
+    elf_path = tpl_dir / "build" / "firmware.elf"
+    if not elf_path.is_file() and (tpl_dir / "build").is_dir():
+        elves = list((tpl_dir / "build").rglob("*.elf"))
+        if elves:
+            elf_path = elves[0]
+
+    if not readelf_arm:
+        stage_states["firmware_elf"] = "ELF_INSPECTION_UNAVAILABLE"
+        rep.unverified_item(
+            "firmware_elf",
+            "ELF_INSPECTION_UNAVAILABLE: arm-none-eabi-readelf not found on host.",
+        )
+    elif not make_exe or not gcc_arm:
+        stage_states["firmware_elf"] = "ELF_INSPECTION_UNAVAILABLE"
+        rep.unverified_item(
+            "firmware_elf",
+            "ELF_INSPECTION_UNAVAILABLE: firmware toolchain unavailable; ELF artifact not built.",
+        )
+    elif not elf_path.is_file():
+        if not release_ok and not debug_ok:
+            stage_states["firmware_elf"] = "ELF_INSPECTION_UNAVAILABLE"
+            rep.unverified_item(
+                "firmware_elf",
+                "ELF_INSPECTION_UNAVAILABLE: firmware.elf not produced because starter template builds failed.",
+            )
         else:
+            stage_states["firmware_elf"] = "BUILD_FAILED"
+            rep.err("firmware_elf", f"BUILD_FAILED: Expected ELF output missing at {elf_path.relative_to(repo_root)}.")
+    else:
+        try:
             re_proc = subprocess.run([readelf_arm, "-SW", str(elf_path)], capture_output=True, text=True)
             m = re.search(
                 r"\.isr_vector\s+PROGBITS\s+([0-9a-fA-F]+)\s+[0-9a-fA-F]+\s+([0-9a-fA-F]+)\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)",
@@ -2121,38 +2569,58 @@ def check_builds_and_tests(repo_root: Path, rep: ValidationReport, skip_builds: 
             if m:
                 addr, size, align = int(m.group(1), 16), int(m.group(2), 16), int(m.group(3))
                 if addr == 0x08000000 and size == 472 and align >= 512:
-                    rep.info("firmware_elf", f"ELF .isr_vector verified: addr=0x{addr:08X}, size={size} B (118 vectors), align={align} B.")
+                    stage_states["firmware_elf"] = "ELF_INSPECTION_PASSED"
+                    rep.info(
+                        "firmware_elf",
+                        f"ELF_INSPECTION_PASSED: ELF .isr_vector verified: addr=0x{addr:08X}, "
+                        f"size={size} B (118 vectors), align={align} B.",
+                    )
                 else:
-                    rep.err("firmware_elf", f"ELF .isr_vector invalid: addr=0x{addr:08X}, size={size}, align={align}")
+                    stage_states["firmware_elf"] = "BUILD_FAILED"
+                    rep.err("firmware_elf", f"BUILD_FAILED: ELF .isr_vector invalid: addr=0x{addr:08X}, size={size}, align={align}")
             else:
-                rep.err("firmware_elf", "Could not parse .isr_vector section from readelf -SW output.")
+                stage_states["firmware_elf"] = "BUILD_FAILED"
+                rep.err("firmware_elf", "BUILD_FAILED: Could not parse .isr_vector section from readelf -SW output.")
+        except OSError as exc:
+            stage_states["firmware_elf"] = "ELF_INSPECTION_UNAVAILABLE"
+            rep.unverified_item("firmware_elf", f"ELF_INSPECTION_UNAVAILABLE: readelf invocation error ({exc}).")
 
-        # 2. FreeRTOS V11.1.0 build
-        rtos_dir = repo_root / "23-code-library" / "freertos"
-        proc = subprocess.run([make_exe, "all"], cwd=rtos_dir, env=env, capture_output=True, text=True)
-        if proc.returncode != 0:
-            rep.err("firmware_builds", f"FreeRTOS V11.1.0 build FAILED (exit {proc.returncode})", (proc.stderr or proc.stdout).splitlines()[-10:])
-        else:
-            rep.info("firmware_builds", "FreeRTOS V11.1.0 firmware (23-code-library/freertos/) compiled cleanly (exit 0).")
+    # Stage 5: FreeRTOS V11.1.0 build (independent — ALWAYS executes!)
+    rtos_dir = repo_root / "23-code-library" / "freertos"
+    _run_independent_make_stage(
+        "firmware_build_freertos",
+        "FreeRTOS V11.1.0 firmware (23-code-library/freertos/)",
+        rtos_dir,
+        ["all"],
+        make_exe,
+        gcc_arm,
+        env,
+        rep,
+        stage_states,
+    )
 
-        # 3. All 3 Capstone builds
-        cap_failed: list[str] = []
-        for cdir in CAPSTONE_DIRS:
-            proc = subprocess.run([make_exe, "all"], cwd=repo_root / cdir, env=env, capture_output=True, text=True)
-            if proc.returncode != 0:
-                cap_failed.append(f"{cdir} (exit {proc.returncode}): {(proc.stderr or proc.stdout).strip()[-200:]}")
-        if cap_failed:
-            rep.err("firmware_builds", f"{len(cap_failed)}/3 Capstone firmware build(s) FAILED", cap_failed)
-        else:
-            rep.info("firmware_builds", "All 3/3 Capstone firmware projects (19-projects/01..03/) compiled cleanly (exit 0).")
+    # Stages 6, 7, 8: All 3 Capstone builds (each executes independently!)
+    for idx, cdir in enumerate(CAPSTONE_DIRS, 1):
+        _run_independent_make_stage(
+            f"firmware_build_capstone_{idx:02d}",
+            f"Capstone {idx:02d} ({cdir})",
+            repo_root / cdir,
+            ["all"],
+            make_exe,
+            gcc_arm,
+            env,
+            rep,
+            stage_states,
+        )
 
-    # 4. Host C unit tests (make -C tests clean test -> 0 failed, >= 500 assertions, clean up afterward)
+    # Stage 9: Host C unit tests (independent — ALWAYS executes even if every firmware build failed!)
     host_gcc = shutil.which("gcc")
     if not host_gcc or not make_exe:
         missing = [t for t, p in (("gcc", host_gcc), ("make", make_exe)) if not p]
+        stage_states["host_tests"] = "TOOLCHAIN_UNAVAILABLE"
         rep.unverified_item(
             "host_tests",
-            f"Host C unit tests UNVERIFIED: missing required tool(s): {', '.join(missing)}.",
+            f"TOOLCHAIN_UNAVAILABLE: Host C unit tests unverified (missing required tool(s): {', '.join(missing)}).",
         )
     else:
         tests_dir = repo_root / "tests"
@@ -2163,13 +2631,13 @@ def check_builds_and_tests(repo_root: Path, rep: ValidationReport, skip_builds: 
                 text=True,
             )
             if proc.returncode != 0:
+                stage_states["host_tests"] = "HOST_TESTS_FAILED"
                 rep.err(
                     "host_tests",
-                    f"Host C unit tests FAILED (exit {proc.returncode})",
+                    f"HOST_TESTS_FAILED: Host C unit tests exited with code {proc.returncode}",
                     (proc.stderr or proc.stdout).splitlines()[-12:],
                 )
             else:
-                # Verify 0 failed on every suite and extract exact assertion counts
                 suite_matches = re.findall(
                     r"(\d+)\s+assertions?\s+executed,\s*(\d+)\s+failed",
                     proc.stdout,
@@ -2183,21 +2651,34 @@ def check_builds_and_tests(repo_root: Path, rep: ValidationReport, skip_builds: 
                     "assertions_failed": total_failed,
                 }
                 if total_failed != 0:
-                    rep.err("host_tests", f"Host C unit tests reported {total_failed} failed assertion(s) out of {total_asserts}.")
-                elif total_asserts < 500 or len(suite_matches) < 4:
+                    stage_states["host_tests"] = "HOST_TESTS_FAILED"
                     rep.err(
                         "host_tests",
-                        f"Host C unit tests parsed {total_asserts} assertions across {len(suite_matches)} suites "
+                        f"HOST_TESTS_FAILED: Host C unit tests reported {total_failed} failed assertion(s) out of {total_asserts}.",
+                    )
+                elif total_asserts < 500 or len(suite_matches) < 4:
+                    stage_states["host_tests"] = "HOST_TESTS_FAILED"
+                    rep.err(
+                        "host_tests",
+                        f"HOST_TESTS_FAILED: Host C unit tests parsed {total_asserts} assertions across {len(suite_matches)} suites "
                         "(expected >= 500 across >= 4 suites).",
                     )
                 else:
+                    stage_states["host_tests"] = "HOST_TESTS_PASSED"
                     rep.info(
                         "host_tests",
-                        f"Host C unit tests passed: {len(suite_matches)} suites, {total_asserts} assertions executed, 0 failed.",
+                        f"HOST_TESTS_PASSED: {len(suite_matches)} suites, {total_asserts} assertions executed, 0 failed.",
                     )
+        except OSError as exc:
+            stage_states["host_tests"] = "HOST_TESTS_FAILED"
+            rep.err("host_tests", f"HOST_TESTS_FAILED: invocation error ({exc}).")
         finally:
-            # Always clean up build/test binaries afterward
-            subprocess.run([make_exe, "-C", str(tests_dir), "clean"], capture_output=True, text=True)
+            try:
+                subprocess.run([make_exe, "-C", str(tests_dir), "clean"], capture_output=True, text=True)
+            except OSError:
+                pass
+
+    rep.metrics["build_stage_states"] = stage_states
 
 
 def run_validation(
@@ -2208,14 +2689,15 @@ def run_validation(
 ) -> ValidationReport:
     rep = ValidationReport(quiet=quiet)
     if not quiet:
-        print(f"=== Embedded C & STM32G474RE Master Learning Hub Validator v4.1.0 ===")
+        print(f"=== Embedded C & STM32G474RE Master Learning Hub Validator v{VALIDATOR_VERSION} ===")
         print(f"Repository: {repo_root}")
     check_structure(repo_root, rep)
     check_control_chars(repo_root, rep)
     check_cmsis_register_cross_check(repo_root, rep)
     check_sot_concepts(repo_root, rep)
     check_labs(repo_root, rep)
-    check_markdown_links_mathjax_urls(repo_root, rep, check_external_urls=check_external_urls)
+    ext_urls = check_markdown_links_and_mathjax(repo_root, rep)
+    check_external_urls_live(ext_urls, rep, check_external_urls=check_external_urls)
     check_mermaid_diagrams(repo_root, rep)
     check_curriculum_and_artifacts(repo_root, rep)
     check_builds_and_tests(repo_root, rep, skip_builds=skip_builds)
@@ -2224,7 +2706,7 @@ def run_validation(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Regression-Resistant Validation Suite for the Embedded C & STM32G474RE Master Learning Hub (v4.1.0)."
+        description=f"Regression-Resistant Validation Suite for the Embedded C & STM32G474RE Master Learning Hub (v{VALIDATOR_VERSION})."
     )
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_REPO_ROOT, help="Path to repository root.")
     parser.add_argument("--skip-builds", action="store_true", help="Skip firmware build and host unit-test checks.")
