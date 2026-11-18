@@ -143,13 +143,16 @@ void EXTI_DispatchRange(uint8_t min_line, uint8_t max_line) {
     uint32_t active = EXTI->PR1 & EXTI->IMR1;
     for (uint8_t line = min_line; line <= max_line; ++line) {
         if ((active & (1UL << line)) != 0U) {
-            /* Clear pending flag BEFORE callback + __DSB() barrier (ES0430 §2.1.3) */
+            /* Clear pending flag BEFORE callback via rc_w1 + readback (ARM AN321 §4.9)
+             * + __DSB() write-buffer drain (ARM Erratum 838869 / ES0430 §2.1.3) */
             EXTI_ClearPending(line);
             if (s_exti_callbacks[line].cb != NULL) {
                 s_exti_callbacks[line].cb(line, s_exti_callbacks[line].ctx);
             }
         }
     }
+    /* Guard any trailing buffered store in user callbacks before ISR BX LR exit (ARM Erratum 838869) */
+    __DSB();
 }
 
 #endif /* !defined(DRIVER_HOST_TEST) */

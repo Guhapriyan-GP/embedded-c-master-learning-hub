@@ -79,7 +79,7 @@
 
 /* ARM Cortex-M4F NVIC Interrupt Priorities (__NVIC_PRIO_BITS = 4 -> 0..15)
  * MANDATORY: Call NVIC_SetPriorityGrouping(0U) before vTaskStartScheduler()!
- *   - Priorities 0..4  : Zero-latency unmanaged ISRs (NO FreeRTOS API calls!)
+ *   - Priorities 0..4  : Unmasked high-priority ISRs (unaffected by BASEPRI; NO FreeRTOS API calls!)
  *   - Priorities 5..15 : Kernel-managed ISRs (safe for ...FromISR() APIs) */
 #ifdef __NVIC_PRIO_BITS
     #define configPRIO_BITS                         __NVIC_PRIO_BITS

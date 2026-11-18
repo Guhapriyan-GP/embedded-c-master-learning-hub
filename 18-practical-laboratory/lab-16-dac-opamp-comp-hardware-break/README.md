@@ -4,7 +4,7 @@
 
 > **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `PENDING — USER CONNECTION REQUIRED` *(External `PA1` `0..3.0 V` stimulus + `>= 100 MHz` oscilloscope on `PA8`/`PA4`; `TIM1`/`COMP1` arming verified in Project 03)*
 
-> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`DAC1->MCR.HFSEL = 10b` for $> 160\text{ MHz}$, `TIM1->ARR = 3,399` $\implies 50.00\text{ kHz}$) | **Alternate = `160 MHz Range 1 Boost`** (`DAC1->MCR.HFSEL = 01b` for $80\text{–}160\text{ MHz}$, `TIM1->ARR = 3,199` $\implies 50.00\text{ kHz}$) | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`) & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`DAC1->MCR.HFSEL = 10b` for $> 160\text{ MHz}$, `TIM1->ARR = 3,399` $\implies 50.00\text{ kHz}$) | **Alternate = `160 MHz Range 1 Boost`** (`DAC1->MCR.HFSEL = 01b` for $80\text{--}160\text{ MHz}$, `TIM1->ARR = 3,199` $\implies 50.00\text{ kHz}$) | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`) & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -15,6 +15,7 @@ Build a genuine **STM32G474RE mixed-signal hardware overcurrent protection chain
 2. **`OPAMP1`** amplifies a small analog shunt voltage on **`PA1`** in **PGA ×8 mode** (`OPAMPINTEN = 1`, internal route to `ADC1_IN13` — keeping `PA2` ST-LINK VCP completely free!).
 3. **`COMP1`** compares **`PA1`** against **`DAC1_CH1`** (`~16.7 ns` propagation delay) and connects **directly in hardware** to **`TIM1_BKIN`** (`TIM1->AF1.BKCMP1E = 1`), asynchronously clearing **`TIM1->BDTR.MOE`** in **< 50 ns** to extinguish **`TIM1_CH1` (`PA8`)** PWM before power MOSFETs can be damaged!
 
+- **Prerequisites:** [Lab 03 (170 MHz PLL Clock Switch)](../lab-03-rcc-pll-170mhz-clock-switch/README.md), [Lab 07 (Hardware PWM)](../lab-07-timer-pwm-rgb-led-fading/README.md), [Stage 09 (Advanced Timer `TIM1` `BDTR`)](../../09-timers/README.md), and [Stage 12 (`DAC`/`OPAMP`/`COMP` Analog)](../../12-adc-dac-analog/README.md)
 - **Target Concept IDs:** `PERIPH-DAC-001` (`DAC1` `HFSEL` @ 170 MHz), `PERIPH-OPAMP-001` (`OPAMP1` Internal PGA), `PERIPH-COMP-001` (`COMP1` Hysteresis & Hardware Lock), `PERIPH-TIM-003` (`TIM1` `BDTR` Hardware Break `MOE`/`BKE`/`AF1`), `REL-SAFE-001` (Hardware-First Safety Interlocks)
 - **Scope Layer:** `[STM32G474RE Exact]`
 
@@ -142,11 +143,11 @@ static void Clock_Init_170MHz(void) {
 void TIM1_BRK_TIM15_IRQHandler(void) {
     if ((TIM1->SR & TIM_SR_BIF) != 0U) {
         TIM1->SR = ~TIM_SR_BIF;    /* Atomic rc_w0 clear */
-        (void)TIM1->SR;            /* Flush AHB-to-APB2 posted-write bridge */
+        (void)TIM1->SR;            /* Flush AHB-to-APB2 posted-write bridge (ARM AN321 §4.9) */
         g_fault_trip_count++;
         g_fault_latched = 1U;
         GPIOA->BSRR = GPIO_BSRR_BS5; /* Illuminate LD2 fault indicator */
-        __DSB();
+        __DSB();                   /* Drain write buffer / guard Erratum 838869 (ST ES0430 §2.1.3) */
     }
 }
 

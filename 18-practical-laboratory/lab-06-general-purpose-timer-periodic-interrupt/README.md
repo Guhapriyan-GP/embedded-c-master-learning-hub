@@ -10,9 +10,10 @@
 
 ## 1. Objective & Concept IDs
 
-Initialize the STM32G474RE to **`170 MHz`**, configure the 32-bit general-purpose timer **`TIM2`** to generate exact **`10.000 Hz`** (`100 ms` period) update interrupts, force immediate shadow-register loading via write-only `TIM2->EGR = TIM_EGR_UG`, clear the `rc_w0` `UIF` flag atomically via direct assignment `TIM2->SR = ~TIM_SR_UIF`, and toggle `LD2` (`PA5`) atomically with `BSRR` + `__DSB()`.
+Initialize the STM32G474RE to **`170 MHz`**, configure the 32-bit general-purpose timer **`TIM2`** to generate exact **`10.000 Hz`** (`100 ms` period) update interrupts, force immediate shadow-register loading via write-only `TIM2->EGR = TIM_EGR_UG`, clear the `rc_w0` `UIF` flag atomically via direct assignment `TIM2->SR = ~TIM_SR_UIF` with `(void)TIM2->SR; __DSB();`, and toggle `LD2` (`PA5`) via single-writer `BSRR` set/reset writes.
 
-- **Target Concept IDs:** `PERIPH-TIM-002` (General-Purpose Timers & Shadow Registers), `EMB-BIT-001` (`rc_w0` Status Register Semantics), `ARM-NVIC-001` (IRQ Routing & Priority), `EMB-BAR-001` (`__DSB()` Barrier)
+- **Prerequisites:** [Lab 03 (170 MHz PLL Clock Switch)](../lab-03-rcc-pll-170mhz-clock-switch/README.md), [Lab 05 (NVIC & Barriers)](../lab-05-exti-pushbutton-interrupt/README.md), [Stage 09 (Timers)](../../09-timers/README.md), and [Stage 10 (Interrupts)](../../10-interrupts/README.md)
+- **Target Concept IDs:** `PERIPH-TIM-002` (General-Purpose Timers & Shadow Registers), `EMB-BIT-001` (`rc_w0` Status Register Semantics), `ARM-NVIC-001` (IRQ Routing & Priority), `EMB-BAR-001` (APB Readback & `__DSB()` Barrier)
 - **Scope Layer:** `[STM32G474RE Exact]` / `[STM32 Generic]`
 
 ---
@@ -65,7 +66,7 @@ Never copy `TIM2->PSC` across clock profiles without verifying $f_{\text{TIM2}}$
 | **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | `160,000,000 Hz` | **`15,999`** | **`999`** | `10,000 Hz` | `10.000 Hz` (`100.0 ms`) |
 | **`16 MHz HSI16` *(Reset Fallback)*** | Reset default | `16,000,000 Hz` | **`1,599`** | **`999`** | `10,000 Hz` | `10.000 Hz` (`100.0 ms`) |
 
-- **Reusable Production Driver (`23-code-library/Drivers/tim_g4.h`):** Call `TIM_InitPeriodic(TIM2, 10U, true, 4U)` after `Clock_Init_170MHz()` or `Clock_Init_160MHz()` — `tim_g4.c` queries live `SystemCoreClock` + `RCC->CFGR.PPRE1` automatically (including the STM32 $\times 2$ APB timer multiplier), runs `EGR = UG` + `SR = ~UIF`, and provides `TIM_ClearUpdateFlag(TIM2)` (`rc_w0` + `__DSB()`).
+- **Reusable Production Driver (`23-code-library/Drivers/tim_g4.h`):** Call `TIM_InitPeriodic(TIM2, 10U, true, 4U)` after `Clock_Init_170MHz()` or `Clock_Init_160MHz()` — `tim_g4.c` queries live `SystemCoreClock` + `RCC->CFGR.PPRE1` automatically (including the STM32 $\times 2$ APB timer multiplier), runs `EGR = UG` + `SR = ~UIF`, and provides `TIM_ClearUpdateFlag(TIM2)` (`rc_w0` + `(void)tim->SR;` + `__DSB()`).
 
 ### 5.2 Critical Register Hazards (`EGR` Shadow Load & `SR` `rc_w0`)
 
@@ -132,12 +133,12 @@ static void Clock_Init_170MHz(void) {
 void TIM2_IRQHandler(void) {
     if ((TIM2->SR & TIM_SR_UIF) != 0U) {
         /* 1. Atomic rc_w0 flag clear: write 0 to UIF, 1 to all other bits (NO &=!)
-         *    Dummy readback flushes AHB-to-APB1 posted-write bridge; __DSB() guards Erratum 838869. */
+         *    and flush AHB-to-APB1 posted-write bridge via readback (ARM AN321 §4.9). */
         TIM2->SR = ~TIM_SR_UIF;
         (void)TIM2->SR;
-        __DSB();
 
-        /* 2. Atomic LED toggle via BSRR (no non-atomic ODR ^= in ISR) */
+        /* 2. Single-writer LD2 toggle via BSRR (cross-pin atomic on Port A;
+         *    non-atomic for concurrent same-pin writers — safe here since TIM2 ISR owns PA5) */
         if ((GPIOA->ODR & GPIO_ODR_OD5) != 0U) {
             GPIOA->BSRR = GPIO_BSRR_BR5;
         } else {
@@ -145,6 +146,9 @@ void TIM2_IRQHandler(void) {
         }
 
         g_tim2_ticks++;
+
+        /* 3. Tail barrier immediately before BX LR (ARM Erratum 838869 / ST ES0430 §2.1.3). */
+        __DSB();
     }
 }
 
@@ -222,7 +226,7 @@ int main(void) {
 | LED toggles at **0.941 Hz** (~1.06 s) instead of **10 Hz** | Forgot to call `Clock_Init_170MHz()`, leaving `TIM2` clocked at 16 MHz HSI16 | Call `Clock_Init_170MHz()` before `TIM2_Init_10Hz()` |
 | First interrupt fires ~5.9 µs after startup instead of 100 ms | Omitted `TIM2->EGR = TIM_EGR_UG; TIM2->SR = ~TIM_SR_UIF;` so first period ran at reset `PSC=0` | Force shadow reload via `TIM2->EGR = TIM_EGR_UG;` and clear `UIF` before enabling `UIE` |
 | Capture/Compare flags disappear randomly in multi-channel timers | Used RMW `TIM2->SR &= ~TIM_SR_UIF;` on `rc_w0` register | Always write `TIM2->SR = ~TIM_SR_UIF;` directly |
-| Duplicate back-to-back ISR entries | Missing `__DSB()` after APB1 `TIM2->SR` clear | Add `__DSB();` before returning from `TIM2_IRQHandler` |
+| Duplicate back-to-back ISR entries or Erratum 838869 mis-vectoring | Posted APB1 `TIM2->SR` clear did not commit before ISR exit (ARM AN321 §4.9), or stalling store overlapped exception return (ARM Erratum 838869 / ST ES0430 §2.1.3) | Perform `(void)TIM2->SR;` dummy readback followed by `__DSB();` before returning from `TIM2_IRQHandler` |
 
 ---
 
@@ -230,7 +234,7 @@ int main(void) {
 
 - [ ] Code compiles cleanly with `arm-none-eabi-gcc -Wall -Wextra -Werror`.
 - [ ] `TIM2->EGR = TIM_EGR_UG` executes before `TIM2->DIER = TIM_DIER_UIE`.
-- [ ] `TIM2_IRQHandler` uses `TIM2->SR = ~TIM_SR_UIF;`, atomic `GPIOA->BSRR`, and `__DSB()`.
+- [ ] `TIM2_IRQHandler` uses `TIM2->SR = ~TIM_SR_UIF;`, `(void)TIM2->SR;` readback, `__DSB();`, and single-writer `GPIOA->BSRR` set/reset writes.
 - [ ] Oscilloscope / logic analyzer on `PA5` measures `100.0 ms ± 1 ms` high and low pulse widths (`5.00 Hz` square wave).
 
 ---
@@ -248,7 +252,7 @@ int main(void) {
 | Field | Record |
 |---|---|
 | **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` Test 4 + FreeRTOS `10 Hz` `TIM2` ISR on NUCLEO-G474RE)* |
-| **Objective** | Configure 32-bit `TIM2` at `170 MHz` (with explicit `160 MHz` equivalent) for exact `10.000 Hz` (`100 ms`) update interrupts using `EGR = UG` shadow preload, direct `rc_w0` `TIM2->SR = ~TIM_SR_UIF`, atomic `BSRR`, and `__DSB()`. |
+| **Objective** | Configure 32-bit `TIM2` at `170 MHz` (with explicit `160 MHz` equivalent) for exact `10.000 Hz` (`100 ms`) update interrupts using `EGR = UG` shadow preload, direct `rc_w0` `TIM2->SR = ~TIM_SR_UIF`, `(void)TIM2->SR;` readback, `__DSB()`, and single-writer `BSRR` LED toggle. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,520 B` object file). |

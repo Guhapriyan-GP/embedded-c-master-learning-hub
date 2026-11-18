@@ -8,7 +8,7 @@
  *   1. STM32G4 Analog reset state (`GPIOA=0xABFFFFFF`, `GPIOB=0xFFFFFEBF`, `GPIOC=0xFFFFFFFF`)
  *   2. RCC->AHB2ENR clock enable for all ports A..G and safe NULL/invalid port ignore
  *   3. Bitfield isolation across MODER/OTYPER/OSPEEDR/PUPDR/AFRL/AFRH (SWD PA13/PA14 preserved!)
- *   4. Atomic BSRR set/reset/write/toggle semantics & BSRR->ODR hardware model (BS wins over BR)
+ *   4. Atomic BSRR set/reset/write, sibling-safe BSRR toggle (single-writer ODR->BSRR), & BSRR->ODR hardware model (BS wins over BR)
  *   5. IDR digital read helper & LCKR 4-step RM0440 §9.4.8 sequence verification
  *   6. HardFault 8-word exception stack-frame SRAM1+SRAM2 & CCM-SRAM bounds validator
  *      and Cortex-M4 SCB CFSR/HFSR fault-flag decoder (matching `fault_handler.c`)
@@ -239,7 +239,7 @@ static void test_gpio_reset_state_and_bitfield_isolation(void) {
 }
 
 /* ============================================================================
- * 3. Atomic BSRR Set/Reset/Write/Toggle, IDR Read, and LCKR Lock Tests
+ * 3. Atomic BSRR Set/Reset/Write, Sibling-Safe BSRR Toggle, IDR Read, and LCKR Lock Tests
  * ========================================================================== */
 static void test_gpio_atomic_bsrr_and_lock(void) {
     mock_reset_silicon();
@@ -262,7 +262,7 @@ static void test_gpio_atomic_bsrr_and_lock(void) {
     mock_gpio_commit_bsrr(GPIOA);
     ASSERT_EQ_U32(1UL << 0U, GPIOA->ODR);
 
-    /* Atomic toggle PA5 LOW -> HIGH -> LOW via branchless BSRR mask */
+    /* Sibling-safe toggle PA5 LOW -> HIGH -> LOW via ODR read + BSRR write (single-writer per pin) */
     GPIO_TogglePin(GPIOA, 5U);
     ASSERT_EQ_U32(1UL << 5U, GPIOA->BSRR);
     mock_gpio_commit_bsrr(GPIOA);

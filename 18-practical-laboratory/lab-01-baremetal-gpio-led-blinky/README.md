@@ -10,8 +10,9 @@
 
 ## 1. Objective & Concept IDs
 
-Configure `GPIOA` Pin 5 (onboard Green User LED `LD2`) in push-pull digital output mode and toggle it atomically using the Bit Set/Reset Register (`BSRR`), while comparing the three industry-standard STM32 firmware abstraction layers: **Direct Register Access (CMSIS)**, **STM32Cube Low-Layer (LL)**, and **STM32Cube HAL**.
+Configure `GPIOA` Pin 5 (onboard Green User LED `LD2`) in push-pull digital output mode and drive it cleanly via cross-pin atomic set/reset writes to the Bit Set/Reset Register (`BSRR`), while comparing the three industry-standard STM32 firmware abstraction layers: **Direct Register Access (CMSIS)**, **STM32Cube Low-Layer (LL)**, and **STM32Cube HAL**.
 
+- **Prerequisites:** [Stage 02 (C Fundamentals)](../../02-c-fundamentals/README.md), [Stage 03 (Embedded C — MMIO & Bitmasks)](../../03-embedded-c/README.md), [Stage 05 (Toolchain & Debugging)](../../05-toolchain-and-debugging/README.md), and [Stage 08 (GPIO Architecture)](../../08-gpio/README.md)
 - **Target Concept IDs:** `EMB-MEM-001` (MMIO & `volatile`), `EMB-BIT-001` (Bitmask RMW & Atomic Set/Reset), `STM32-BUS-001` (AHB2 Clock Gating), `PERIPH-GPIO-001` (STM32G4 GPIO Architecture)
 - **Scope Layer:** `[STM32G474RE Exact]` / `[STM32 Generic]`
 
@@ -87,11 +88,12 @@ This introductory lab intentionally runs at the STM32G474RE reset clock (**`16 M
 
 ## 6. Code Implementation
 
-All three implementations below (**6.1 CMSIS Direct Register**, **6.2 STM32CubeG4 LL**, and **6.3 STM32CubeG4 HAL**) are **functionally equivalent, independently complete standalone programs** configuring `PA5` (`LD2`) out of STM32G4's `11b` Analog reset state into push-pull digital output and blinking it atomically via `BSRR`.
+All three implementations below (**6.1 CMSIS Direct Register**, **6.2 STM32CubeG4 LL**, and **6.3 STM32CubeG4 HAL**) are **functionally equivalent, independently complete standalone programs** configuring `PA5` (`LD2`) out of STM32G4's `11b` Analog reset state into push-pull digital output and blinking it via cross-pin atomic `BSRR` set/reset writes.
 
 ### 6.1 Approach A — Direct Register Access (CMSIS Bare-Metal)
 
-> **Build Scope:** *Complete Bare-Metal CMSIS Program — Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors).*
+> **[COMPLETE STANDALONE IMPLEMENTATION — Bare-Metal CMSIS, Cross-Compiled]**  
+> *Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors).*
 
 ```c
 #include "stm32g474xx.h"
@@ -136,7 +138,8 @@ int main(void) {
 
 ### 6.2 Approach B — STM32Cube Low-Layer (LL) API Comparison
 
-> **Build Scope:** *Complete STM32CubeG4 LL Program (requires STM32CubeG4 LL headers in include path; not built by bare-metal CMSIS Makefile — Statically Reviewed).*
+> **[COMPLETE STANDALONE IMPLEMENTATION — STM32CubeG4 LL Environment Required, Statically Reviewed]**  
+> *Requires shared CMSIS startup/linker script + STM32CubeG4 LL headers (`stm32g4xx_ll_*.h`) in include path. STM32CubeG4 HAL/LL package not installed on host — Statically Reviewed against official `STMicroelectronics/stm32g4xx-hal-driver` API.*
 
 ```c
 /* Complete STM32CubeG4 LL Program (requires STM32CubeG4 LL headers in include path;
@@ -177,7 +180,8 @@ int main(void) {
 
 ### 6.3 Approach C — STM32Cube HAL API Comparison
 
-> **Build Scope:** *Complete STM32CubeG4 HAL Program (requires STM32CubeG4 HAL drivers & `SysTick_Handler -> HAL_IncTick()` — Statically Reviewed).*
+> **[COMPLETE STANDALONE IMPLEMENTATION — STM32CubeG4 HAL Environment Required, Statically Reviewed]**  
+> *Requires STM32CubeG4 HAL drivers (`stm32g4xx_hal*.c/.h`) + `SysTick_Handler -> HAL_IncTick()`. STM32CubeG4 HAL/LL package not installed on host — Statically Reviewed against official `STMicroelectronics/stm32g4xx-hal-driver` API.*
 
 ```c
 /* Complete STM32CubeG4 HAL Program (requires STM32CubeG4 HAL drivers &

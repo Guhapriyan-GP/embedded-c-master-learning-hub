@@ -15,6 +15,7 @@ Apply professional **Test-Driven Development (TDD)** and **Hardware Abstraction 
 2. Run tests under **`gcc -Wall -Wextra -Werror -fsanitize=address,undefined`** (`ASan` + `UBSan`) to catch out-of-bounds memory accesses, signed overflows, and undefined behavior immediately.
 3. Run **`arm-none-eabi-gcc -fstack-usage`** to audit worst-case static stack frames (`.su` files) on embedded targets!
 
+- **Prerequisites:** [Lab 01 (`GPIO_TypeDef` & `BSRR`)](../lab-01-baremetal-gpio-led-blinky/README.md), [Lab 08 (SPSC Ring Buffer)](../lab-08-usart-baremetal-driver-printf/README.md), [Stage 05 (GCC Warnings & Stack Usage)](../../05-toolchain-and-debugging/README.md), and [Stage 17 (TDD & Hardware Abstraction)](../../17-advanced-firmware-engineering/README.md)
 - **Target Concept IDs:** `PROF-TEST-001` (Host-Side Unit Testing & TDD), `PROF-MOCK-001` (Fake CMSIS MMIO Register Structs), `PROF-QUAL-001` (`ASan`/`UBSan` Sanitizers & `-fstack-usage` Static Stack Analysis), `FW-PAT-001` (Testable Driver Modularity)
 - **Scope Layer:** `[General C]` / `[STM32 Generic]`
 

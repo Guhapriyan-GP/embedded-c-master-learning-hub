@@ -12,6 +12,7 @@
 
 Safely transition the STM32G474RE from its reset `16 MHz HSI16` clock to its maximum rated **`170 MHz SYSCLK`** in **Voltage Scaling Range 1 Boost Mode** by following the exact mandatory **RM0440 §6.1.5** sequence: `PWR_CR1.VOS` stabilization (`PWR_SR2.VOSF`), `PWR_CR5.R1MODE = 0`, 4 Flash Wait States, PLL lock, and the mandatory intermediate `HPRE = /2` (85 MHz) $\to \ge 1\ \mu\text{s} \to$ `HPRE = /1` (170 MHz) ramp.
 
+- **Prerequisites:** [Lab 01 (Bare-Metal GPIO & `AF`)](../lab-01-baremetal-gpio-led-blinky/README.md), [Stage 06 (STM32 Architecture)](../../06-stm32-fundamentals/README.md), [Stage 07 (RCC & Clock Tree)](../../07-rcc-and-clocks/README.md), and [Stage 15 (PWR Voltage Scaling)](../../15-power-management/README.md)
 - **Target Concept IDs:** `STM32-RCC-001` (PLL Synthesis & Clock Tree), `STM32-PWR-001` (Range 1 Boost Mode), `STM32-FLASH-001` (Flash Wait States & ART Cache), `PERIPH-GPIO-001` (`OSPEEDR` & `MCO`)
 - **Scope Layer:** `[STM32G474RE Exact]`
 

@@ -12,6 +12,7 @@
 
 Initialize the STM32G474RE system clock to **`170 MHz`** (eliminating the classic `16 MHz` vs `170 MHz` 10.625× timing mismatch), configure the ARM Cortex-M4 24-bit **`SysTick`** core timer for exact `1.000 ms` interrupts, and implement both a wraparound-safe blocking `delay_ms()` and a non-blocking `millis()` periodic scheduler.
 
+- **Prerequisites:** [Lab 01 (GPIO `BSRR`)](../lab-01-baremetal-gpio-led-blinky/README.md), [Lab 03 (170 MHz PLL Clock Switch)](../lab-03-rcc-pll-170mhz-clock-switch/README.md), [Stage 03 (`volatile` & Wraparound Math)](../../03-embedded-c/README.md), and [Stage 04 (Cortex-M4 SysTick)](../../04-arm-cortex-m/README.md)
 - **Target Concept IDs:** `PERIPH-SYSTICK-001` (24-bit SysTick Timer), `ARM-EXCEP-001` (Core Exceptions), `EMB-VOL-001` (`volatile` ISR-Shared Counters), `FW-EXEC-002` (Wraparound-Safe Unsigned Tick Math)
 - **Scope Layer:** `[Cortex-M4 Specific]` / `[STM32G474RE Exact]`
 

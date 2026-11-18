@@ -135,7 +135,8 @@ tim_status_t TIM_SetPwmCompare(TIM_TypeDef *tim, uint8_t channel, uint32_t ccr_v
 /**
  * @brief Clear TIM update interrupt flag (UIF) safely on STM32 rc_w0 SR register
  *        (direct write `~TIM_SR_UIF`, NEVER RMW `&=`), read back SR to flush the
- *        AHB-to-APB1 posted-write bridge, and issue Cortex-M4 `__DSB()`.
+ *        AHB-to-APB1 posted-write bridge (ARM AN321 §4.9), and issue Cortex-M4
+ *        `__DSB()` (write-buffer drain & ARM Erratum 838869 / ST ES0430 §2.1.3).
  */
 static inline void TIM_ClearUpdateFlag(TIM_TypeDef *tim) {
     if (tim != NULL) {

@@ -12,6 +12,7 @@
 
 Configure **`FDCAN1`** (`0x40006400`) and its fixed-layout **Message RAM (`SRAMCAN_BASE = 0x4000A400`)** in **Internal Loopback Test Mode** (`500 kbps` nominal arbitration / `2.000 Mbps` CAN-FD data phase with Bit Rate Switching `BRS` — requiring **no external CAN transceiver**!), transmit a **64-byte CAN-FD frame** containing a hardware-computed **IEEE 802.3 CRC-32** checksum (`CRC` @ `0x40023000`), receive it via **RX FIFO 0**, and verify byte-exact payload + CRC-32 integrity (`0xCBF43926` self-test on `"123456789"`!).
 
+- **Prerequisites:** [Lab 03 (170 MHz PLL Clock Switch)](../lab-03-rcc-pll-170mhz-clock-switch/README.md), [Lab 08 (`USART2` Telemetry)](../lab-08-usart-baremetal-driver-printf/README.md), [Stage 11 (CAN-FD & Framing)](../../11-communication/README.md), and [Stage 17 (Data Integrity & CRC)](../../17-advanced-firmware-engineering/README.md)
 - **Target Concept IDs:** `PERIPH-FDCAN-001` (Bosch M_CAN Bit Timing, Message RAM & CAN-FD BRS), `PERIPH-CRC-001` (Hardware Programmable CRC-32), `EMB-PROTO-001` (End-to-End Frame Integrity)
 - **Scope Layer:** `[STM32G474RE Exact]`
 

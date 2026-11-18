@@ -12,6 +12,7 @@
 
 Initialize the STM32G474RE to **`170 MHz`**, configure **`TIM3`** Channels 1, 2, and 3 in **PWM Mode 1** with shadow preloading (`OCxPE`, `ARPE`) and `TIM3->EGR = TIM_EGR_UG` initialization to generate flicker-free **`25.000 kHz`** PWM for smooth RGB (or single-channel) LED fading — while eliminating the classic **unsigned integer underflow infinite-loop bug** (`uint32_t duty >= 0` / `duty -= 50`).
 
+- **Prerequisites:** [Lab 03 (170 MHz PLL Clock Switch)](../lab-03-rcc-pll-170mhz-clock-switch/README.md), [Lab 06 (`TIM2` Prescaler & Shadow Registers)](../lab-06-general-purpose-timer-periodic-interrupt/README.md), [Stage 08 (GPIO Alternate Functions)](../../08-gpio/README.md), and [Stage 09 (PWM Generation)](../../09-timers/README.md)
 - **Target Concept IDs:** `PERIPH-TIM-002` (Hardware PWM Mode 1 & Shadow Preload), `C-TYPE-002` (Signed vs Unsigned Underflow Bugs), `PERIPH-GPIO-001` (Alternate Function Multiplexing `AFR`), `STM32-RCC-001` (170 MHz Clock Sync)
 - **Scope Layer:** `[STM32G474RE Exact]` / `[General C]`
 

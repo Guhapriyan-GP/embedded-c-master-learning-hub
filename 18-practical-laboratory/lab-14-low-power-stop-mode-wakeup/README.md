@@ -12,6 +12,7 @@
 
 Place the STM32G474RE safely into **Stop 0** low-power mode (`PWR->CR1.LPMS = 000b`, `SCB->SCR.SLEEPDEEP = 1`, unused GPIOs parked in Analog mode, SysTick suspended), measure true MCU supply current across the correct **`JP6` (`IDD`)** jumper (fixing the dangerous **`JP5`** error!), wake cleanly via an Active-HIGH Rising-Edge **`EXTI13` (`PC13`)** interrupt with a real `EXTI15_10_IRQHandler()`, clear `SLEEPDEEP`, and restore the **`170 MHz PLL`** clock tree after wakeup.
 
+- **Prerequisites:** [Lab 03 (170 MHz PLL Restore)](../lab-03-rcc-pll-170mhz-clock-switch/README.md), [Lab 05 (`EXTI13` Rising-Edge Wakeup)](../lab-05-exti-pushbutton-interrupt/README.md), [Stage 04 (Cortex-M4 `SLEEPDEEP`)](../../04-arm-cortex-m/README.md), and [Stage 15 (Low-Power Modes)](../../15-power-management/README.md)
 - **Target Concept IDs:** `STM32-PWR-001` (Stop 0 / Stop 1 Modes & Clock Re-Init), `PERIPH-EXTI-001` (Async Stop Wakeup), `ARM-CORE-001` (`SLEEPDEEP`, `__DSB()`/`__ISB()`), `DIG-ELEC-005` (Low-Power Current Measurement & GPIO Leakage)
 - **Scope Layer:** `[STM32G474RE Exact]`
 
@@ -138,9 +139,9 @@ static void Clock_Init_170MHz(void) {
 void EXTI15_10_IRQHandler(void) {
     if ((EXTI->PR1 & EXTI_PR1_PIF13) != 0U) {
         EXTI->PR1 = EXTI_PR1_PIF13; /* Clear rc_w1 pending bit */
-        (void)EXTI->PR1;            /* Flush AHB-to-APB2 posted-write bridge */
+        (void)EXTI->PR1;            /* Flush AHB-to-APB2 posted-write bridge (ARM AN321 §4.9) */
         g_wakeup_count++;
-        __DSB();
+        __DSB();                    /* Drain write buffer / guard Erratum 838869 (ST ES0430 §2.1.3) */
     }
 }
 
@@ -265,7 +266,7 @@ int main(void) {
 |---|---|---|
 | DMM reads ~60–100 mA even in Stop mode | Connected DMM across **`JP5`** (`5V_SEL`!) instead of **`JP6` (`IDD`)**, OR left SWD debugger actively attached | Measure across **`JP6` (`IDD`)** and power-cycle without debugger attached |
 | MCU never wakes up when pressing `B1` | Forgot `GPIOC->MODER &= ~(3U << 26U)` (left in Analog `11b`) or forgot `SYSCFGEN` | Clear `PC13` `MODER` to `00b`, enable `SYSCFGEN`, set `EXTI->RTSR1` |
-| MCU crashes/freezes right after pressing `B1` | Missing `EXTI15_10_IRQHandler()` — vectored straight to `Default_Handler`! | Implement `EXTI15_10_IRQHandler()` clearing `EXTI->PR1` + `__DSB()` |
+| MCU crashes/freezes right after pressing `B1` | Missing `EXTI15_10_IRQHandler()` — vectored straight to `Default_Handler`! | Implement `EXTI15_10_IRQHandler()` clearing `EXTI->PR1` + `(void)EXTI->PR1;` + `__DSB()` |
 | Current barely drops (~10 mA) in Stop mode | Forgot `RCC_APB1ENR1_PWREN` or left floating digital input pins leaking current | Enable `PWREN` before writing `PWR->CR1`, park unused GPIOs in Analog (`11b`) |
 | After wakeup, timers/UART run 10.625× too slow | Stop 0 reverted `SYSCLK` to `16 MHz HSI16` and firmware forgot to re-call `Clock_Init_170MHz()` | Call `Clock_Init_170MHz()` immediately after `__WFI()` |
 

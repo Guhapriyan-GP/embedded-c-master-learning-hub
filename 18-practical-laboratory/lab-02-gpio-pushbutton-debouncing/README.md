@@ -10,9 +10,10 @@
 
 ## 1. Objective & Concept IDs
 
-Read the NUCLEO-G474RE onboard Blue User Button (`B1` on `PC13`, **Active-HIGH** per UM2505) and implement a true **non-blocking 4-state Finite State Machine (FSM) debouncer** driven by a 1 ms `SysTick` timebase, toggling `LD2` (`PA5`) atomically via `BSRR` without any blocking `delay_ms()` calls.
+Read the NUCLEO-G474RE onboard Blue User Button (`B1` on `PC13`, **Active-HIGH** per UM2505) and implement a true **non-blocking 4-state Finite State Machine (FSM) debouncer** driven by a 1 ms `SysTick` timebase, toggling `LD2` (`PA5`) via single-writer `BSRR` set/reset writes without any blocking `delay_ms()` calls.
 
-- **Target Concept IDs:** `PERIPH-GPIO-001` (Digital Input & Pull Topology), `FW-PAT-003` (Debouncing State Machine), `FW-EXEC-002` (Non-Blocking Cooperative Superloop), `EMB-BIT-001` (Atomic `BSRR` Toggle)
+- **Prerequisites:** [Lab 01 (Bare-Metal GPIO `BSRR`)](../lab-01-baremetal-gpio-led-blinky/README.md), [Stage 01b (Pull-Up/Pull-Down Topologies)](../../01b-digital-electronics-and-hw-integration/README.md), [Stage 08 (GPIO)](../../08-gpio/README.md), and [Stage 17 (FSM Architecture)](../../17-advanced-firmware-engineering/README.md)
+- **Target Concept IDs:** `PERIPH-GPIO-001` (Digital Input & Pull Topology), `FW-PAT-003` (Debouncing State Machine), `FW-EXEC-002` (Non-Blocking Cooperative Superloop), `EMB-BIT-001` (Cross-Pin Atomic `BSRR` Set/Reset)
 - **Scope Layer:** `[STM32G474RE Exact]` / `[General C]`
 
 ---
@@ -39,7 +40,7 @@ Read the NUCLEO-G474RE onboard Blue User Button (`B1` on `PC13`, **Active-HIGH**
 > Unlike older STM32F4 Nucleo boards (`MB1136`), the Blue User Button **`B1` (`PC13`) on NUCLEO-G474RE has an external pull-down resistor (`R31`) and connects to $V_{DD}$ (`3.3 V`) when pressed!**
 > - **Released (Idle):** `PC13` reads **`0`** (`0 V`).
 > - **Pressed:** `PC13` reads **`1`** (`3.3 V`, **Active-HIGH**).
-> - **Do NOT enable internal pull-up (`PUPDR13 = 01b`)!** An internal pull-up (~40 k$\Omega$) fights the external pull-down resistor, forming a voltage divider and leaking continuous current. Keep `GPIOC->PUPDR[27:26] = 00b` (No pull).
+> - **Do NOT enable internal pull-up (`PUPDR13 = 01b`)!** An internal pull-up ($\approx 40\text{ k}\Omega$) fights the external pull-down resistor, forming a voltage divider and leaking continuous current. Keep `GPIOC->PUPDR[27:26] = 00b` (No pull).
 
 | MCU Pin | Board Net | Direction | `MODER` | `PUPDR` | Logic Level (Pressed) |
 |---|---|---|---|---|---|
@@ -131,8 +132,10 @@ static inline bool button_read_raw(void) {
     return (GPIOC->IDR & GPIO_IDR_ID13) != 0U;
 }
 
-static inline void led_toggle_atomic(void) {
-    /* Atomic BSRR update avoids ODR read-modify-write races with other PA pins */
+static inline void led_toggle_bsrr(void) {
+    /* Cross-pin atomic BSRR update avoids ODR RMW races with sibling PA pins.
+     * Note: read-ODR -> write-BSRR is NOT atomic for concurrent same-pin writers;
+     * safe here because main() is the sole writer of PA5 (use PRIMASK/BASEPRI if shared). */
     if ((GPIOA->ODR & GPIO_ODR_OD5) != 0U) {
         GPIOA->BSRR = GPIO_BSRR_BR5;
     } else {
@@ -212,7 +215,7 @@ int main(void) {
 
     while (1) {
         if (button_fsm_poll(&btn, g_systick_ms)) {
-            led_toggle_atomic();
+            led_toggle_bsrr();
         }
         /* Other non-blocking superloop tasks can run here with zero stall! */
     }
@@ -232,7 +235,7 @@ Every discrete press of the blue user button `B1` toggles green LED `LD2` cleanl
 1. Set a watch on `GPIOC->IDR` and `btn.state` in GDB / Cortex-Debug.
 2. Confirm that while `B1` is untouched, `(GPIOC->IDR >> 13) & 1` reads **`0`** and `btn.state == BTN_IDLE (0)`.
 3. Hold `B1` and verify `(GPIOC->IDR >> 13) & 1` reads **`1`**.
-4. Place a breakpoint on `led_toggle_atomic();` and verify it triggers once per press after `g_systick_ms - btn.state_enter_ms >= 25`.
+4. Place a breakpoint on `led_toggle_bsrr();` and verify it triggers once per press after `g_systick_ms - btn.state_enter_ms >= 25`.
 
 ---
 
@@ -270,7 +273,7 @@ Every discrete press of the blue user button `B1` toggles green LED `LD2` cleanl
 | Field | Record |
 |---|---|
 | **Verification Status** | `ONBOARD HARDWARE TESTED` *(Verified via `onboard_selftest` Test 2 + Capstone Project 01 SysTick debouncer on NUCLEO-G474RE)* |
-| **Objective** | Read NUCLEO-G474RE Active-HIGH User Button `B1` (`PC13`) and debounce contact chatter via a non-blocking 4-state `SysTick` FSM (`DEBOUNCE_MS = 25 ms`), toggling `LD2` (`PA5`) atomically via `BSRR`. |
+| **Objective** | Read NUCLEO-G474RE Active-HIGH User Button `B1` (`PC13`) and debounce contact chatter via a non-blocking 4-state `SysTick` FSM (`DEBOUNCE_MS = 25 ms`), toggling `LD2` (`PA5`) via single-writer `BSRR` set/reset writes. |
 | **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
 | **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
 | **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,288 B` object file). |
@@ -281,7 +284,7 @@ Every discrete press of the blue user button `B1` toggles green LED `LD2` cleanl
 | **Expected Behavior** | Idle `PC13` reads `0`, `LD2` stays steady; each discrete press of `B1` lasting `>= 25 ms` toggles `LD2` exactly once with zero double-triggers on press or release bounce. |
 | **Actual Observations** | **EXECUTED ON NUCLEO-G474RE (`onboard_selftest` Test 2 + Project 01, 2026-11-18):** `[PASS] TEST2_GPIO_LD2_B1: PC13_MODER=0 PC13_IDR=0 GPIOC_MODER=0xF3FFFFFF` confirming Active-HIGH idle-LOW pull-down state on `PC13`; Project 01 SysTick FSM ran live at `170 MHz` (`B1 Presses: 0`, zero false triggers). Manual physical finger press of `B1` remains optional. |
 | **Register Values** | Reset: `GPIOC->MODER = 0xFFFFFFFF`, `GPIOA->MODER = 0xABFFFFFF`. Configured (`16 MHz`): `RCC->AHB2ENR = 0x5` (`GPIOAEN\|GPIOCEN`), `GPIOC->MODER[27:26] = 00b`, `GPIOC->PUPDR[27:26] = 00b`, `SysTick->LOAD = 15999` (`159999` @ `160 MHz`, `169999` @ `170 MHz`), `SysTick->CTRL = 0x7`. |
-| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` run `p/x GPIOC->MODER`, `p/x GPIOC->IDR`, `p/x SysTick->LOAD`, `p btn.state`, and break on `led_toggle_atomic`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` run `p/x GPIOC->MODER`, `p/x GPIOC->IDR`, `p/x SysTick->LOAD`, `p btn.state`, and break on `led_toggle_bsrr`. |
 | **Remaining Limitations** | Zero false triggers verified at idle on real silicon; tactile contact-bounce transient waveform capture requires manual physical `B1` actuation (or oscilloscope on `PC13`). |
 
 ### 12.1 6-State Granular Verification Breakdown

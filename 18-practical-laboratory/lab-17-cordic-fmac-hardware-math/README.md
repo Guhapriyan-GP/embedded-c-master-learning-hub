@@ -14,6 +14,7 @@ Harness the two signature **STM32G474RE hardware math accelerators** on AHB1 (`1
 1. **`CORDIC`** (`0x40020C00`): Compute `cos(θ)` + `sin(θ)` simultaneously in `q1.31` fixed-point with **zero-wait-state AHB stall polling** (~6 cycles/pair) and benchmark cycle count against Cortex-M4F FPU `cosf()`/`sinf()` using **`DWT->CYCCNT`**.
 2. **`FMAC`** (`0x40021400`): Execute an 8-tap `q1.15` **FIR low-pass filter** in hardware (`1 MAC/cycle` = `170 MMAC/s`) using its 256×16-bit internal SRAM (`X1`, `X2`, `Y` circular buffers) and verify bit-exact accuracy against a software reference loop!
 
+- **Prerequisites:** [Lab 03 (170 MHz PLL Clock Switch)](../lab-03-rcc-pll-170mhz-clock-switch/README.md), [Lab 08 (`USART2` Telemetry)](../lab-08-usart-baremetal-driver-printf/README.md), [Stage 02 (Fixed-Point Arithmetic)](../../02-c-fundamentals/README.md), and [Stage 04 (Cortex-M4F FPU & `DWT->CYCCNT`)](../../04-arm-cortex-m/README.md)
 - **Target Concept IDs:** `PERIPH-CORDIC-001` (`CORDIC` `q1.31` Trig Acceleration), `PERIPH-FMAC-001` (`FMAC` `q1.15` FIR/IIR Hardware DSP), `ARM-DWT-001` (`DWT->CYCCNT` Cycle Benchmarking), `C-FIXPT-001` (`q1.31` / `q1.15` Fixed-Point Scaling)
 - **Scope Layer:** `[STM32G474RE Exact]` / `[Cortex-M4 Specific]`
 

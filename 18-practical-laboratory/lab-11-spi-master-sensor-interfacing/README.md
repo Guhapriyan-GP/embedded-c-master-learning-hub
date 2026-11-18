@@ -12,6 +12,7 @@
 
 Initialize the STM32G474RE to **`170 MHz`**, configure **`SPI1`** as an 8-bit full-duplex Master at **`10.625 MHz`** (Mode 3: `CPOL=1, CPHA=1`) with **`SPI_CR2_FRXTH`** 8-bit FIFO threshold and High-Speed `OSPEEDR`, implement a **proper 2-byte full-duplex SPI register read transaction** (fixing the classic 1-byte dummy-data bug!) with bounded timeouts, and account for the **NUCLEO-G474RE `PA5`/`LD2` (`SB42`/`SB6`) hardware loading conflict**.
 
+- **Prerequisites:** [Lab 03 (170 MHz PLL Clock Switch)](../lab-03-rcc-pll-170mhz-clock-switch/README.md), [Lab 08 (`USART2` Diagnostics)](../lab-08-usart-baremetal-driver-printf/README.md), [Stage 01b (High-Speed Bus Integrity)](../../01b-digital-electronics-and-hw-integration/README.md), and [Stage 11 (SPI Full-Duplex Protocol)](../../11-communication/README.md)
 - **Target Concept IDs:** `PERIPH-SPI-001` (Full-Duplex SPI Protocol, `FRXTH` 8-Bit Packing & Modes 0–3), `DIG-ELEC-006` (High-Speed `OSPEEDR` & Bus Loading), `FW-REL-001` (Bounded Hardware Timeouts)
 - **Scope Layer:** `[STM32G474RE Exact]`
 

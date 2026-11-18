@@ -14,6 +14,7 @@ Harden STM32G474RE firmware for safety-critical production diagnostics by:
 1. Configuring the ARM Cortex-M4 **8-region Memory Protection Unit (`MPU`)** with a **32-byte No-Access (`AP = 000`) Stack Guard Region** at the bottom of the Main Stack (`MSP`) so stack overflows trap immediately as a `MemManage` fault *before* silently corrupting `.bss`/`.data`!
 2. Writing a **naked-assembly `HardFault_Handler` / `MemManage_Handler` trampoline** that inspects `EXC_RETURN` bit 2 (`TST LR, #4`) to pick `MSP` vs `PSP`, passes the exact hardware-stacked frame (`R0..R3, R12, LR, PC, xPSR`) to a C decoder, captures **`CFSR`, `HFSR`, `MMFAR`, and `BFAR`**, persists the crash record into a **`.noinit` SRAM section** (CRC-protected) surviving `NVIC_SystemReset()`, and prints the post-mortem report on reboot!
 
+- **Prerequisites:** [Lab 05 (Exception Entry & NVIC)](../lab-05-exti-pushbutton-interrupt/README.md), [Stage 04 (Cortex-M4 Fault Registers & MPU)](../../04-arm-cortex-m/README.md), [Stage 05 (Linker Scripts & `.noinit`)](../../05-toolchain-and-debugging/README.md), and [Stage 14 (Memory Layout)](../../14-memory-and-storage/README.md)
 - **Target Concept IDs:** `ARM-MPU-001` (8-Region MPU & Stack Guard), `ARM-FAULT-001` (HardFault/MemManage/BusFault Decoding via `CFSR`/`HFSR`/`MMFAR`/`BFAR`), `REL-CRASH-001` (`.noinit` Persistent Crash Log & Safe Reboot), `TOOL-LD-001` (`.noinit (NOLOAD)` Linker Section)
 - **Scope Layer:** `[Cortex-M4 Specific]` / `[STM32G474RE Exact]`
 

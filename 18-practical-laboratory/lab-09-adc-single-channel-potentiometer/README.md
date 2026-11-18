@@ -12,6 +12,7 @@
 
 Initialize the STM32G474RE to **`170 MHz`**, configure the `ADC12` synchronous clock safely within **DS12288** limits (`CKMODE = 11b` $\implies \text{HCLK}/4 = 42.5\text{ MHz} \le 60\text{ MHz}$ — fixing the critical 2.83× overclock bug!), execute the exact RM0440 ADC startup sequence (`DEEPPWD = 0` $\to$ `ADVREGEN = 1` $\to \ge 20\ \mu\text{s}$ $\to$ `ADCAL` $\to$ `rc_w1` `ADRDY` clear $\to$ `ADEN`) with bounded timeouts, and measure an external `10 kΩ` potentiometer on `PA0` (`ADC1_IN1`).
 
+- **Prerequisites:** [Lab 03 (170 MHz PLL Clock Switch)](../lab-03-rcc-pll-170mhz-clock-switch/README.md), [Lab 08 (`USART2` `printf`)](../lab-08-usart-baremetal-driver-printf/README.md), [Stage 01b (RC Source Impedance)](../../01b-digital-electronics-and-hw-integration/README.md), and [Stage 12 (SAR ADC Architecture)](../../12-adc-dac-analog/README.md)
 - **Target Concept IDs:** `PERIPH-ADC-001` (SAR ADC Clocking, Calibration & Sampling Time), `EMB-BIT-001` (`rc_w1` Status Clearing), `FW-REL-001` (Bounded Hardware Polling Timeouts), `DIG-ELEC-003` (Source Impedance & Sample-and-Hold RC Charging)
 - **Scope Layer:** `[STM32G474RE Exact]`
 

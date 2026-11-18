@@ -12,6 +12,7 @@
 
 Configure the hardware **Independent Watchdog (`IWDG`)** clocked from the internal `32 kHz LSI` oscillator for a `1.0 s` fail-safe reset window (`PR = 100b = 4` $\implies /64$, `RLR = 499`), freeze `IWDG` during GDB halts via **`DBGMCU->APB1FZR1`**, fix the **double fatal boot-loop bug** (explicitly clearing `GPIOC->MODER[27:26]` from STM32G4 reset Analog mode + reading **Active-HIGH `B1` (`PC13`)** per UM2505), and detect post-watchdog recovery via `RCC->CSR.IWDGRSTF`.
 
+- **Prerequisites:** [Lab 02 (`PC13` Active-HIGH `B1`)](../lab-02-gpio-pushbutton-debouncing/README.md), [Lab 04 (`SysTick` Timebase)](../lab-04-systick-accurate-delay-generator/README.md), [Stage 07 (LSI & Reset Flags)](../../07-rcc-and-clocks/README.md), and [Stage 17 (Watchdog Reliability)](../../17-advanced-firmware-engineering/README.md)
 - **Target Concept IDs:** `PERIPH-WDG-001` (IWDG LSI Clocking & Key Protocol), `STM32-DBGMCU-001` (Debug Freeze Control), `STM32-RESET-001` (`RCC->CSR` Reset Cause Diagnostics), `PERIPH-GPIO-001` (STM32G4 Analog Reset Mode)
 - **Scope Layer:** `[STM32G474RE Exact]`
 
@@ -52,7 +53,7 @@ Configure the hardware **Independent Watchdog (`IWDG`)** clocked from the intern
 
 ### 5.1 Watchdog Timeout Math (Accounting for LSI ±5% Tolerance)
 
-- Nominal $f_{\text{LSI}} = 32\,000\text{ Hz}$ (per DS12288, STM32G4 LSI is factory-calibrated to $32\text{ kHz} \pm 5\%$, i.e., $30.4\text{ kHz}\text{–}33.6\text{ kHz}$).
+- Nominal $f_{\text{LSI}} = 32\,000\text{ Hz}$ (per DS12288, STM32G4 LSI is factory-calibrated to $32\text{ kHz} \pm 5\%$, i.e., $30.4\text{--}33.6\text{ kHz}$).
 - Prescaler divider `/64` is **`PR = 100b = 4U` (`IWDG_PR_PR_2`)** (NOT `010b`!):
   $$f_{\text{IWDG}} = \frac{32\,000\text{ Hz}}{64} = 500\text{ Hz} \quad (2.0\text{ ms per tick})$$
 - Reload value `RLR = 499U` ($500$ ticks):
@@ -113,7 +114,9 @@ static void delay_ms(uint32_t ms) {
     }
 }
 
-static inline void led_toggle_atomic(void) {
+static inline void led_toggle_bsrr(void) {
+    /* Cross-pin atomic BSRR set/reset; safe here because main() is sole PA5 owner
+     * (read-ODR -> write-BSRR is not atomic if multiple concurrent contexts write PA5). */
     if ((GPIOA->ODR & GPIO_ODR_OD5) != 0U) {
         GPIOA->BSRR = GPIO_BSRR_BR5;
     } else {
@@ -170,7 +173,7 @@ int main(void) {
 
         /* Rapidly blink LD2 5 times (10 toggles @ 80 ms) to signal IWDG recovery */
         for (uint32_t i = 0U; i < 10U; i++) {
-            led_toggle_atomic();
+            led_toggle_bsrr();
             delay_ms(80U);
         }
         GPIOA->BSRR = GPIO_BSRR_BR5;
@@ -184,7 +187,7 @@ int main(void) {
     while (1) {
         /* Kick watchdog every 250 ms (safe margin below 952 ms worst-case LSI timeout) */
         IWDG->KR = 0xAAAAU;
-        led_toggle_atomic();
+        led_toggle_bsrr();
 
         /* Active-HIGH B1 (PC13 == 1 when pressed per UM2505): simulate software hang! */
         if ((GPIOC->IDR & GPIO_IDR_ID13) != 0U) {

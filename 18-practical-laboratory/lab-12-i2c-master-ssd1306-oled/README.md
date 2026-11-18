@@ -12,6 +12,7 @@
 
 Initialize the STM32G474RE to **`170 MHz`**, configure **`I2C1`** on **`PA15` (`SCL`, `AF4`) / `PB7` (`SDA`, `AF4`)** in **400 kHz Fast Mode** with an explicitly derived, RM0440 §39.4.9 spec-compliant **`TIMINGR`** (`0x70811021`) that satisfies $t_{\text{SCLDEL}} \ge t_{r(\max)} + t_{\text{SU;DAT}}$ even at worst-case $t_r = 300\text{ ns}$, completely avoid the **NUCLEO-G474RE `PB8-BOOT0` bootloader-trap voltage divider**, prevent **infinite NACK deadlocks** via bounded `NACKF`/timeout handling + **9-clock bus recovery**, support transfers $> 255$ bytes via **`I2C_CR2_RELOAD`** (required for the 1024-byte SSD1306 framebuffer), and initialize an SSD1306 OLED with its charge pump enabled.
 
+- **Prerequisites:** [Lab 03 (170 MHz PLL Clock Switch)](../lab-03-rcc-pll-170mhz-clock-switch/README.md), [Lab 08 (Serial Bus Diagnostics)](../lab-08-usart-baremetal-driver-printf/README.md), [Stage 01b (Open-Drain Pull-Up Sizing)](../../01b-digital-electronics-and-hw-integration/README.md), and [Stage 11 (I2C Timing & Recovery)](../../11-communication/README.md)
 - **Target Concept IDs:** `PERIPH-I2C-001` (Open-Drain Bus, `TIMINGR`, `RELOAD`, `NACKF`), `DIG-ELEC-004` (Pull-Up Sizing & RC Rise Time), `FW-REL-001` (9-Clock Stuck-Bus Recovery & Bounded Timeouts)
 - **Scope Layer:** `[STM32G474RE Exact]`
 
@@ -69,7 +70,7 @@ Choose **`PRESC = 7`** $\implies t_{\text{PRESC}} = \frac{7 + 1}{170\text{ MHz}}
 - **`SDADEL = 1` (`0x1`)**: $t_{\text{SDADEL}} = 1 \times 47.059\text{ ns} = \mathbf{47.1\text{ ns}} \in [0,\ 316.5\text{ ns}]\ \checkmark$
 - **`SCLH = 16` (`0x10`)**: $t_{\text{SCLH}} = (16 + 1) \times 47.059\text{ ns} = \mathbf{800.0\text{ ns}} \ge 600.0\text{ ns}\ \checkmark$
 - **`SCLL = 33` (`0x21`)**: $t_{\text{SCLL}} = (33 + 1) \times 47.059\text{ ns} = \mathbf{1600.0\text{ ns}} \ge 1300.0\text{ ns}\ \checkmark$
-- **Maximum Frequency Check (zero edge delay + min analog filter $t_{\text{SYNC1+2}} \ge 123.5\text{ ns}$):** $T_{\text{SCL(min)}} = 800.0 + 1600.0 + 123.5 = 2523.5\text{ ns} \implies f_{\text{SCL(max)}} = \mathbf{396.3\text{ kHz}} \le 400\text{ kHz}\ \checkmark$ (typical bench bus with $t_r \approx 120\text{ ns}$ runs at $\approx 360\text{–}385\text{ kHz}$).
+- **Maximum Frequency Check (zero edge delay + min analog filter $t_{\text{SYNC1+2}} \ge 123.5\text{ ns}$):** $T_{\text{SCL(min)}} = 800.0 + 1600.0 + 123.5 = 2523.5\text{ ns} \implies f_{\text{SCL(max)}} = \mathbf{396.3\text{ kHz}} \le 400\text{ kHz}\ \checkmark$ (typical bench bus with $t_r \approx 120\text{ ns}$ runs at $\approx 360\text{--}385\text{ kHz}$).
 
 $$\text{I2C1->TIMINGR} = (7 \ll 28) \mid (8 \ll 20) \mid (1 \ll 16) \mid (\text{0x10} \ll 8) \mid \text{0x21} = \mathbf{\text{0x70811021}}$$
 

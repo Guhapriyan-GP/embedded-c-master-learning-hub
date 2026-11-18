@@ -16,7 +16,7 @@ This directory contains the standalone bare-metal starter template, linker scrip
 ├── Drivers/                                   # 12 Reusable Bare-Metal CMSIS Drivers (STM32G474RE)
 │   ├── CMSIS/                                 # Single source of truth for ARM CMSIS-Core & ST STM32G4xx headers
 │   ├── clock_g4.h      / clock_g4.c           # 170 MHz & 160 MHz Range 1 Boost Mode (RM0440 §6.1.5), profile query, DWT delays
-│   ├── gpio_g4.h       / gpio_g4.c            # Atomic BSRR set/reset/toggle, glitch-free Input/Output/AF/Analog & LCKR helpers
+│   ├── gpio_g4.h       / gpio_g4.c            # Atomic BSRR set/reset & sibling-safe BSRR toggle, glitch-free Input/Output/AF/Analog & LCKR helpers
 │   ├── ring_buffer.h   / ring_buffer.c        # Lock-free C11 <stdatomic.h> SPSC power-of-2 ring buffer (host-testable)
 │   ├── fault_handler.h / fault_handler.c      # Cortex-M4 HardFault CFSR/HFSR/MMFAR/BFAR .noinit logger + SRAM/CCM bounds check
 │   ├── exti_g4.h       / exti_g4.c            # SYSCFG->EXTICR routing, edge config, callback dispatch, rc_w1 PR1 + __DSB()
@@ -46,10 +46,10 @@ This directory contains the standalone bare-metal starter template, linker scrip
 | # | Driver | Concept IDs | Key STM32G474RE Safeguards | Host-Testable Pure Helpers (`-DDRIVER_HOST_TEST`) |
 |---|---|---|---|---|
 | 1 | `clock_g4` | `STM32-RCC-001`, `STM32-PWR-001`, `STM32-FLASH-001`, `TOOL-DBG-003` | `Clock_Init_160MHz()` & `Clock_Init_170MHz()` (HSI16 & 24 MHz HSE X3), Boost `R1MODE=0`, 4 WS, two-step `HPRE=/2 -> >=1 us -> HPRE=/1`, `Clock_GetSysClkHz()`, `Clock_GetProfile()` | — (MMIO/DWT) |
-| 2 | `gpio_g4` | `PERIPH-GPIO-001..003`, `PERIPH-GPIO-005`, `EMB-MMIO-001` | Clears `0b11` Analog reset default; writes `MODER` last; branchless atomic `BSRR` toggle; `GPIO_ConfigInput/Output/AF/Analog` & `GPIO_LockPin()` | — (MMIO) |
+| 2 | `gpio_g4` | `PERIPH-GPIO-001..003`, `PERIPH-GPIO-005`, `EMB-MMIO-001` | Clears `0b11` Analog reset default; writes `MODER` last; atomic `BSRR` set/reset & sibling-safe `ODR`-read/`BSRR`-write toggle (single-writer per pin); `GPIO_ConfigInput/Output/AF/Analog` & `GPIO_LockPin()` | — (MMIO) |
 | 3 | `ring_buffer` | `EMB-CONC-001`, `C-MEM-001`, `FW-ARCH-001` | Lock-free C11 `<stdatomic.h>` SPSC power-of-2 queue (`acquire`/`release`, zero malloc) | Entire module (`rb_*`) |
 | 4 | `fault_handler` | `ARM-EXCP-001`, `TOOL-DBG-002`, `REL-FAULT-001` | Persistent `.noinit` `g_crash_log`, SRAM1+SRAM2 & CCM-SRAM stacked-SP bounds check | — (SCB/ASM) |
-| 5 | `exti_g4` | `PERIPH-EXTI-001..003`, `PERIPH-SYSCFG-001`, `ARM-NVIC-001` | Enables `SYSCFGEN`, callback dispatch, direct `EXTI->PR1 = mask; __DSB();` (ES0430 §2.1.3) | `exti_calc_exticr_index_shift()` |
+| 5 | `exti_g4` | `PERIPH-EXTI-001..003`, `PERIPH-SYSCFG-001`, `ARM-NVIC-001` | Enables `SYSCFGEN`, callback dispatch, direct `EXTI->PR1 = mask; (void)EXTI->PR1; __DSB();` (ARM AN321 §4.9 + ES0430 §2.1.3 / ARM 838869) | `exti_calc_exticr_index_shift()` |
 | 6 | `tim_g4` | `PERIPH-TIM-001..002`, `PERIPH-PWM-001` | Dynamic `SystemCoreClock` + APB x2 clock, `ARPE`/`OCxPE` + `EGR=UG`, `rc_w0` `SR = ~UIF` | `tim_calc_psc_arr()`, `tim_calc_pwm_ccr()` |
 | 7 | `usart_g4` | `PERIPH-UART-001..002`, `PERIPH-UART-004` | Dynamic `BRR` for USART1/2 & 256x LPUART1, bounded TX, `ring_buffer_t` RX ISR, `ORE/FE/NE/PE` clear | `usart_calc_brr()`, `lpuart_calc_brr()` |
 | 8 | `spi_g4` | `PERIPH-SPI-001` | Modes 0–3, `DS=0b0111` + **`SPI_CR2_FRXTH`**, strict 8-bit `*(__IO uint8_t *)&spi->DR`, `FTLVL==0 && !BSY` wait | `spi_calc_br_div()` |

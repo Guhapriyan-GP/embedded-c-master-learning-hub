@@ -12,6 +12,7 @@
 
 Initialize the STM32G474RE to **`170 MHz`**, build a production-grade bare-metal **`USART2`** driver (`115,200 baud`, `8N1`) with **bounded TX timeouts**, a **non-blocking Single-Producer Single-Consumer (SPSC) lock-free ring buffer RX ISR** (`USART2_IRQHandler`) with overrun/framing error recovery, retargeted `printf()` via `_write()`, and a **3-way comparison** (Direct Register vs STM32Cube LL vs ST HAL).
 
+- **Prerequisites:** [Lab 03 (170 MHz PLL Clock Switch)](../lab-03-rcc-pll-170mhz-clock-switch/README.md), [Lab 05 (NVIC & Barriers)](../lab-05-exti-pushbutton-interrupt/README.md), [Stage 11 (Communication Protocols)](../../11-communication/README.md), and [Stage 17 (SPSC Ring Buffers)](../../17-advanced-firmware-engineering/README.md)
 - **Target Concept IDs:** `PERIPH-UART-001` (USART Framing & BRR Math), `FW-PAT-001` (SPSC Lock-Free Ring Buffer), `EMB-BAR-001` (`__DMB()`/`__DSB()` Ordering), `TOOL-NEWLIB-001` (`_write` Syscall Retargeting)
 - **Scope Layer:** `[STM32G474RE Exact]` / `[General C]`
 
@@ -80,7 +81,8 @@ All three implementations below (**6.1 CMSIS Direct Register**, **6.2 STM32CubeG
 
 ### 6.1 Approach A — Direct Register Access with SPSC Ring Buffer & Bounded TX Timeout
 
-> **Build Scope:** *Complete Bare-Metal CMSIS Program — Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors).*
+> **[COMPLETE STANDALONE IMPLEMENTATION — Bare-Metal CMSIS, Cross-Compiled]**  
+> *Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings / 0 errors).*
 
 ```c
 #include "stm32g474xx.h"
@@ -166,8 +168,8 @@ void USART2_IRQHandler(void) {
         }
     }
 
-    (void)USART2->ISR;
-    __DSB();
+    (void)USART2->ISR; /* Flush AHB-to-APB1 posted-write bridge (ARM AN321 §4.9) */
+    __DSB();           /* Drain write buffer / guard Erratum 838869 (ST ES0430 §2.1.3) */
 }
 
 static bool USART2_RxPop(uint8_t *out_byte) {
@@ -259,7 +261,8 @@ int main(void) {
 
 ### 6.2 Approach B — STM32Cube LL Comparison
 
-> **Build Scope:** *Complete STM32CubeG4 LL Program (requires STM32CubeG4 LL headers in include path; not built by bare-metal CMSIS Makefile — Statically Reviewed).*
+> **[COMPLETE STANDALONE IMPLEMENTATION — STM32CubeG4 LL Environment Required, Statically Reviewed]**  
+> *Requires shared CMSIS startup/linker script + STM32CubeG4 LL headers (`stm32g4xx_ll_*.h`) in include path. STM32CubeG4 HAL/LL package not installed on host — Statically Reviewed against official `STMicroelectronics/stm32g4xx-hal-driver` API.*
 
 ```c
 /* Complete STM32CubeG4 LL Program (requires STM32CubeG4 LL headers in include path;
@@ -298,8 +301,8 @@ void USART2_IRQHandler(void) {
             g_ll_rx_head = next_head;
         }
     }
-    (void)USART2->ISR;
-    __DSB();
+    (void)USART2->ISR; /* Flush AHB-to-APB1 posted-write bridge (ARM AN321 §4.9) */
+    __DSB();           /* Drain write buffer / guard Erratum 838869 (ST ES0430 §2.1.3) */
 }
 
 static bool Lab08_LL_TxByte(uint8_t byte) {
@@ -369,7 +372,8 @@ int main(void) {
 
 ### 6.3 Approach C — STM32Cube HAL Comparison
 
-> **Build Scope:** *Complete STM32CubeG4 HAL Program (requires STM32CubeG4 HAL drivers & `SysTick_Handler -> HAL_IncTick()` — Statically Reviewed).*
+> **[COMPLETE STANDALONE IMPLEMENTATION — STM32CubeG4 HAL Environment Required, Statically Reviewed]**  
+> *Requires STM32CubeG4 HAL drivers (`stm32g4xx_hal*.c/.h`) + `SysTick_Handler -> HAL_IncTick()`. STM32CubeG4 HAL/LL package not installed on host — Statically Reviewed against official `STMicroelectronics/stm32g4xx-hal-driver` API.*
 
 ```c
 /* Complete STM32CubeG4 HAL Program (requires STM32CubeG4 HAL drivers &

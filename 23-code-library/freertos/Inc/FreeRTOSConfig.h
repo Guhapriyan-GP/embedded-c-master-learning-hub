@@ -93,7 +93,7 @@
  * MANDATORY: Application MUST call NVIC_SetPriorityGrouping(0U) before
  *            vTaskStartScheduler() (4 preemption bits, 0 subpriority bits).
  *
- * Priorities 0..4  : Zero-latency unmanaged ISRs (NEVER call FreeRTOS APIs!)
+ * Priorities 0..4  : Unmasked high-priority ISRs (unaffected by BASEPRI; NEVER call FreeRTOS APIs!)
  * Priorities 5..15 : Kernel-managed ISRs (safe for ...FromISR() APIs)
  *---------------------------------------------------------------------------*/
 #ifdef __NVIC_PRIO_BITS

@@ -5,7 +5,9 @@
  * Handles STM32G4-specific silicon details:
  *   - Reset default MODER is 0b11 (Analog), NOT 0b00 (Input) — except debug pins.
  *   - Configures OTYPER/OSPEEDR/PUPDR/AFR BEFORE writing MODER to prevent glitches.
- *   - Uses atomic BSRR writes for ISR-safe pin set/reset/toggle operations.
+ *   - Uses atomic single-write BSRR updates for pin set/reset (sibling-pin ISR-safe;
+ *     read-ODR-then-BSRR toggle requires single-writer ownership or a critical section
+ *     if multiple concurrent contexts toggle the same pin).
  *   - Implements RM0440 §9.4.8 4-step LCKR pin-configuration lock sequence.
  *
  * Reference: RM0440 Chapter 9 (GPIO), DS12288 Table 12-13 (LQFP64 pinout).
@@ -152,9 +154,12 @@ static inline void GPIO_WritePin(GPIO_TypeDef *port, uint8_t pin, bool high) {
 }
 
 /**
- * @brief Toggle an output pin using a single branchless atomic BSRR mask write.
- * @note  Unlike `port->ODR ^= mask`, writing `BSRR` affects ONLY @p pin and
- *        cannot corrupt concurrent ISR updates to other pins on the same port.
+ * @brief Toggle an output pin using a branchless read-ODR + single-write BSRR mask update.
+ * @note  Because the write targets `BSRR`, this operation affects ONLY @p pin and cannot
+ *        corrupt concurrent ISR updates to *sibling* pins on the same port (unlike `port->ODR ^= mask`).
+ *        However, the read-`ODR`-then-write-`BSRR` sequence is NOT atomic as a complete toggle
+ *        if two concurrent contexts toggle the *same* pin — concurrent same-pin writers require
+ *        single-writer ownership or an explicit PRIMASK/BASEPRI critical section.
  */
 static inline void GPIO_TogglePin(GPIO_TypeDef *port, uint8_t pin) {
     uint32_t mask = (1UL << pin);

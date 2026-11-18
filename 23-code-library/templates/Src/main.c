@@ -79,7 +79,7 @@ int main(void) {
     ring_buffer_t event_rb;
     (void)rb_init(&event_rb, rb_storage, (uint32_t)sizeof(rb_storage));
 
-    /* 6. Super Loop: Read Active-HIGH B1 (PC13) and toggle LD2 (PA5) atomically via BSRR */
+    /* 6. Super Loop: Read Active-HIGH B1 (PC13) and drive LD2 (PA5) HIGH/LOW atomically via BSRR */
     while (1) {
         /* Active-HIGH per UM2505: pressed when IDR bit 13 == 1 */
         bool is_button_pressed = ((GPIOC->IDR & (1UL << B1_PIN)) != 0UL);

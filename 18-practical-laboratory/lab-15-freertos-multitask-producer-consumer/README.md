@@ -16,6 +16,7 @@ Architect a production-safe **FreeRTOS** multi-task application on **STM32G474RE
 3. Adequate **`512-word` (`2048-byte`)** stack sizing for `vTelemetryTask` (fixing the guaranteed Cortex-M4F FPU + `printf` stack overflow!).
 4. Strict `NULL` / `pdPASS` creation checks, drift-free `vTaskDelayUntil()`, **`xTaskCreateStatic()`** zero-heap deterministic task creation, and **`xQueueSendFromISR()` + `portYIELD_FROM_ISR()`** ISR-to-task handoff.
 
+- **Prerequisites:** [Lab 04 (`SysTick`)](../lab-04-systick-accurate-delay-generator/README.md), [Lab 05 (`EXTI13` & `PRIGROUP = 0`)](../lab-05-exti-pushbutton-interrupt/README.md), [Lab 08 (`USART2` `printf`)](../lab-08-usart-baremetal-driver-printf/README.md), and [Stage 16 (FreeRTOS Architecture)](../../16-rtos/README.md)
 - **Target Concept IDs:** `RTOS-SCHED-001` (Preemptive Scheduling & `vTaskDelayUntil`), `RTOS-SYNC-001` (Queues & Priority-Inheritance Mutexes), `RTOS-ISR-001` (`MAX_SYSCALL_INTERRUPT_PRIORITY` & `FromISR`), `RTOS-MEM-001` (Static Allocation & Stack Overflow Hooks)
 - **Scope Layer:** `[RTOS Generic]` / `[Cortex-M4F Specific]` / `[STM32G474RE Exact]`
 
@@ -201,7 +202,7 @@ void vApplicationMallocFailedHook(void) {
 void EXTI15_10_IRQHandler(void) {
     if ((EXTI->PR1 & EXTI_PR1_PIF13) != 0U) {
         EXTI->PR1 = EXTI_PR1_PIF13;
-        (void)EXTI->PR1; /* Flush AHB-to-APB2 posted-write bridge */
+        (void)EXTI->PR1; /* Flush AHB-to-APB2 posted-write bridge (ARM AN321 §4.9) */
 
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
         telemetry_msg_t msg = {
@@ -211,8 +212,8 @@ void EXTI15_10_IRQHandler(void) {
         };
         (void)xQueueSendFromISR(g_sensor_queue, &msg, &xHigherPriorityTaskWoken);
 
-        __DSB();
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+        __DSB(); /* Tail barrier before exception return (ARM Erratum 838869 / ST ES0430 §2.1.3) */
     }
 }
 
@@ -254,7 +255,8 @@ static void vTelemetryTask(void *pvParameters) {
                 xSemaphoreGive(g_uart_mutex);
             }
 
-            /* Atomic LD2 toggle */
+            /* Single-writer LD2 toggle via BSRR (cross-pin atomic on Port A;
+             * race-free because vTelemetryTask is the sole writer of PA5) */
             if ((GPIOA->ODR & GPIO_ODR_OD5) != 0U) {
                 GPIOA->BSRR = GPIO_BSRR_BR5;
             } else {

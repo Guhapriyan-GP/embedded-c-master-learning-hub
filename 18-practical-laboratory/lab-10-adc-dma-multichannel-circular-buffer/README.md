@@ -12,6 +12,7 @@
 
 Continuously scan **two self-contained onboard internal channels** on **`ADC1`** — Channel 18 (**Internal Reference Voltage `VREFINT`**, $\approx 1.212\text{ V}$) and Channel 16 (**Internal Die Temperature Sensor**) — into a `volatile` SRAM ping-pong circular buffer via **`DMA1 Channel 1`** and **`DMAMUX1 Channel 0`**, requiring **zero external wiring**! Enforce all **DS12288** silicon constraints (`CKMODE = 11b` $\implies 42.5\text{ MHz} \le 60\text{ MHz}$, `SMPR2.SMP18 = SMP16 = 640.5` cycles $= 15.07\ \mu\text{s} \ge 5\ \mu\text{s}$, and $\ge 120\ \mu\text{s}$ temperature sensor startup $t_{\text{START}}$), compute true calibrated **`g_vdda_mv`** and $V_{\text{DDA}}$-compensated **`g_temp_deci_c`** from factory ROM calibration constants, and process each half-buffer deterministically via **`HTIE`/`TCIE`** interrupts. *(Optional: add external `PA0` `ADC1_IN1` as a 3rd scan channel — see Extension Exercise 2.)*
 
+- **Prerequisites:** [Lab 05 (NVIC & Barriers)](../lab-05-exti-pushbutton-interrupt/README.md), [Lab 09 (`ADC1` Calibration & Sampling)](../lab-09-adc-single-channel-potentiometer/README.md), [Stage 12 (Internal `VREFINT`/Temp Channels)](../../12-adc-dac-analog/README.md), and [Stage 13 (DMA & DMAMUX1)](../../13-dma/README.md)
 - **Target Concept IDs:** `PERIPH-DMA-001` (Circular Ping-Pong DMA & DMAMUX1), `PERIPH-DMA-002` (DMAMUX Request Routing), `PERIPH-ADC-001` (Scan Mode, `VREFINT` & Internal Temp Sensor $t_S$), `EMB-VOL-001` (`volatile` DMA Buffers), `EMB-BAR-001` (`__DMB()`/`__DSB()` DMA Ownership Handoff), `STM32-ERRATA-001` (ES0430 §2.3.1 Individual `IFCR` Clear)
 - **Scope Layer:** `[STM32G474RE Exact]`
 
@@ -181,8 +182,8 @@ void DMA1_Channel1_IRQHandler(void) {
         g_dma_errors++;
     }
 
-    (void)DMA1->ISR;
-    __DSB();
+    (void)DMA1->ISR; /* Flush AHB posted-write path before ISR exit (ARM AN321 §4.9) */
+    __DSB();         /* Drain write buffer / guard Erratum 838869 (ST ES0430 §2.1.3) */
 }
 
 static void process_half_buffer(uint32_t offset) {
@@ -354,7 +355,7 @@ int main(void) {
 - [ ] Code compiles cleanly with `arm-none-eabi-gcc -Wall -Wextra -Werror`.
 - [ ] `ADC12_COMMON->CCR` has `CKMODE = 11b` (`42.5 MHz` @ 170 MHz / `40.0 MHz` @ 160 MHz), `VREFEN = 1`, and `VSENSESEL = 1`.
 - [ ] `ADC1->SMPR2` has `SMP16 = 111b` and `SMP18 = 111b` (`640.5` cycles = `15.07 µs >= 5 µs`).
-- [ ] `DMA1_Channel1_IRQHandler` clears individual `CHTIF1`/`CTCIF1`/`CTEIF1` flags (never `CGIF1`) and executes `__DSB()`.
+- [ ] `DMA1_Channel1_IRQHandler` clears individual `CHTIF1`/`CTCIF1`/`CTEIF1` flags (never `CGIF1`) and executes `(void)DMA1->ISR;` + `__DSB();`.
 - [ ] `g_blocks_done` increments monotonically with `g_dma_errors == 0`, `g_vdda_mv` in `3150..3400 mV`, and `g_temp_deci_c` in realistic ambient range.
 
 ---
