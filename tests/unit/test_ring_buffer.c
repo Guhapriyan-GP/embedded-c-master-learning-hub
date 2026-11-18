@@ -147,12 +147,65 @@ static void test_uint32_index_rollover(void) {
     ASSERT_EQ_U32(0U, rb_count(&rb));
 }
 
+static void test_null_and_defensive_guards(void) {
+    ring_buffer_t bad_rb;
+    memset(&bad_rb, 0, sizeof(bad_rb));
+    bad_rb.storage  = NULL;
+    bad_rb.capacity = 8U;
+    bad_rb.mask     = 7U;
+
+    uint8_t byte   = 0x5AU;
+    uint8_t buf[8] = { 1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U };
+    uint8_t out[8] = { 0U };
+
+    /* NULL control block checks */
+    rb_reset(NULL);
+    ASSERT_EQ_U32(0U, rb_count(NULL));
+    ASSERT_EQ_U32(0U, rb_free(NULL));
+    ASSERT_TRUE(rb_is_empty(NULL));
+    ASSERT_TRUE(rb_is_full(NULL));
+    ASSERT_TRUE(!rb_push(NULL, 0x11U));
+    ASSERT_TRUE(!rb_pop(NULL, &byte));
+    ASSERT_TRUE(!rb_peek(NULL, &byte));
+    ASSERT_EQ_U32(0U, rb_write(NULL, buf, 4U));
+    ASSERT_EQ_U32(0U, rb_read(NULL, out, 4U));
+
+    /* NULL backing storage checks */
+    ASSERT_TRUE(!rb_push(&bad_rb, 0x22U));
+    ASSERT_TRUE(!rb_pop(&bad_rb, &byte));
+    ASSERT_TRUE(!rb_peek(&bad_rb, &byte));
+    ASSERT_EQ_U32(0U, rb_write(&bad_rb, buf, 4U));
+    ASSERT_EQ_U32(0U, rb_read(&bad_rb, out, 4U));
+
+    /* NULL data pointer / zero-length checks on valid ring buffer */
+    ring_buffer_t rb;
+    uint8_t storage[8];
+    ASSERT_TRUE(rb_init(&rb, storage, 8U));
+    ASSERT_TRUE(!rb_pop(&rb, NULL));
+    ASSERT_TRUE(!rb_peek(&rb, NULL));
+    ASSERT_EQ_U32(0U, rb_write(&rb, NULL, 4U));
+    ASSERT_EQ_U32(0U, rb_write(&rb, buf, 0U));
+    ASSERT_EQ_U32(0U, rb_read(&rb, NULL, 4U));
+    ASSERT_EQ_U32(0U, rb_read(&rb, out, 0U));
+    ASSERT_EQ_U32(0U, rb_read(&rb, out, 4U)); /* empty bulk read returns 0 */
+
+    /* Clamping guard if head - tail ever exceeded capacity during concurrent snapshot */
+    rb.head = 20U;
+    rb.tail = 0U;
+    ASSERT_EQ_U32(8U, rb_count(&rb));
+    ASSERT_EQ_U32(0U, rb_free(&rb));
+    ASSERT_TRUE(rb_is_full(&rb));
+    rb_reset(&rb);
+    ASSERT_EQ_U32(0U, rb_count(&rb));
+}
+
 int main(void) {
     printf("Running Ring Buffer Host Unit Tests...\n");
     test_init_validation();
     test_push_pop_peek_and_full_capacity();
     test_bulk_read_write_and_wraparound();
     test_uint32_index_rollover();
+    test_null_and_defensive_guards();
 
     printf("Results: %d assertions executed, %d failed.\n", g_tests_run, g_tests_failed);
     return (g_tests_failed == 0) ? 0 : 1;

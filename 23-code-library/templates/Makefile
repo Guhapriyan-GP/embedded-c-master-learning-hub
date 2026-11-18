@@ -40,7 +40,15 @@ APP_SRCS    := Src/main.c \
 DRV_SRCS    := ../Drivers/clock_g4.c \
                ../Drivers/gpio_g4.c \
                ../Drivers/ring_buffer.c \
-               ../Drivers/fault_handler.c
+               ../Drivers/fault_handler.c \
+               ../Drivers/exti_g4.c \
+               ../Drivers/tim_g4.c \
+               ../Drivers/usart_g4.c \
+               ../Drivers/spi_g4.c \
+               ../Drivers/i2c_g4.c \
+               ../Drivers/adc_g4.c \
+               ../Drivers/dma_g4.c \
+               ../Drivers/iwdg_g4.c
 
 # Object mapping preserving directory structure (avoids flat filename collisions)
 APP_OBJS    := $(patsubst Src/%.c,$(BUILD_DIR)/obj/src/%.o,$(APP_SRCS))

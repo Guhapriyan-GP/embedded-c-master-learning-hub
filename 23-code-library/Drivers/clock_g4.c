@@ -1,7 +1,7 @@
 /**
  * @file    clock_g4.c
- * @brief   STM32G474RE 170 MHz Boost Mode clock setup (RM0440 §6.1.5) and
- *          DWT cycle-counter delay implementation.
+ * @brief   STM32G474RE 170 MHz / 160 MHz Range 1 Boost Mode clock setup
+ *          (RM0440 §6.1.5) and DWT cycle-counter delay implementation.
  */
 
 #include "clock_g4.h"
@@ -9,14 +9,22 @@
 
 #define CLOCK_READY_TIMEOUT 1000000U
 
-/* Minimum >= 1 us stabilization delay at 85 MHz intermediate HCLK (~3+ us actual) */
-static void clock_stabilize_1us_at_85mhz(void) {
+static clock_profile_t s_active_profile = CLOCK_PROFILE_HSI16;
+
+/* Minimum >= 1 us stabilization delay at intermediate HCLK (80..85 MHz -> ~3+ us actual) */
+static void clock_stabilize_1us_intermediate(void) {
     for (uint32_t i = 0U; i < 120U; ++i) {
         __asm__ volatile("nop");
     }
 }
 
-static bool clock_configure_pll_170mhz(uint32_t pll_src, uint32_t pll_m_div) {
+/**
+ * @brief Internal shared Range 1 Boost Mode PLL configuration (> 150 MHz .. 170 MHz).
+ * @param pll_src    RCC_PLLCFGR_PLLSRC_HSI or RCC_PLLCFGR_PLLSRC_HSE.
+ * @param pll_m_div  Input divider M (1..16); yields f_PLL_IN = 4 MHz here.
+ * @param pll_n_mul  VCO multiplier N (80 -> 320 MHz / 160 MHz SYSCLK; 85 -> 340 MHz / 170 MHz).
+ */
+static bool clock_configure_pll_boost(uint32_t pll_src, uint32_t pll_m_div, uint32_t pll_n_mul) {
     uint32_t timeout;
 
     /* 1. Enable PWR clock on APB1 and read back to synchronize bus */
@@ -37,7 +45,7 @@ static bool clock_configure_pll_170mhz(uint32_t pll_src, uint32_t pll_m_div) {
     /* 4. Enable Range 1 Boost Mode (R1MODE = 0 in PWR_CR5 @ offset 0x80) for > 150 MHz */
     PWR->CR5 &= ~PWR_CR5_R1MODE;
 
-    /* 5. Set Flash latency to 4 Wait States (RM0440 Table 9: <= 170 MHz in Boost Mode)
+    /* 5. Set Flash latency to 4 Wait States (RM0440 Table 9: > 136 MHz..170 MHz in Boost Mode)
      *    and enable ART Prefetch, Instruction Cache, and Data Cache */
     FLASH->ACR = (FLASH->ACR & ~FLASH_ACR_LATENCY) |
                  FLASH_ACR_LATENCY_4WS |
@@ -80,14 +88,14 @@ static bool clock_configure_pll_170mhz(uint32_t pll_src, uint32_t pll_m_div) {
     }
 
     /* 8. Configure Main PLL:
-     *    f_PLL_IN = 4 MHz (HSI16/4 or HSE24/6), within [2.66, 16] MHz
-     *    f_VCO    = 4 MHz * 85 = 340 MHz, within [96, 344] MHz (Range 1)
-     *    f_PLL_R  = 340 MHz / 2 = 170 MHz (PLLR = 0b00 -> /2, PLLREN = 1)
-     *    f_PLL_Q  = 340 MHz / 8 = 42.5 MHz (PLLQ = 0b11 -> /8, PLLQEN = 1)
-     *    f_PLL_P  = 340 MHz / 6 = 56.67 MHz (PLLPDIV = 6, <= 60 MHz ADC max, PLLPEN = 1) */
+     *    f_PLL_IN = 4 MHz (HSI16/4 or HSE24/6), within [2.66, 16] MHz (DS12288)
+     *    f_VCO    = 4 MHz * N (320 MHz for N=80; 340 MHz for N=85), within [96, 344] MHz
+     *    f_PLL_R  = f_VCO / 2 (160 MHz or 170 MHz; PLLR = 0b00 -> /2, PLLREN = 1)
+     *    f_PLL_Q  = f_VCO / 8 (40.0 MHz or 42.5 MHz; PLLQ = 0b11 -> /8, PLLQEN = 1)
+     *    f_PLL_P  = f_VCO / 6 (53.33 MHz or 56.67 MHz <= 60 MHz ADC max; PLLPDIV = 6) */
     uint32_t pllcfgr = pll_src |
                        ((pll_m_div - 1U) << RCC_PLLCFGR_PLLM_Pos) |
-                       (85U << RCC_PLLCFGR_PLLN_Pos) |
+                       (pll_n_mul << RCC_PLLCFGR_PLLN_Pos) |
                        (0U << RCC_PLLCFGR_PLLR_Pos) |
                        RCC_PLLCFGR_PLLREN |
                        (3U << RCC_PLLCFGR_PLLQ_Pos) |
@@ -106,7 +114,7 @@ static bool clock_configure_pll_170mhz(uint32_t pll_src, uint32_t pll_m_div) {
     }
 
     /* 10. RM0440 Section 6.1.5 mandatory two-step switch for SYSCLK > 150 MHz:
-     *     Step A: Set AHB prescaler HPRE = /2 (85 MHz intermediate HCLK) */
+     *     Step A: Set AHB prescaler HPRE = /2 (80 MHz or 85 MHz intermediate HCLK) */
     RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_HPRE | RCC_CFGR_PPRE1 | RCC_CFGR_PPRE2)) |
                 RCC_CFGR_HPRE_DIV2 |
                 RCC_CFGR_PPRE1_DIV1 |
@@ -121,13 +129,13 @@ static bool clock_configure_pll_170mhz(uint32_t pll_src, uint32_t pll_m_div) {
         }
     }
 
-    /*     Step C: Wait >= 1 us at intermediate 85 MHz HCLK before full 170 MHz step */
-    clock_stabilize_1us_at_85mhz();
+    /*     Step C: Wait >= 1 us at intermediate HCLK before stepping to full frequency */
+    clock_stabilize_1us_intermediate();
 
-    /*     Step D: Switch AHB prescaler HPRE = /1 -> 170 MHz HCLK/PCLK1/PCLK2 */
+    /*     Step D: Switch AHB prescaler HPRE = /1 -> full 160 MHz or 170 MHz HCLK/PCLK1/PCLK2 */
     RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_HPRE) | RCC_CFGR_HPRE_DIV1;
 
-    /* 11. Refresh CMSIS SystemCoreClock global variable (170000000 Hz) */
+    /* 11. Refresh CMSIS SystemCoreClock global variable */
     SystemCoreClockUpdate();
     return true;
 }
@@ -143,8 +151,33 @@ bool Clock_Init_170MHz(void) {
         }
     }
 
-    /* HSI16 (16 MHz) / M=4 = 4 MHz PLL input */
-    return clock_configure_pll_170mhz(RCC_PLLCFGR_PLLSRC_HSI, 4U);
+    /* HSI16 (16 MHz) / M=4 * N=85 / R=2 = 170 MHz */
+    if (!clock_configure_pll_boost(RCC_PLLCFGR_PLLSRC_HSI, 4U, 85U)) {
+        return false;
+    }
+
+    s_active_profile = CLOCK_PROFILE_170MHZ_HSI;
+    return true;
+}
+
+bool Clock_Init_160MHz(void) {
+    uint32_t timeout = CLOCK_READY_TIMEOUT;
+
+    /* Ensure HSI16 is enabled and stable */
+    RCC->CR |= RCC_CR_HSION;
+    while ((RCC->CR & RCC_CR_HSIRDY) == 0U) {
+        if (--timeout == 0U) {
+            return false;
+        }
+    }
+
+    /* HSI16 (16 MHz) / M=4 * N=80 / R=2 = 160 MHz */
+    if (!clock_configure_pll_boost(RCC_PLLCFGR_PLLSRC_HSI, 4U, 80U)) {
+        return false;
+    }
+
+    s_active_profile = CLOCK_PROFILE_160MHZ_HSI;
+    return true;
 }
 
 bool Clock_Init_170MHz_HSE24(void) {
@@ -159,8 +192,21 @@ bool Clock_Init_170MHz_HSE24(void) {
         }
     }
 
-    /* HSE (24 MHz) / M=6 = 4 MHz PLL input */
-    return clock_configure_pll_170mhz(RCC_PLLCFGR_PLLSRC_HSE, 6U);
+    /* HSE (24 MHz) / M=6 * N=85 / R=2 = 170 MHz */
+    if (!clock_configure_pll_boost(RCC_PLLCFGR_PLLSRC_HSE, 6U, 85U)) {
+        return false;
+    }
+
+    s_active_profile = CLOCK_PROFILE_170MHZ_HSE;
+    return true;
+}
+
+uint32_t Clock_GetSysClkHz(void) {
+    return SystemCoreClock;
+}
+
+clock_profile_t Clock_GetProfile(void) {
+    return s_active_profile;
 }
 
 void Clock_DWT_Init(void) {

@@ -1,0 +1,23 @@
+FreeRTOS-Kernel Upstream Provenance & Version Pin
+=================================================
+
+Repository : https://github.com/FreeRTOS/FreeRTOS-Kernel
+Release Tag: V11.1.0
+Tag Object : f388a5c8078e152913e4eb3c5d75bf89561392df
+Commit SHA : dbf70559b27d39c1fdb68dfb9a32140b6a6777a0
+License    : MIT (see LICENSE.md in this directory)
+Target Port: portable/GCC/ARM_CM4F (ARM Cortex-M4F with FPv4-SP-D16)
+Heap Model : portable/MemMang/heap_4.c (coalescing first-fit allocator)
+
+Included Upstream Files (minimal Cortex-M4F subset, zero .git metadata):
+- LICENSE.md
+- include/*
+- tasks.c
+- queue.c
+- list.c
+- timers.c
+- event_groups.c
+- stream_buffer.c
+- portable/GCC/ARM_CM4F/port.c
+- portable/GCC/ARM_CM4F/portmacro.h
+- portable/MemMang/heap_4.c

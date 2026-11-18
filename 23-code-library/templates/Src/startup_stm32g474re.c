@@ -388,8 +388,11 @@ void Reset_Handler(void) {
     /* 6. Enter application */
     (void)main();
 
-    /* Trap if main() ever returns */
-    while (1) {
+    /* Trap if main() ever returns (only emit bkpt #0 when debugger is attached) */
+    if ((*(volatile const uint32_t *)COREDEBUG_DHCSR_ADDR & COREDEBUG_DHCSR_DEBUGEN) != 0UL) {
         __asm__ volatile("bkpt #0");
+    }
+    while (1) {
+        __asm__ volatile("nop");
     }
 }

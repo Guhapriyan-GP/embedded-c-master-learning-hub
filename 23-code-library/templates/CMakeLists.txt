@@ -36,6 +36,14 @@ add_executable(${TARGET_NAME}.elf
     ../Drivers/gpio_g4.c
     ../Drivers/ring_buffer.c
     ../Drivers/fault_handler.c
+    ../Drivers/exti_g4.c
+    ../Drivers/tim_g4.c
+    ../Drivers/usart_g4.c
+    ../Drivers/spi_g4.c
+    ../Drivers/i2c_g4.c
+    ../Drivers/adc_g4.c
+    ../Drivers/dma_g4.c
+    ../Drivers/iwdg_g4.c
 )
 
 target_compile_definitions(${TARGET_NAME}.elf PRIVATE
