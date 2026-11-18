@@ -1,32 +1,39 @@
-```mermaid
-graph LR
-    subgraph Phase1 ["Phase 1: Foundations"]
-        M01["01: C Foundations"] --> M02["02: Embedded C"]
-        M02 --> M03["03: ARM Cortex-M4"]
-        M03 --> M04["04: Toolchain & Linker"]
+flowchart LR
+    subgraph Phase1 ["Phase 1 — Level 1 Foundations (DIG-*, C-*, EMB-*, ARM-*, TOOL-*)"]
+        M00["00: Digital & Electrical Primer (DIG-ELEC-*)"] --> M01["01: C Language Foundations (02-c-fundamentals)"]
+        M01 --> M02["02: Embedded C & MMIO (03-embedded-c)"]
+        M02 --> M03["03: ARM Cortex-M4F Core (04-arm-cortex-m)"]
+        M03 --> M04["04: Toolchain, Linker & GDB/SWD (05-toolchain-and-debugging)"]
     end
 
-    subgraph Phase2 ["Phase 2: Core Platform"]
-        M04 --> M05["05: STM32 Fundamentals"]
-        M05 --> M06["06: RCC & Clock Tree"]
-        M06 --> M07["07: GPIO Hardware"]
-        M07 --> M08["08: Interrupts & NVIC"]
+    subgraph Phase2 ["Phase 2 — Core Platform Bring-Up (GPIO-on-HSI16 -> 170 MHz RCC -> NVIC/EXTI)"]
+        M04 --> M05["05: STM32G474RE Architecture & MB1367 (06-stm32-fundamentals)"]
+        M05 --> M06A["06A: Basic GPIO on Reset HSI16 (08-gpio | Labs 01-02)"]
+        M06A --> M06B["06B: PWR Boost, Flash 4WS & 170 MHz RCC (07-rcc-and-clocks | Lab 03)"]
+        M06B --> M07["07: Interrupts, SysTick, NVIC & EXTI (10-interrupts | Labs 04-05)"]
     end
 
-    subgraph Phase3 ["Phase 3: Peripherals (Parallel Tracks)"]
-        M06 --> M09["09: Timers & PWM"]
-        M07 --> M10["10: Communication (UART/SPI/I2C)"]
-        M06 --> M11["11: Analog (ADC/DAC)"]
-        M11 --> M12["12: DMA & DMAMUX"]
-        M10 --> M12
+    subgraph Phase3 ["Phase 3 — Level 2 Peripherals & Data Transport (Parallel Tracks)"]
+        M07 --> M08["08: Timers, PWM, Dead-Time & HRTIM1 (09-timers | Labs 06-07)"]
+        M06B --> M08
+        M06B --> M09["09: Serial Buses: UART, SPI, I2C, FDCAN, USB (11-communication | Labs 08,11,12)"]
+        M06A --> M09
+        M07 --> M09
+        M06B --> M10["10: Analog: ADC1-5, DAC1-4, OPAMP, COMP, VREFBUF (12-adc-dac-analog | Lab 09)"]
+        M06A --> M10
+        M10 --> M11["11: DMA1/2, DMAMUX1, CORDIC & FMAC (13-dma | Lab 10)"]
+        M09 --> M11
+        M07 --> M11
     end
 
-    subgraph Phase4 ["Phase 4: Advanced Systems"]
-        M04 --> M13["13: Flash & Bootloaders"]
-        M06 --> M14["14: Watchdogs & Power"]
-        M08 --> M15["15: FreeRTOS & Multitasking"]
-        M09 --> M15
-        M12 --> M15
-        M15 --> M16["16: Firmware Architecture & Safety"]
+    subgraph Phase4 ["Phase 4 — Level 2/3 Systems, Concurrency & Production Engineering"]
+        M04 --> M12["12: Dual-Bank Flash, Bootloaders & Security (14-memory-and-storage | BOOT-*, SEC-*)"]
+        M06B --> M13["13: Watchdogs IWDG/WWDG & Low Power: Sleep/Stop0/Stop1/Standby/Shutdown (15-power-management | Labs 13-14)"]
+        M07 --> M13
+        M07 --> M14["14: FreeRTOS ARM_CM4F & Real-Time Concurrency (16-rtos | Lab 15)"]
+        M08 --> M14
+        M11 --> M14
+        M12 --> M15["15: Defensive Architecture, MISRA C, Unit Testing & CI/CD (17-advanced-firmware-engineering | PROF-*, TEST-*)"]
+        M13 --> M15
+        M14 --> M15
     end
-```

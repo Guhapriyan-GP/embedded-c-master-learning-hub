@@ -1,0 +1,42 @@
+flowchart LR
+    subgraph Periph_Sources ["Peripheral DMA Requests (RM0440 Table 91)"]
+        ADC["ADC1 (ID 5) / ADC2-5 (36-39)"]
+        DAC["DAC1-4 (IDs 6-7, 41, 102-105)"]
+        COMM["USART1 RX/TX (24/25) | USART2 RX/TX (26/27) | SPI1 (10/11) | I2C1 (16/17)"]
+        MATH["FMAC RD/WR (110/111) | CORDIC RD/WR (112/113) | HRTIM1 (95-101)"]
+    end
+
+    subgraph DMAMUX ["DMAMUX1 Crossbar @ 0x40020800 (RCC_AHB1ENR.DMAMUX1EN)"]
+        RG["Request Generators RG0-RG3 (EXTI / TIM / LPTIM -> IDs 1..4)"]
+        SYNC["Synchronization Unit (SE, SYNC_ID, NBREQ)"]
+        CH0_7["DMAMUX1_Channel0..7 (CCR.DMAREQ_ID)"]
+        CH8_15["DMAMUX1_Channel8..15 (CCR.DMAREQ_ID)"]
+    end
+
+    subgraph DMA_Engines ["Dual AHB1 DMA Bus Masters"]
+        DMA1["DMA1 Channels 1..8 (0x40020000) | ES0430: Clear CTCIF/CHTIF/CTEIF Individually"]
+        DMA2["DMA2 Channels 1..8 (0x40020400) | Circular Ping-Pong Buffer Engine"]
+    end
+
+    subgraph Targets ["AHB Bus Matrix Memory Targets"]
+        SRAM["SRAM1 (0x20000000) & SRAM2 (0x20014000)"]
+        CCMAlias["CCM-SRAM S-Bus Alias (0x20018000 ONLY - Never 0x10000000!)"]
+        CPU_ISR["CPU ISR Processing (HTIF = Half 0, TCIF = Half 1)"]
+    end
+
+    ADC --> CH0_7
+    DAC --> CH0_7
+    COMM --> CH8_15
+    MATH --> CH8_15
+    RG --> CH0_7
+    SYNC --> CH0_7
+
+    CH0_7 --> DMA1
+    CH8_15 --> DMA2
+
+    DMA1 --> SRAM
+    DMA1 --> CCMAlias
+    DMA2 --> SRAM
+    DMA2 --> CCMAlias
+    DMA1 -.->|"HTIE / TCIE IRQ"| CPU_ISR
+    DMA2 -.->|"HTIE / TCIE IRQ"| CPU_ISR

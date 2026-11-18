@@ -1,0 +1,23 @@
+flowchart LR
+    subgraph UART_Proto ["USART / LPUART (Async Full-Duplex, 2 Wires)"]
+        U_IDLE["Idle HIGH"] --> U_START["START Bit (LOW)"]
+        U_START --> U_DATA["8 Data Bits (LSB First) | BRR = f_CK / Baud (256x for LPUART1)"]
+        U_DATA --> U_STOP["STOP Bit (HIGH) -> RDR / TDR + 8-Byte FIFO + IDLE+DMA"]
+    end
+
+    subgraph SPI_Proto ["SPI1-3 (Sync Full-Duplex, 4 Wires: CS, SCK, MOSI, MISO)"]
+        S_CS["Assert CS LOW (Software NSS)"] --> S_CLK["SCK Clocks Simultaneously (Mode 0..3: CPOL/CPHA)"]
+        S_CLK --> S_FIFO["8-Bit Access: CR2.FRXTH = 1 + *(uint8_t*)&SPIx->DR"]
+        S_FIFO --> S_END["Wait FTLVL==0 & !BSY -> Deassert CS HIGH"]
+    end
+
+    subgraph I2C_Proto ["I2C1-4 (Open-Drain + Ext 2.2-4.7k Pull-Ups, TIMINGR)"]
+        I_ST["START + 7-Bit Addr + W (AUTOEND=0)"] --> I_REG["TXDR = Reg Addr + ACK -> Wait TC"]
+        I_REG --> I_SR["Repeated START + 7-Bit Addr + R (AUTOEND=1)"]
+        I_SR --> I_RX["Read NBYTES from RXDR -> NACK + Auto STOP -> ICR.STOPCF"]
+    end
+
+    subgraph CAN_Proto ["FDCAN1-3 (Differential CAN-H/CAN-L, Shared Msg RAM @ 0x4000A400)"]
+        C_ARB["Arbitration Phase (Nominal NBTP, e.g. 500 kbps, 11/29-Bit ID)"] --> C_BRS["BRS Bit Switches to Fast Data Phase (DBTP, up to 8 Mbps)"]
+        C_BRS --> C_PAY["Up to 64-Byte Payload + CRC-17/21 + Hardware ACK"]
+    end

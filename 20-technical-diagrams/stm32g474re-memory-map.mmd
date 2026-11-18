@@ -1,27 +1,31 @@
-```mermaid
-graph TD
-    subgraph MemoryMap ["STM32G474RE 4GB Address Space (0x00000000 - 0xFFFFFFFF)"]
-        Boot["0x00000000 - 0x07FFFFFF: Boot Memory (Aliased to Flash or System ROM)"]
-        Flash["0x08000000 - 0x0807FFFF: Main Flash Memory (512 KB Dual-Bank)"]
-        CCMSRAM["0x10000000 - 0x10007FFF: CCM-SRAM (32 KB Core-Coupled Memory)"]
-        SRAM1["0x20000000 - 0x20013FFF: SRAM1 (80 KB Main Data RAM)"]
-        SRAM2["0x20014000 - 0x20017FFF: SRAM2 (16 KB Parity Check RAM)"]
-        Periph_APB1["0x40000000 - 0x4000FFFF: APB1 Peripherals (TIM2-7, USART2, I2C1-3, PWR)"]
-        Periph_APB2["0x40010000 - 0x4001FFFF: APB2 Peripherals (SYSCFG, EXTI, TIM1, SPI1, USART1)"]
-        Periph_AHB1["0x40020000 - 0x40023FFF: AHB1 Peripherals (DMA1, DMA2, DMAMUX, RCC, Flash)"]
-        Periph_AHB2["0x48000000 - 0x48001BFF: AHB2 Peripherals (GPIOA to GPIOG)"]
-        Periph_Analog["0x50000000 - 0x500017FF: AHB2 Analog Engine (ADC1-5, DAC1-4)"]
-        PPB["0xE0000000 - 0xE00FFFFF: Cortex-M4 Private Peripherals (NVIC, SysTick, SCB, MPU)"]
+flowchart TD
+    subgraph MemoryMap ["STM32G474RE 4 GB Address Space (Verified Against stm32g474xx.h & RM0440)"]
+        Boot["0x00000000 - 0x07FFFFFF: Boot Alias (Flash, System ROM, or SRAM1 via MEMRMP)"]
+        Flash["0x08000000 - 0x0807FFFF: Main Flash 512 KB (Dual-Bank 2x256 KB 2KB pages + 8-bit ECC)"]
+        CCM_Native["0x10000000 - 0x10007FFF: CCM-SRAM Native 32 KB (I/D-Code Bus, 0-WS Code/Data, NO DMA)"]
+        SysROM["0x1FFF0000 - 0x1FFF787F: System ROM Bootloader (28 KB), OTP (1 KB), UID/Cal, Option Bytes"]
+        SRAM1["0x20000000 - 0x20013FFF: SRAM1 80 KB (S-Bus & DMA1/2, Bit-Band 0x22000000)"]
+        SRAM2["0x20014000 - 0x20017FFF: SRAM2 16 KB (Hardware Parity, Standby RRS, Bit-Band 0x22280000)"]
+        CCM_Alias["0x20018000 - 0x2001FFFF: CCM-SRAM S-Bus Alias 32 KB (Contiguous 128 KB RAM, DMA-Accessible!)"]
+        APB1["0x40000000 - 0x4000FFFF: APB1 (TIM2-7, LPTIM1, RTC, TAMP, IWDG, WWDG, USART2-5, LPUART1, SPI2-3, I2C1-4, USB+PMA, FDCAN1-3+MsgRAM, UCPD1, PWR, CRS)"]
+        APB2["0x40010000 - 0x4001FFFF: APB2 (SYSCFG, VREFBUF, COMP1-7, OPAMP1-6, EXTI, TIM1/8/15-17/20, SPI1, USART1, SAI1, HRTIM1)"]
+        AHB1["0x40020000 - 0x40023FFF: AHB1 (DMA1, DMA2, DMAMUX1, CORDIC, RCC, FMAC, FLASH Regs, CRC)"]
+        AHB2_GPIO["0x48000000 - 0x48001BFF: AHB2 GPIO Ports A-D, F-G (52 LQFP64 Pins; Outside Bit-Band!)"]
+        AHB2_Analog["0x50000000 - 0x50060BFF: AHB2 Analog & Security (ADC1-5, DAC1-4 @ 0x50000800, RNG @ 0x50060800)"]
+        QSPI["0x90000000 - 0xA0001FFF: AHB3 QUADSPI XIP Memory (256 MB) & Control Regs @ 0xA0001000"]
+        PPB["0xE0000000 - 0xE00FFFFF: Cortex-M4 PPB (DWT, SysTick, NVIC, SCB, MPU, FPU) & DBGMCU @ 0xE0042000"]
     end
 
     Boot --- Flash
-    Flash --- CCMSRAM
-    CCMSRAM --- SRAM1
+    Flash --- CCM_Native
+    CCM_Native --- SysROM
+    SysROM --- SRAM1
     SRAM1 --- SRAM2
-    SRAM2 --- Periph_APB1
-    Periph_APB1 --- Periph_APB2
-    Periph_APB2 --- Periph_AHB1
-    Periph_AHB1 --- Periph_AHB2
-    Periph_AHB2 --- Periph_Analog
-    Periph_Analog --- PPB
-```
+    SRAM2 --- CCM_Alias
+    CCM_Alias --- APB1
+    APB1 --- APB2
+    APB2 --- AHB1
+    AHB1 --- AHB2_GPIO
+    AHB2_GPIO --- AHB2_Analog
+    AHB2_Analog --- QSPI
+    QSPI --- PPB

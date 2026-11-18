@@ -1,27 +1,24 @@
-```mermaid
 sequenceDiagram
     autonumber
-    participant App as Background Thread (main)
-    participant Core as ARM Cortex-M4 Core
-    participant Stack as Active Stack (MSP/PSP)
-    participant NVIC as NVIC Controller
-    participant ISR as Interrupt Handler (ISR)
+    participant App as "Background Thread (main)"
+    participant Core as "ARM Cortex-M4F Core (ARMv7E-M)"
+    participant Stack as "Active Stack (MSP / PSP)"
+    participant NVIC as "NVIC (102 External IRQs on G474RE)"
+    participant ISR as "Interrupt Handler (ISR)"
 
-    App->>Core: Executing normal background code
-    Note over NVIC: Hardware peripheral asserts IRQ request line
-    NVIC->>Core: Signals pending interrupt with priority evaluation
-    Note over Core: Core finishes current instruction cycle
-    
-    Core->>Stack: Automatic Hardware Stacking (Push 8 registers):<br/>[xPSR, PC, LR, R12, R3, R2, R1, R0]
-    Core->>Core: Loads EXC_RETURN magic code into LR (e.g. 0xFFFFFFF9)
-    Core->>Core: Fetches ISR vector address from Vector Table (Flash/VTOR)
-    Core->>Core: Switches from Thread Mode to Handler Mode (Privileged)
-    
-    Core->>ISR: Begins executing Interrupt Handler
-    Note over ISR: User code handles event and clears peripheral pending flag
-    ISR->>Core: Executes return instruction (`BX LR`) with EXC_RETURN
-    
-    Core->>Stack: Automatic Hardware Unstacking (Pop 8 registers):<br/>Restores [R0-R3, R12, LR, PC, xPSR]
-    Core->>Core: Switches back to Thread Mode
+    App->>Core: Executing normal background code in Thread Mode
+    Note over NVIC: Peripheral asserts IRQ request line
+    NVIC->>Core: Signals pending interrupt with 4-bit priority evaluation
+    Note over Core: Core finishes current instruction (12-cycle entry latency)
+
+    Core->>Stack: Hardware Stacking (8 words: R0-R3, R12, LR, PC, xPSR + Lazy FPU reserve if FPCA=1)
+    Core->>Core: Loads EXC_RETURN into LR (e.g. 0xFFFFFFF9 MSP / 0xFFFFFFFD PSP)
+    Core->>Core: Fetches ISR vector from VTOR (512-byte aligned) and enters Handler Mode (MSP)
+
+    Core->>ISR: Executes Interrupt Handler
+    Note over ISR: Clears peripheral flag (rc_w1 direct = or rc_w0 = ~flag) and executes __DSB()
+    ISR->>Core: Executes BX LR with EXC_RETURN (6-cycle tail-chain if another IRQ pending)
+
+    Core->>Stack: Hardware Unstacking restores [R0-R3, R12, LR, PC, xPSR]
+    Core->>Core: Returns to Thread Mode
     Core->>App: Resumes background thread execution seamlessly
-```

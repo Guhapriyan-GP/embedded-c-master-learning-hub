@@ -1,83 +1,105 @@
-# USART / UART Register Map & Baud Rate Engine
+# USART / UART / LPUART Register Map & Baud Rate Engine
 
-**Target MCU:** STM32G474RE  
-**USART2 Base Address:** `0x40004400` (`APB1PERIPH_BASE + 0x4400UL`) — *Connected to NUCLEO ST-LINK VCP (PA2/PA3)*  
-**USART1 Base Address:** `0x40013800` (`APB2PERIPH_BASE + 0x3800UL`)  
-**Reference Manual:** RM0440, Chapter 34 (*USART*)
+**Target MCU:** STM32G474RE (LQFP64 — 6 instances: `USART1`, `USART2`, `USART3`, `UART4`, `UART5`, `LPUART1`)  
+**Base Addresses:** `USART1` `0x40013800` (APB2) | `USART2` `0x40004400` (APB1) | `USART3` `0x40004800` (APB1) | `UART4` `0x40004C00` (APB1) | `UART5` `0x40005000` (APB1) | `LPUART1` `0x40008000` (APB1)  
+**NUCLEO-G474RE ST-LINK VCP:** `PA2` (TX) / `PA3` (RX) — usable as **`LPUART1` (AF12)** or **`USART2` (AF7)** (UM2505 §6.8)  
+**Reference Manual:** RM0440, Chapter 37 (Rev 8) / Chapter 40 (Rev 9) (*USART*) & Chapter 38 / 41 (*LPUART*)  
+**Concept IDs:** `PERIPH-UART-001`  
+**Verification Status:** Every register offset and bitfield verified directly against `stm32g474xx.h`; code snippets Statically Reviewed (Not Tested on Physical Hardware).
 
 ---
 
-### 1. Register Overview Table
+### 1. Register Overview Table (`USART_TypeDef`)
 
-| Register | Offset | Reset Value | Description |
-|---|---|---|---|
-| `USART_CR1` | `0x00` | `0x00000000` | Control register 1 (UE enable, TE transmit, RE receive, RXNEIE, FIFOEN) |
-| `USART_CR2` | `0x04` | `0x00000000` | Control register 2 (STOP bits: 1, 0.5, 2, 1.5) |
-| `USART_CR3` | `0x08` | `0x00000000` | Control register 3 (DMAT DMA transmit enable, DMAR DMA receive enable) |
-| `USART_BRR` | `0x0C` | `0x00000000` | Baud rate register (Baud rate divisor $\text{USARTDIV}$) |
-| `USART_ISR` | `0x1C` | `0x000000C0` | Interrupt & status register (TXE, TC, RXNE, ORE, FE, PE) |
-| `USART_ICR` | `0x20` | `0x00000000` | Interrupt flag clear register (Write `1` to clear flags) |
-| `USART_RDR` | `0x24` | `0x00000000` | Receive data register (Read data buffer) |
-| `USART_TDR` | `0x28` | `0x00000000` | Transmit data register (Write data buffer) |
+> **STM32G4 vs. STM32F4 Architecture Note:** STM32G4 USART uses **separate `RDR` (`0x24`) and `TDR` (`0x28`) registers** (NO legacy `DR`), **`ISR` (`0x1C`) / `ICR` (`0x20`)** status/clear registers, an input clock prescaler **`PRESC` (`0x2C`)**, and optional **8-byte TX/RX hardware FIFOs** (`CR1.FIFOEN`).
+
+| Register | Offset | Reset Value | Access | Description |
+|---|---|---|---|---|
+| `USART_CR1` | `0x000` | `0x00000000` | RW | Control 1 (`UE`, `UESM`, `RE`, `TE`, `IDLEIE`, `RXNEIE_RXFNEIE`, `TCIE`, `TXEIE_TXFNFIE`, `OVER8`, `FIFOEN`) |
+| `USART_CR2` | `0x004` | `0x00000000` | RW | Control 2 (`STOP[13:12]`, `SWAP` TX/RX pin swap, `TXINV`/`RXINV`, `ABREN` auto-baud, `RTOEN`) |
+| `USART_CR3` | `0x008` | `0x00000000` | RW | Control 3 (`EIE`, `HDSEL`, `DMAR`, `DMAT`, `RTSE`/`CTSE`, `ONEBIT`, `OVRDIS`, `DEM` RS-485 DE) |
+| `USART_BRR` | `0x00C` | `0x00000000` | RW | Baud rate register (16-bit for USART1–5; **20-bit** for LPUART1) |
+| `USART_GTPR` | `0x010` | `0x00000000` | RW | Guard time and prescaler register (Smartcard / IrDA) |
+| `USART_RTOR` | `0x014` | `0x00000000` | RW | Receiver timeout register (Modbus / idle frame detection) |
+| `USART_RQR` | `0x018` | `0x00000000` | WO | Request register (`RXFRQ` flush RX, `TXFRQ` flush TX, `ABRRQ`, `SBKRQ`) |
+| `USART_ISR` | `0x01C` | `0x020000C0` | RO | Interrupt & status (`PE`, `FE`, `NE`, `ORE`, `IDLE`, `RXNE_RXFNE`, `TC`, `TXE_TXFNF`, `BUSY`, `TEACK`, `REACK`) |
+| `USART_ICR` | `0x020` | `0x00000000` | **WO** | Interrupt flag clear (`PECF`, `FECF`, `NECF`, `ORECF`, `IDLECF`, `TCCF`, `RTOCF` — write `1` directly) |
+| `USART_RDR` | `0x024` | `0x00000000` | RO | Receive data register (Reading automatically clears `RXNE` when FIFO disabled) |
+| `USART_TDR` | `0x028` | `0x00000000` | RW | Transmit data register (Writing automatically clears `TXE` when FIFO disabled) |
+| `USART_PRESC` | `0x02C` | `0x00000000` | RW | Clock prescaler (`PRESCALER[3:0]`: `0000`=`/1`, `0001`=`/2`, `0010`=`/4`, `0011`=`/6`, `0100`=`/8`, `0101`=`/10`, `0110`=`/12`, `0111`=`/16`, `1000`=`/32`, `1001`=`/64`, `1010`=`/128`, `1011`=`/256`) |
+
+**IRQ Numbers (`stm32g474xx.h`):** `USART1_IRQn = 37`, `USART2_IRQn = 38`, `USART3_IRQn = 39`, `UART4_IRQn = 52`, `UART5_IRQn = 53`, `LPUART1_IRQn = 91`.  
+**DMAMUX1 Request IDs (RM0440 Table 91):** `USART1` RX=`24`/TX=`25` | `USART2` RX=`26`/TX=`27` | `USART3` RX=`28`/TX=`29` | `UART4` RX=`30`/TX=`31` | `UART5` RX=`32`/TX=`33` | `LPUART1` RX=`34`/TX=`35`.
 
 ---
 
 ### 2. Baud Rate Divisor Mathematics
 
-The baud rate register (`BRR`) value depends on the USART peripheral clock ($f_{\text{CK}}$) and the oversampling setting (`OVER8` bit in `USART_CR1`).
+Let $f_{\text{KER\_PRESC}} = f_{\text{KER}} / \text{PRESC}$ (kernel clock selected via `RCC->CCIPR`: PCLK, SYSCLK, HSI16, or LSE).
 
-**Case 1: Standard Oversampling by 16 (`OVER8 = 0` in `USART_CR1`):**
-
-$$\text{BRR} = \frac{f_{\text{CK}}}{\text{Baud Rate}}$$
-
-**Worked Example for 115,200 Baud on NUCLEO-G474RE:**
-- Clock Source ($f_{\text{CK}}$): PCLK1 = 170,000,000 Hz.
-- Target Baud: 115,200 bps.
-- Calculation:
-  $$\text{BRR} = \frac{170,000,000}{115,200} \approx 1475.69 \rightarrow \text{Round to } 1476 \text{ (\texttt{0x05C4})}$$
-- Actual Baud Rate Achieved:
-  $$\text{Actual Baud} = \frac{170,000,000}{1476} \approx 115,176.15 \text{ bps (Error: } -0.02\% \text{ - well within the } \pm 2\% \text{ tolerance limit)}$$
+1. **USART1–3 / UART4–5 (`OVER8 = 0`, 16× oversampling):**
+   $$\text{BRR} = \text{round}\!\left(\frac{f_{\text{KER\_PRESC}}}{\text{Baud}}\right)$$
+   - At $f_{\text{CK}} = 170\ \text{MHz}$, `PRESC = /1`, target $115{,}200\ \text{bps}$:
+     $$\text{BRR} = \frac{170{,}000{,}000}{115{,}200} = 1475.69 \rightarrow 1476\ (\texttt{0x05C4}), \quad \text{Error} = -0.02\%$$
+2. **LPUART1 (20-bit fractional BRR, valid when $3 \times \text{Baud} \le f_{\text{KER\_PRESC}} \le 4096 \times \text{Baud}$):**
+   $$\text{BRR}_{\text{LPUART}} = \text{round}\!\left(\frac{256 \times f_{\text{KER\_PRESC}}}{\text{Baud}}\right)$$
+   - Example: $f_{\text{LSE}} = 32{,}768\ \text{Hz}$ at $9{,}600\ \text{bps}$ (Stop 1 wakeup): $\text{BRR} = \frac{256 \times 32768}{9600} = 874$ (`0x036A`). At 170 MHz and 115,200 bps, use `PRESC = /4` ($42.5\ \text{MHz} \le 4096 \times 115200$) so $\text{BRR} = 94{,}444$.
 
 ---
 
-### 3. Critical Status Flags in `USART_ISR`
-- **Bit 5 (`RXNE`):** Read data register not empty (Set by hardware when a received byte is ready in `RDR`; cleared automatically when `RDR` is read).
-- **Bit 6 (`TC`):** Transmission complete (Set when the last frame has completely shifted out of the hardware shift register).
-- **Bit 7 (`TXE`):** Transmit data register empty (Set when content of `TDR` has been transferred into the internal shift register; ready for next byte).
-- **Bit 3 (`ORE`):** Overrun error (Set when a new byte arrives before the previous byte was read from `RDR`).
+### 3. Critical `USART_ISR` Flags & `USART_ICR` Clearing
+- **`RXNE` / `RXFNE` (Bit 5):** Data available in `RDR` (or RX FIFO not empty). Cleared by reading `RDR`.
+- **`TC` (Bit 6):** Transmission complete (shift register empty). Clear via `USARTx->ICR = USART_ICR_TCCF;`.
+- **`TXE` / `TXFNF` (Bit 7):** `TDR` empty (or TX FIFO not full). Cleared by writing `TDR`.
+- **`IDLE` (Bit 4):** Idle frame detected after RX activity (ideal with circular DMA RX for variable-length frames!). Clear via `USARTx->ICR = USART_ICR_IDLECF;`.
+- **`ORE` (Bit 3):** Overrun error — **blocks further reception until cleared** via `USARTx->ICR = USART_ICR_ORECF;`.
 
 ---
 
-### 4. CMSIS Code Example: Bare-Metal Polling Driver on USART2 (PA2/PA3)
+### 4. CMSIS Code Example: Polling & Timeout-Safe `USART2` Driver (`PA2`/`PA3`, 115,200 bps @ 170 MHz)
+
+> **Status:** Statically Reviewed (Not Tested on Physical Hardware).
+
 ```c
-void USART2_Init_115200(void) {
-    /* 1. Enable USART2 clock (APB1) and GPIOA clock (AHB2) */
+#include "stm32g474xx.h"
+
+void USART2_Init_115200(uint32_t pclk1_hz) {
+    /* 1. Enable USART2 (APB1) and GPIOA (AHB2) clocks */
     RCC->APB1ENR1 |= RCC_APB1ENR1_USART2EN;
     RCC->AHB2ENR  |= RCC_AHB2ENR_GPIOAEN;
+    (void)RCC->APB1ENR1;
 
-    /* 2. Configure PA2 (TX) and PA3 (RX) as Alternate Function AF7 */
-    GPIOA->MODER &= ~((3U << (2U*2U)) | (3U << (3U*2U)));
-    GPIOA->MODER |=  ((2U << (2U*2U)) | (2U << (3U*2U)));
-    
-    GPIOA->AFR[0] &= ~((0xFU << (2U*4U)) | (0xFU << (3U*4U)));
-    GPIOA->AFR[0] |=  ((7U   << (2U*4U)) | (7U   << (3U*4U)));
+    /* 2. Configure PA2 (TX) and PA3 (RX) as AF7 (USART2) */
+    GPIOA->AFR[0] = (GPIOA->AFR[0] & ~((0xFU << 8U) | (0xFU << 12U))) |
+                    ((7U << 8U) | (7U << 12U));
+    GPIOA->PUPDR  = (GPIOA->PUPDR  & ~(3U << 6U)) | (1U << 6U); /* Pull-up on PA3 RX */
+    GPIOA->MODER  = (GPIOA->MODER  & ~((3U << 4U) | (3U << 6U))) |
+                    ((2U << 4U) | (2U << 6U));
 
-    /* 3. Program Baud Rate: 170 MHz / 115200 = 1476 (0x05C4) */
-    USART2->BRR = 1476U;
-
-    /* 4. Enable Transmitter (TE), Receiver (RE), and USART (UE) */
-    USART2->CR1 = USART_CR1_TE | USART_CR1_RE | USART_CR1_UE;
+    /* 3. Disable USART, set PRESC = /1, compute rounded BRR, enable 8-byte FIFOs */
+    USART2->CR1   = 0U;
+    USART2->PRESC = 0U; /* /1 */
+    USART2->BRR   = (pclk1_hz + (115200U / 2U)) / 115200U; /* 1476 @ 170 MHz */
+    USART2->CR1   = USART_CR1_FIFOEN | USART_CR1_TE | USART_CR1_RE | USART_CR1_UE;
+    while (!(USART2->ISR & (USART_ISR_TEACK | USART_ISR_REACK))) { }
 }
 
-void USART2_SendChar(char c) {
-    /* Wait until Transmit Data Register is Empty (TXE flag) */
-    while (!(USART2->ISR & USART_ISR_TXE));
-    USART2->TDR = (uint8_t)c;
+int USART2_SendByte(uint8_t byte, uint32_t timeout_iters) {
+    while (!(USART2->ISR & USART_ISR_TXE_TXFNF)) {
+        if (timeout_iters-- == 0U) { return -1; }
+    }
+    USART2->TDR = byte;
+    return 0;
 }
 
-char USART2_ReceiveChar(void) {
-    /* Wait until data is received (RXNE flag) */
-    while (!(USART2->ISR & USART_ISR_RXNE));
-    return (char)(USART2->RDR & 0xFF);
+int USART2_ReceiveByte(uint8_t *out, uint32_t timeout_iters) {
+    if (USART2->ISR & USART_ISR_ORE) {
+        USART2->ICR = USART_ICR_ORECF; /* Recover from overrun */
+    }
+    while (!(USART2->ISR & USART_ISR_RXNE_RXFNE)) {
+        if (timeout_iters-- == 0U) { return -1; }
+    }
+    *out = (uint8_t)(USART2->RDR & 0xFFU);
+    return 0;
 }
 ```

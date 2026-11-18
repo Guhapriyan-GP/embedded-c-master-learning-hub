@@ -1,0 +1,39 @@
+flowchart TD
+    subgraph Timebase ["TIM1 / TIM8 / HRTIM1 Timebase @ 170 MHz"]
+        CLK["f_TIM_CLK = 170 MHz (t_DTS = 5.88 ns) | HRTIM DLL x32 = 5.44 GHz (184 ps)"]
+        PSC["Prescaler PSC (Div by PSC+1)"]
+        CNT["Up / Center-Aligned Counter CNT (0 .. ARR)"]
+        ARR_SH["ARR Shadow Register (ARPE = 1, Preloaded on UEV)"]
+    end
+
+    subgraph Compare ["Output Compare & Dead-Time Generator"]
+        CCR1["CCR1 Shadow Register (OC1PE = 1)"]
+        CMP{"CNT < CCR1 ? (PWM Mode 1)"}
+        DTG["Dead-Time Insertion Unit (BDTR.DTG[7:0] / DTR2.DTGF | Non-Overlap T_DT)"]
+        CH1["High-Side Gate Drive: TIM1_CH1 (PA8 AF6) - Delayed Rising Edge"]
+        CH1N["Low-Side Gate Drive: TIM1_CH1N (PA7 AF6) - Complementary + Delayed Rising Edge"]
+    end
+
+    subgraph Fault ["Zero-CPU Hardware Overcurrent Protection (< 50 ns Trip)"]
+        COMP["COMP1 (16.7 ns) vs DAC3_CH1 Current Limit + Switching Blanking"]
+        LOCKUP["SYSCFG_CFGR2 Lockup (CLL / SPL / PVDL / ECCL)"]
+        BKIN["TIM1_AF1 -> Break Input BKIN / BKIN2 (BDTR.BKE = 1)"]
+        MOE{"Hardware Clears BDTR.MOE = 0 Instantly!"}
+        SAFE["Safe Off-State (OSSR/OSSI -> Both MOSFETs OFF, Zero Shoot-Through)"]
+    end
+
+    CLK --> PSC
+    PSC --> CNT
+    ARR_SH --> CNT
+    CNT --> CMP
+    CCR1 --> CMP
+    CMP -->|"OC1REF"| DTG
+    DTG --> CH1
+    DTG --> CH1N
+
+    COMP --> BKIN
+    LOCKUP --> BKIN
+    BKIN --> MOE
+    MOE -->|"Forces Hi-Z / Inactive"| SAFE
+    SAFE -.->|"Overrides"| CH1
+    SAFE -.->|"Overrides"| CH1N

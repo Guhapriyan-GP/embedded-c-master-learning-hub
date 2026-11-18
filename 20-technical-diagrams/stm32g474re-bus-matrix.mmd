@@ -1,26 +1,27 @@
-```mermaid
-graph TD
-    subgraph Masters ["Bus Masters"]
-        CPU_I["Cortex-M4 I-Code"]
-        CPU_D["Cortex-M4 D-Code"]
-        CPU_S["Cortex-M4 S-Bus"]
-        DMA1["DMA1 Master"]
-        DMA2["DMA2 Master"]
+flowchart TD
+    subgraph Masters ["AHB Bus Masters"]
+        CPU_I["Cortex-M4 I-Code Bus"]
+        CPU_D["Cortex-M4 D-Code Bus"]
+        CPU_S["Cortex-M4 System Bus (S-Bus)"]
+        DMA1["DMA1 Master (8 Channels)"]
+        DMA2["DMA2 Master (8 Channels)"]
     end
 
     subgraph Crossbar ["Multi-Layer AHB Interconnect Matrix"]
-        Matrix["AHB Bus Matrix Arbitrator"]
+        Matrix["AHB Bus Matrix Arbitrator (Zero-Contention Concurrent Paths)"]
     end
 
-    subgraph Slaves ["Bus Slaves"]
-        Flash["Embedded Flash Memory (512 KB)<br/>0x08000000 - 0x0807FFFF"]
-        SRAM1["SRAM1 (80 KB)<br/>0x20000000 - 0x20013FFF"]
-        SRAM2["SRAM2 (16 KB)<br/>0x20014000 - 0x20017FFF"]
-        CCMSRAM["CCM-SRAM (32 KB Instruction/Data)<br/>0x10000000 - 0x10007FFF"]
-        AHB1["AHB1 Peripherals (DMA, DMAMUX, RCC, Flash Regs)<br/>0x40020000"]
-        AHB2["AHB2 Peripherals (GPIOA-G, ADC1-5, DAC)<br/>0x48000000"]
-        APB1_Bridge["AHB-to-APB1 Bridge<br/>0x40000000 (TIM2-7, USART2, I2C, PWR, IWDG)"]
-        APB2_Bridge["AHB-to-APB2 Bridge<br/>0x40010000 (SYSCFG, EXTI, TIM1, SPI1, USART1)"]
+    subgraph Slaves ["Memory & Peripheral Slaves (STM32G474RE)"]
+        Flash["Embedded Flash 512 KB Dual-Bank (0x08000000 - 0x0807FFFF) + ART Cache"]
+        CCMSRAM_ID["CCM-SRAM Native 32 KB (0x10000000: I/D-Bus 0-WS, CPU-Only)"]
+        SRAM1["SRAM1 80 KB (0x20000000 - 0x20013FFF)"]
+        SRAM2["SRAM2 16 KB Parity (0x20014000 - 0x20017FFF)"]
+        CCMSRAM_S["CCM-SRAM S-Bus Alias 32 KB (0x20018000 - 0x2001FFFF: DMA-Accessible!)"]
+        AHB1["AHB1 Peripherals (0x40020000: DMA1/2, DMAMUX1, CORDIC, RCC, FMAC, FLASH, CRC)"]
+        AHB2["AHB2 Peripherals (0x48000000 GPIOA-G | 0x50000000 ADC1-5, DAC1-4, RNG)"]
+        AHB3["AHB3 QUADSPI (0x90000000 XIP / 0xA0001000 Regs; FMC Unbonded on LQFP64)"]
+        APB1_Bridge["AHB-to-APB1 Bridge (0x40000000: TIM2-7, LPTIM1, RTC, TAMP, IWDG, WWDG, USART2-5, LPUART1, SPI2-3, I2C1-4, USB, FDCAN1-3, UCPD1, PWR, CRS)"]
+        APB2_Bridge["AHB-to-APB2 Bridge (0x40010000: SYSCFG, VREFBUF, COMP1-7, OPAMP1-6, EXTI, TIM1/8/15-17/20, SPI1, USART1, SAI1, HRTIM1)"]
     end
 
     CPU_I --> Matrix
@@ -30,11 +31,12 @@ graph TD
     DMA2 --> Matrix
 
     Matrix --> Flash
+    Matrix --> CCMSRAM_ID
     Matrix --> SRAM1
     Matrix --> SRAM2
-    Matrix --> CCMSRAM
+    Matrix --> CCMSRAM_S
     Matrix --> AHB1
     Matrix --> AHB2
+    Matrix --> AHB3
     Matrix --> APB1_Bridge
     Matrix --> APB2_Bridge
-```

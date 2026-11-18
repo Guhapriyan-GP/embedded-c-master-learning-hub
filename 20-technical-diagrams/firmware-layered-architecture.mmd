@@ -1,0 +1,40 @@
+flowchart TD
+    subgraph AppLayer ["Application Layer (Zero #include stm32g474xx.h)"]
+        APP["Control Loops, Telemetry Logic, Hierarchical State Machines (FSM/HSM)"]
+        AO["Active Objects (Encapsulated State + Private Event Queue)"]
+    end
+
+    subgraph Middleware ["Middleware & Real-Time Services"]
+        RTOS["FreeRTOS ARM_CM4F Kernel (Tasks, Queues, Notifications, Mutexes)"]
+        UTIL["Lock-Free SPSC Ring Buffers, Protocol Parsers, CRC, Fixed-Point Q15/Q31"]
+    end
+
+    subgraph Seam ["Testability Seam (Dependency Inversion: Function-Pointer Vtables / Link Substitution)"]
+        IFACE["Abstract Driver Interfaces (i2c_ops_t, uart_ops_t, gpio_ops_t)"]
+    end
+
+    subgraph BSP_Drv ["Board Support Package & Bare-Metal Drivers"]
+        BSP["NUCLEO-G474RE (MB1367) BSP: LD2 PA5, B1 PC13 Active-HIGH, VCP PA2/PA3"]
+        DRV["STM32G474RE Bare-Metal Register Drivers (RCC, GPIO, TIM, ADC, DMA, FDCAN)"]
+    end
+
+    subgraph HostTest ["Host x86/x64 Verification Track (CI / GitHub Actions)"]
+        UNITY["Unity / Ceedling / CMock Unit Tests + ASan/UBSan + Fake Register Structs"]
+    end
+
+    subgraph Hardware ["Silicon & CMSIS Ground Truth"]
+        CMSIS["CMSIS-Core (core_cm4.h, mpu_armv7.h) + Device Header (stm32g474xx.h)"]
+        MCU["STM32G474RET6 Silicon (ARM Cortex-M4F @ 170 MHz, 512 KB Flash, 128 KB SRAM)"]
+    end
+
+    APP --> AO
+    AO --> RTOS
+    AO --> UTIL
+    RTOS --> IFACE
+    UTIL --> IFACE
+    IFACE --> BSP
+    IFACE --> DRV
+    IFACE -.->|"Swapped at Host Compile/Link"| UNITY
+    BSP --> DRV
+    DRV --> CMSIS
+    CMSIS --> MCU

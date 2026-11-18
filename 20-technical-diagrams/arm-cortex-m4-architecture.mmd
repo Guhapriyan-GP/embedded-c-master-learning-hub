@@ -1,38 +1,41 @@
-```mermaid
-graph TD
-    subgraph Core ["ARM Cortex-M4 Core (ARMv7-M)"]
-        ALU["Arithmetic Logic Unit (ALU) & Hardware Divider"]
-        FPU["Single-Precision Floating Point Unit (FPU FPv4-SP)"]
-        DSP["DSP Extensions & SIMD Instructions"]
-        
+flowchart TD
+    subgraph Core ["ARM Cortex-M4F Core - ARMv7E-M ISA (r0p1)"]
+        ALU["32-Bit ALU, Single-Cycle MAC, Hardware SDIV/UDIV"]
+        DSP["ARMv7E-M DSP and SIMD Extensions (SMLAD, SSAT, QADD16)"]
+        FPU["Single-Precision FPU FPv4-SP (S0-S31, FPSCR, Lazy Stacking)"]
+
         subgraph Registers ["Core Register Bank"]
-            R_Low["R0 - R7 (Low Registers)"]
-            R_High["R8 - R12 (High Registers)"]
-            SP["R13: Stack Pointer (MSP / PSP)"]
-            LR["R14: Link Register (LR / EXC_RETURN)"]
-            PC["R15: Program Counter (PC)"]
-            PSR["Program Status Register (APSR, IPSR, EPSR)"]
+            R_Low["R0 - R7 (Low Registers, 16-bit Thumb)"]
+            R_High["R8 - R12 (High Registers, 32-bit Thumb-2)"]
+            SP["R13: Banked Stack Pointer (MSP Handler / PSP Thread)"]
+            LR["R14: Link Register (Return Address / EXC_RETURN)"]
+            PC["R15: Program Counter (Reads Current+4, Bit0=0)"]
+            PSR["xPSR: APSR (N,Z,C,V,Q,GE) | IPSR | EPSR (T, ICI/IT)"]
+            SPEC["Special Masks: PRIMASK, FAULTMASK, BASEPRI, CONTROL"]
         end
-        
-        NVIC["Nested Vectored Interrupt Controller (NVIC)<br/>- 16 Internal Exceptions<br/>- Up to 102 External Interrupts<br/>- 16 Programmable Priority Levels"]
-        SysTick["24-Bit System Tick Timer (SysTick)"]
-        MPU["Memory Protection Unit (MPU 8 Regions)"]
+
+        NVIC["NVIC - Generic Cortex-M4: up to 240 IRQs, 3-8 Prio Bits | STM32G474RE Silicon: 102 External IRQs (0..101), 4 Prio Bits (16 Levels)"]
+        SysTick["24-Bit System Tick Timer (SysTick @ 0xE000E010)"]
+        SCB["System Control Block (VTOR, AIRCR, CFSR, HFSR, CPACR @ 0xE000ED00)"]
+        MPU["Memory Protection Unit (8 Unified Regions @ 0xE000ED90)"]
+        CORESIGHT["CoreSight Debug and Trace (SWD, FPB, DWT CYCCNT, ITM/SWO)"]
     end
 
-    subgraph Buses ["Cortex-M4 Internal Bus Interfaces"]
-        ICode["I-Code Bus (Instruction Fetch from Flash)"]
-        DCode["D-Code Bus (Data & Literal Read from Flash)"]
-        SystemBus["System Bus (S-Bus to SRAM & Peripherals)"]
-        PPB["Private Peripheral Bus (PPB to NVIC, SysTick, SCB @ 0xE0000000)"]
+    subgraph Buses ["Harvard Internal Bus Interfaces"]
+        ICode["I-Code Bus (< 0x20000000: Flash & CCM-SRAM Instruction Fetch)"]
+        DCode["D-Code Bus (< 0x20000000: Flash & CCM-SRAM Data/Literals)"]
+        SystemBus["System Bus / S-Bus (>= 0x20000000: SRAM1/2, CCM Alias, Peripherals)"]
+        PPB["Private Peripheral Bus (0xE0000000: NVIC, SysTick, SCB, MPU, DWT)"]
     end
 
+    DSP --> ALU
     ALU --> Registers
     FPU --> Registers
-    DSP --> ALU
-    
     Registers --> ICode
     Registers --> DCode
     Registers --> SystemBus
     NVIC --> PPB
     SysTick --> PPB
-```
+    SCB --> PPB
+    MPU --> PPB
+    CORESIGHT --> PPB

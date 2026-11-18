@@ -1,20 +1,52 @@
-# Video Curriculum Coverage Matrix
+# Video Curriculum Coverage Matrix & Honest Gap Compensation Guide
 
-This matrix maps the verified video database against each topic in the curriculum, highlighting topics with strong multi-video coverage, topics requiring supplementary written study, and demonstration recommendations.
+This matrix maps **all 50 verified live videos** (`video-database.csv`, indices `#1`–`#50`) against the canonical curriculum stages, explicitly documenting **platform/abstraction caveats** (ESP32, HAL/CubeIDE, STM32F4/L4/TivaC) and providing **authoritative written-reference & lab compensations** for all **15 zero-bare-metal-video topics**.
 
-| Curriculum Stage & Topic | Supporting Video IDs & Titles | Coverage Assessment | Supplementary Study Required |
+**Concept IDs:** `RES-VID-001`, `RES-VID-002`  
+**Database Integrity:** 50/50 URLs verified live via YouTube oEmbed + watch-page metadata; **50/50 videos mapped below** (including previously unmapped `#9`, `#10`, `#12`, `#15`, `#19`).
+
+---
+
+### 1. Complete 50-Video Mapping Table (With Honest Platform Caveats)
+
+| Curriculum Stage & Topic | Mapped Video Indices & YouTube IDs | Coverage Assessment | Platform / Abstraction Caveats & Required Compensation |
 |---|---|---|---|
-| **Stage 01: C Foundations & Memory** | `2ybLD6_2gKM`, `axngwDJ79GY`, `grk4QUDveFw`, `IAvfAC4H_0s` | **Excellent** | MISRA C coding guidelines, compiler warning flags |
-| **Stage 02: Embedded C & Registers** | `Bd-xNEOXohs`, `6tIWFEzzx9I`, `KpaQ3TvN19g`, `7Iru_LM3qY0` | **Comprehensive** | CMSIS core header macro definitions |
-| **Stage 03: ARM Cortex-M4 Architecture** | `6S5KRJv-7RU`, `lYUq-TTpZFE`, `jmzvued3w3Y`, `3brOzLJmeek`, `WXZ07AgO2OU` | **Strong Academic** | FPU context stacking in hardware |
-| **Stage 04: Toolchain & Debugging** | `m1C2LlFRwY4`, `4mSGkdPqDvY` | **Good Practical** | Linker script memory allocation commands |
-| **Stage 05 & 06: STM32 Clocks & RCC** | `CmWvRszxFFg`, `CxS2RdgcMC8`, `SVT7n7hSzJU` | **Good** | STM32G4 Core Voltage Boost Mode (170 MHz) |
-| **Stage 07: GPIO Hardware Engine** | `1Kjh0CAgnl4`, `pPnu4VC1dMg`, `VN7Ffy6yvZo` | **Strong** | Atomic BSRR register writes vs ODR writes |
-| **Stage 08: Interrupts & NVIC** | `eLrsCw1UDJU`, `mGVRcSBTeWI` | **Strong** | Priority grouping and preemption latency math |
-| **Stage 09: Timers & PWM** | `jY9akJ5mHC0`, `mGVRcSBTeWI` | **Good Practical** | Dead-time insertion and break inputs |
-| **Stage 10: Serial Protocols (UART/SPI/I2C)** | `amdG8GcUXSQ`, `rmm2gHUPN_g`, `2A-nG1kWA4s`, `qNLE3yK2k7Q` | **Exhaustive** | DMA streaming with serial peripherals |
-| **Stage 11: Analog Signal Acquisition** | `P5g-yXdhdxc`, `d0aO6HF2Eu0`, `5-08Eaa_OlI`, `zA3PVZzaUiU` | **Very High** | Internal ADC self-calibration sequence |
-| **Stage 12: DMA & DMAMUX** | `d0aO6HF2Eu0`, `5-08Eaa_OlI` | **Moderate** | STM32G4 DMAMUX request line multiplexing |
-| **Stage 13 & 14: Memory & Watchdogs** | `3brOzLJmeek` | **Theoretical** | Flash dual-bank programming & IWDG/WWDG registers |
-| **Stage 15: FreeRTOS & Concurrency** | `F321087yYy4`, `JIr7Xm_riRs`, `95yUbClyf3E`, `Qske3yZRW5I`, `pHJ3lxOoWeI`, `I55auRpbiTs`, `5JcMtbA9QEE`, `b1f1Iex0Tso`, `qsflCf6ahXU`, `hRsWi4HIENc`, `C2xKhxROmhA`, `LPSHUcH5aQc` | **Master Class (12 Parts)** | FreeRTOS porting to bare-metal Cortex-M4 |
-| **Stage 16: DSP & Architecture** | `GH50tEgBpX8`, `zA3PVZzaUiU` | **High** | CMSIS-DSP fixed-point Q15/Q31 optimizations |
+| **Stage 00: Digital Logic & Bus Primer** (`DIG-ELEC-*`) | `#9` (`WCwJNnx36Rk`), `#10` (`9WE3Obdjtv0`) | **Introductory (Discrete)** | Ben Eater `#9` (555 clock) & `#10` (8-bit tri-state register) build digital intuition only — NOT 32-bit PLLs/AHB matrices. Supplement with `01-master-concept-map/learning-sequence.md` Stage 00 & `DS12288`. |
+| **Stage 01: C Foundations & Memory** (`C-*`) | `#1` (`2ybLD6_2gKM`), `#3` (`axngwDJ79GY`), `#6` (`grk4QUDveFw`), `#7` (`IAvfAC4H_0s`), `#12` (`o9WpXYBqdPU`), `#15` (`pQs8vp7JOSk`) | **Strong** | `#7` targets desktop C; `#12` & `#15` (Quantum Leaps) cleanly connect pointers/arrays to Cortex-M RAM. Supplement integer promotions, UB, and MISRA C via `21-reference-library/industry-standards-misra-barr.md`. |
+| **Stage 02: Embedded C & Registers** (`EMB-*`) | `#4` (`Bd-xNEOXohs`), `#5` (`6tIWFEzzx9I`), `#8` (`KpaQ3TvN19g`), `#14` (`7Iru_LM3qY0`), `#19` (`k-Vefsue5pM`) | **Comprehensive** | `#19` (STM32World #4) builds custom bare-metal headers (not full CMSIS). `#5` omits `DMB`/`DSB`/`ISB`; `#8` omits bitfield RMW hazards; `#14` omits STM32 `BSRR`. Pair with `gpio-register-map.md`. |
+| **Stage 03: ARM Cortex-M4F Architecture** (`ARM-*`) | `#2` (`6S5KRJv-7RU`), `#11` (`lYUq-TTpZFE`), `#16` (`jmzvued3w3Y`), `#28` (`3brOzLJmeek`), `#29` (`WXZ07AgO2OU`) | **Partial Academic** | **Caveats:** `#11` is a 3rd-party mirror of Miro Samek Lesson 2; `#29` is Cortex-M3 (ARMv7-M, **no** FPU/DSP!). Missing FPU lazy stacking, MPU, HardFault `CFSR`, `LDREX`/`STREX`, barriers → see Section 2 below. |
+| **Stage 04: Toolchain & Debugging** (`TOOL-*`) | `#17` (`m1C2LlFRwY4`), `#20` (`4mSGkdPqDvY`) | **Partial Practical** | `#17` uses manual `#define` addresses (no CMSIS); `#20` covers VS Code SVD only (no linker `.ld` deep dive, no `DWT->CYCCNT`, no ITM/SWO). Pair with `23-code-library/templates/` & `nvic-systick-register-map.md`. |
+| **Stage 05 & 06A: STM32G4 & GPIO** (`STM32-ARCH-*`, `PERIPH-GPIO-001`) | `#13` (`1Kjh0CAgnl4`), `#21` (`VN7Ffy6yvZo`), `#30` (`SVT7n7hSzJU`), `#31` (`pPnu4VC1dMg`) | **Good (Mixed Platforms)** | **Caveats:** `#13` demos **TI TivaC** (different offsets); **`#30`–`#31` use STM32CubeIDE / HAL** (not bare-metal!). STM32G4 `MODER` defaults to `11` Analog and NUCLEO `B1` (`PC13`) is Active-HIGH → verify against `gpio-register-map.md`. |
+| **Stage 06B: RCC, Clocks & Boost** (`STM32-RCC-*`, `STM32-PWR-001`) | `#18` (`CmWvRszxFFg`), `#26` (`CxS2RdgcMC8`) | **Moderate (Non-G4)** | **Caveats:** `#18` targets **STM32F1/F4**; `#26` targets **STM32L4**. Neither covers STM32G474RE **`PWR_CR5` (`0x80`) Range 1 Boost Mode**, `PWR_SR2.VOSF`, or RM0440 §6.1.5 `HPRE=/2` step! Pair with `rcc-register-map.md` & `pwr-flash-register-map.md`. |
+| **Stage 07: Interrupts, NVIC & EXTI** (`ARM-NVIC-*`, `PERIPH-EXTI-001`) | `#23` (`eLrsCw1UDJU`), `#22` (`mGVRcSBTeWI`) | **Moderate** | Covers EXTI & TIM2 IRQ basics; omits `PRIGROUP`, `BASEPRI`, 12-cycle latency/tail-chaining, `EXTI->PR1` direct `rc_w1` clear, and Active-HIGH `PC13` polarity. Pair with `exti-syscfg-register-map.md` & `nvic-systick-register-map.md`. |
+| **Stage 08: Timers & PWM** (`PERIPH-TIM-*`, `PERIPH-HRTIM-001`) | `#21` (`VN7Ffy6yvZo`), `#22` (`mGVRcSBTeWI`), `#32` (`jY9akJ5mHC0`) | **Partial** | **Caveats:** `#32` uses **STM32CubeIDE / HAL**; `#21` (bit-banging #9) is indexed before `#22` (timer #8). **Zero coverage** of `TIM1/8/20` dead-time `BDTR`, Break, or **`HRTIM1`**. Pair with `timers-register-map.md` & `hrtim-register-map.md`. |
+| **Stage 09: Serial Buses (UART/SPI/I2C)** (`PERIPH-UART/SPI/I2C-001`) | `#24` (`amdG8GcUXSQ`), `#36` (`rmm2gHUPN_g`), `#37` (`2A-nG1kWA4s`), `#38` (`qNLE3yK2k7Q`) | **Good (F4-Skewed)** | **Caveats:** `#36` targets **STM32F4** (no G4 `I2C_TIMINGR` or `SPI_CR2.FRXTH=1`); `#38` is Part 2 without Part 1; `#24` is polling TX only. **Zero video coverage** for `LPUART1`, `FDCAN1–3`, `USB+CRS`. Pair with `usart-`, `spi-i2c-`, `fdcan-`, `rtc-tamp-usb-register-map.md`. |
+| **Stage 10: Analog Acquisition (ADC/DAC)** (`PERIPH-ADC/DAC-001`) | `#25` (`P5g-yXdhdxc`), `#27` (`d0aO6HF2Eu0`), `#33` (`5-08Eaa_OlI`), `#34` (`zA3PVZzaUiU`) | **HAL-Heavy** | **CRITICAL CAVEATS:** `#25` only configures STM32F401 `GPIO_MODER` analog mode (**zero ADC registers**); **`#27`, `#33`, `#34` are ALL HAL/CubeIDE!** Translate every concept to bare-metal `adc-dac-register-map.md` (keeping $f_{\text{ADC}} \le 60\ \text{MHz}$ and `DAC_MCR.HFSEL=10`). |
+| **Stage 11: DMA & DMAMUX** (`PERIPH-DMA-001`) | `#27` (`d0aO6HF2Eu0`), `#33` (`5-08Eaa_OlI`) | **HAL-Only (0 Bare-Metal)** | **Zero bare-metal DMA/DMAMUX videos.** Pair directly with `dma-dmamux-register-map.md` & `dma-dmamux-dataflow.mmd`. |
+| **Stage 12–13: Flash, Bootloaders, Watchdogs & Low Power** (`BOOT-*`, `REL-*`) | `#28` (`3brOzLJmeek` — reset only) | **Severe Gap** | `#28` covers power-on reset vector fetch only. **Zero videos** on Dual-Bank Flash, Bootloaders, IWDG/WWDG, Stop 0/1, or Security → see Section 2 below. |
+| **Stage 14: FreeRTOS & Concurrency** (`RTOS-*`) | `#39` (`F321087yYy4`), `#40` (`JIr7Xm_riRs`), `#41` (`95yUbClyf3E`), `#42` (`Qske3yZRW5I`), `#43` (`pHJ3lxOoWeI`), `#44` (`I55auRpbiTs`), `#45` (`5JcMtbA9QEE`), `#46` (`b1f1Iex0Tso`), `#47` (`qsflCf6ahXU`), `#48` (`hRsWi4HIENc`), `#49` (`C2xKhxROmhA`), `#50` (`LPSHUcH5aQc`) | **Conceptual Only (ESP32!)** | **CRITICAL PLATFORM CAVEAT:** **All 12 DigiKey videos (`#39`–`#50`) run on ESP32 (Xtensa dual-core + Arduino/ESP-IDF FreeRTOS), NOT ARM Cortex-M4 / STM32G4!** **`#50` (Multicore SMP) is `NOT_APPLICABLE` on single-core STM32G474RE.** `#47` omits Cortex-M4 `BASEPRI` & `configMAX_SYSCALL_INTERRUPT_PRIORITY`. Translate to Cortex-M4F via `freertos-context-switch.mmd` & `16-rtos/README.md`. |
+| **Stage 15: DSP & Firmware Engineering** (`ARM-DSP-*`, `PROF-*`) | `#35` (`GH50tEgBpX8`), `#34` (`zA3PVZzaUiU`) | **HAL DSP Only** | **`#34`–`#35` use STM32CubeIDE HAL + CMSIS-DSP** (no CORDIC/FMAC, no MISRA C, no Unity/CMock, no FSM/HSM). Pair with `cordic-fmac-crc-rng-register-map.md` & `firmware-layered-architecture.mmd`. |
+
+---
+
+### 2. Explicit Compensation Matrix for All 15 Zero-Bare-Metal-Video Topics
+
+Because the curated 50-video database currently has **0 bare-metal video lectures** for the 15 production topics below, learners **MUST** rely on the authoritative written references, register maps, diagrams, and labs listed here:
+
+| # | Zero-Bare-Metal-Video Topic | Concept IDs | Authoritative Written References & Repo Compensations |
+|---:|---|---|---|
+| **1** | **Linker Scripts (`.ld`, VMA/LMA, `CCMRAM`, `.noinit`)** | `TOOL-LD-001`, `PROF-PERF-001` | `05-toolchain-and-debugging/README.md`, `23-code-library/templates/stm32g474re.ld`, GNU LD Manual |
+| **2** | **HardFault Diagnosis (`CFSR`/`HFSR`/`MMFAR`/`BFAR`, unwind)** | `ARM-FLT-001`, `REL-CRASH-001` | `nvic-systick-register-map.md`, `04-arm-cortex-m/README.md`, PM0214 §2.4 & §4.4.9–4.4.14 |
+| **3** | **ARM Cortex-M4 8-Region MPU & Privilege (`SVC`)** | `ARM-MPU-001`, `ARM-CORE-005` | `nvic-systick-register-map.md`, `mpu_armv7.h`, PM0214 §4.2, ARM DDI 0403E.e B3.5 |
+| **4** | **FPU (`CPACR`, Hard-Float ABI, Lazy Stacking) & Memory Barriers** | `ARM-FPU-001`, `ARM-EXC-001`, `ARM-SYNC-001..002` | `nvic-systick-register-map.md`, ARM AN298 (Lazy Stacking), ARM AN321 (Memory Barriers), PM0214 §4.6 |
+| **5** | **FDCAN1–3 (CAN-FD, BRS, Shared Message RAM)** | `PERIPH-FDCAN-001` | `20-technical-diagrams/registers/fdcan-register-map.md`, `comm-protocols-timing.mmd`, RM0440 Ch 44, AN5348 |
+| **6** | **HRTIM1 (184 ps DLL, Master + TIMA–F, Faults)** | `PERIPH-HRTIM-001` | `20-technical-diagrams/registers/hrtim-register-map.md`, `timer-pwm-deadtime-timing.mmd`, RM0440 Ch 27, AN4539 |
+| **7** | **CORDIC & FMAC Hardware Math Accelerators** | `PERIPH-CORDIC-001`, `PERIPH-FMAC-001`, `PROF-PERF-003` | `20-technical-diagrams/registers/cordic-fmac-crc-rng-register-map.md`, RM0440 Ch 17–18, AN5325 & AN5305 |
+| **8** | **Bare-Metal DMA1/2 & STM32G4 DMAMUX1 Registers** | `PERIPH-DMA-001` | `20-technical-diagrams/registers/dma-dmamux-register-map.md`, `dma-dmamux-dataflow.mmd`, `lab-10`, RM0440 Ch 12–13, ES0430 §2.3.1 |
+| **9** | **Dual-Bank Flash ECC, RWW, Bootloaders (`VTOR`) & Security** | `BOOT-FLASH/JUMP/VERIF-001`, `SEC-RDP/MEM/BOOT/TAMP-001` | `pwr-flash-register-map.md`, `rtc-tamp-usb-register-map.md`, `14-memory-and-storage/README.md`, RM0440 Ch 3 & Ch 38, AN2606 |
+| **10** | **Low-Power Modes (Stop 0/1, Standby, Shutdown) & IWDG/WWDG** | `STM32-PWR-002`, `PERIPH-WDG-001..002`, `REL-WDG-001` | `watchdog-register-map.md`, `pwr-flash-register-map.md`, `lab-13` & `lab-14`, RM0440 Ch 6, 35, 36 |
+| **11** | **MISRA C:2012/2023, CERT C, `cppcheck`, Unity/Ceedling/CMock** | `PROF-STD-001..004`, `PROF-SA-001..003`, `TEST-UNIT-001..002` | `21-reference-library/industry-standards-misra-barr.md`, `github-tools.md`, `17-advanced-firmware-engineering/README.md` |
+| **12** | **FreeRTOS `ARM_CM4F` Port (`PendSV`, `BASEPRI`, FPU Context)** | `RTOS-CTX-001`, `RTOS-ISR-002`, `RTOS-PORT-001` | `20-technical-diagrams/freertos-context-switch.mmd`, `16-rtos/README.md`, `lab-15`, FreeRTOS ARM Cortex-M Docs |
+| **13** | **FSM / HSM & Event-Driven Active Objects** | `BOOT-ARCH-001` | `20-technical-diagrams/firmware-layered-architecture.mmd`, `17-advanced-firmware-engineering/README.md`, Samek *PSiCC2* |
+| **14** | **CoreSight ITM/SWO Trace, `DWT->CYCCNT` & Lab Instruments** | `ARM-DBG-001`, `PROF-WCET-001`, `HWSW-LAB-001..003` | `nvic-systick-register-map.md`, `21-reference-library/github-tools.md`, ST AN4989 |
+| **15** | **OPAMP1–6 PGA, COMP1–7 Hardware Break & VREFBUF** | `PERIPH-OPAMP/COMP/VREFBUF-001` | `20-technical-diagrams/registers/opamp-comp-vrefbuf-register-map.md`, RM0440 Ch 23–25, AN5306 |

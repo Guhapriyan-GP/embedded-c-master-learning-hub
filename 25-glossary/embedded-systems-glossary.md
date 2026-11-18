@@ -1,24 +1,75 @@
 # Embedded Systems Technical Glossary
 
-- **AAPCS (Procedure Call Standard for ARM Architecture):** Specifies the register usage conventions for functions (R0-R3 for parameters, R4-R11 callee-saved, R13 as SP, R14 as LR).
-- **Atomic Operation:** An operation that completes in a single CPU cycle or uninterrupted sequence without the possibility of being preempted or observed in a partially complete state.
-- **Bare-Metal:** Software that executes directly on the bare microcontroller hardware without an underlying operating system, kernel, or heavy driver framework.
-- **BSRR (Bit Set/Reset Register):** A dedicated peripheral register allowing individual I/O pins to be set or cleared with a single atomic write instruction.
-- **CCM-SRAM (Core-Coupled Memory SRAM):** High-speed static RAM connected directly to the Cortex-M4 D-Code and I-Code buses, allowing zero-wait-state code execution and data access at 170 MHz.
-- **CMSIS (Common Microcontroller Software Interface Standard):** Vendor-independent hardware abstraction layer developed by ARM for Cortex-M processor cores and peripheral access.
-- **Critical Section:** A block of code accessing shared resources that must be protected from concurrent access by disabling interrupts or acquiring a mutual exclusion lock.
-- **DMAMUX (DMA Request Multiplexer):** A hardware crossbar router routing hardware trigger requests from any on-chip peripheral to any DMA channel.
-- **EXTI (Extended Interrupts and Events Controller):** Hardware logic managing external pin and internal peripheral event lines, edge detection, and interrupt requests.
-- **Flash Wait State (Latency):** Cycles of delay inserted into the CPU memory bus to accommodate slower Flash read access times at high clock frequencies.
-- **HardFault:** A generic exception raised by the ARM core when an unrecoverable fault occurs (such as accessing an invalid memory address or executing an undefined instruction).
-- **LMA (Load Memory Address):** The address where a program section is stored in non-volatile Flash memory at flash time.
-- **VMA (Virtual/Execution Memory Address):** The address where a program section resides during execution in RAM or Flash.
-- **Memory-Mapped I/O (MMIO):** An architecture where peripheral control and data registers are assigned addresses within the same 32-bit linear address space as RAM and Flash memory.
-- **NVIC (Nested Vectored Interrupt Controller):** Low-latency, tightly coupled hardware interrupt engine handling exception preemption and subpriorities on ARM Cortex-M processors.
-- **Priority Inversion:** A concurrency hazard where a high-priority task is indirectly blocked by a low-priority task holding a shared resource that is preempted by a medium-priority task.
-- **Push-Pull Output:** A digital output stage featuring complementary transistors actively driving the pin HIGH to VDD and LOW to GND.
-- **Open-Drain Output:** A digital output stage with only the low-side transistor present; it actively pulls LOW to GND but floats when HIGH, requiring an external pull-up resistor.
-- **SAR ADC (Successive Approximation Register ADC):** A high-speed analog-to-digital converter architecture using binary search comparison to digitize analog voltages.
-- **SVD (System View Description):** An XML-based standard file format detailing all peripheral base addresses, registers, and bitfields for debugger visualization.
-- **Thumb-2:** A mixed 16-bit and 32-bit instruction set architecture developed by ARM providing high code density with the performance of 32-bit instructions.
-- **Volatile:** A C language type qualifier that prevents the compiler from optimizing away reads or writes to memory locations that can be modified by hardware or ISRs.
+Standardized engineering definitions for **C, ARM Cortex-M4F (ARMv7E-M), STM32G474RE (LQFP64)**, RTOS concurrency, and professional firmware verification.
+
+**Concept ID:** `RES-GLOSS-001`
+
+---
+
+- **AAPCS (Procedure Call Standard for the ARM Architecture):** Binary calling convention defining `R0–R3` (caller-saved args/return), `R4–R11` (callee-saved), `R12` (intra-procedure scratch), 8-byte stack alignment (`STKALIGN`), and `-mfloat-abi=hard` (`S0–S15` caller-saved, `S16–S31` callee-saved).
+- **Active Object (Actor Pattern):** Event-driven concurrency architecture encapsulating private state, an event queue, and a run-to-completion thread/state machine — eliminating shared-state mutexes.
+- **ARMv7E-M:** Specific instruction set architecture of the ARM Cortex-M4 (adding DSP/SIMD and saturating math extensions over Cortex-M3's baseline ARMv7-M).
+- **ART Accelerator:** ST's Adaptive Real-Time Flash interface (`FLASH_ACR`) combining a Prefetch buffer, 1 KB Instruction Cache, and 256 B Data Cache to hide 4-wait-state Flash latency at 170 MHz.
+- **Atomic Operation:** An operation completing in a single indivisible hardware transaction that cannot be torn or preempted mid-execution (e.g., `GPIOx->BSRR`, `LDREX`/`STREX`).
+- **Bare-Metal:** Firmware running directly on microcontroller hardware via CMSIS register definitions without a vendor HAL or general-purpose OS.
+- **BASEPRI:** ARMv7-M special register masking all interrupts with numeric priority $\ge \text{BASEPRI}$ (non-zero), allowing high-urgency zero-latency ISRs to preempt FreeRTOS critical sections (`configMAX_SYSCALL_INTERRUPT_PRIORITY`).
+- **Bit-Banding:** ARMv7-M feature mapping individual bits in 1 MB SRAM (`0x20000000`) and Peripheral (`0x40000000`) windows to 32-bit atomic alias words (`0x22000000`, `0x42000000`). Supported on STM32G4 for SRAM/APB1/APB2/AHB1, **CPU-only** (not DMA), and **excludes AHB2 GPIO/ADC/DAC** (`0x48000000+`).
+- **BKIN / BKIN2 (Break Input):** Asynchronous hardware fault input on `TIM1/8/15/16/17/20` (routably wired to `COMP1–7` or `SYSCFG_CFGR2`) that instantly clears `BDTR.MOE = 0` in < 50 ns without CPU involvement.
+- **BOR (Brown-Out Reset):** Hardware supply monitor (`FLASH_OPTR.BOR_LEV[2:0]`, Levels 0–4) holding the MCU in reset whenever $V_{\text{DD}}$ falls below safe Flash/core operating voltage.
+- **BSRR / BRR (Bit Set/Reset Register):** Write-only GPIO registers enabling atomic single-cycle pin set/reset without Read-Modify-Write hazards.
+- **CCM-SRAM (Core-Coupled Memory SRAM):** 32 KB zero-wait-state SRAM on STM32G474RE dual-mapped at `0x10000000` (I-Code/D-Code bus for 0-WS code/data, **no DMA**) and `0x20018000` (S-Bus contiguous alias, **DMA-accessible**), with hardware parity and 1 KB page write-protect (`SYSCFG->SWPR`).
+- **CMSIS (Common Microcontroller Software Interface Standard):** ARM standard defining Cortex-M core headers (`core_cm4.h`, `mpu_armv7.h`) and vendor device register structs (`stm32g474xx.h`).
+- **COMP (Analog Comparator):** STM32G474RE integrates 7 rail-to-rail ~16.7 ns comparators (`COMP1–7`) with hysteresis, switching-noise blanking, and direct hardware break routing to TIM/HRTIM.
+- **CORDIC (COordinate Rotation DIgital Computer):** STM32G4 AHB1 hardware math coprocessor (`0x40020C00`) computing `q1.31`/`q1.15` trig, hyperbolic, `atan2`, `ln`, and `sqrt` in ~3–6 CPU cycles.
+- **Critical Section:** Code region accessing shared state protected from preemption via `PRIMASK`/`BASEPRI` masking or RTOS mutex.
+- **CRS (Clock Recovery System):** Hardware trimmer (`0x40002000`) locking internal `HSI48` to host USB 1 kHz SOF frames for crystal-less USB Full-Speed operation.
+- **DMAMUX (DMA Request Multiplexer):** Crossbar switch (`0x40020800`) routing any peripheral DMA request ID (RM0440 Table 91) to any of the 16 `DMA1`/`DMA2` channels, plus 4 autonomous Request Generators and Synchronization logic.
+- **DMB / DSB / ISB (Memory Barriers):** ARM synchronization instructions: `DMB` orders explicit memory accesses; `DSB` stalls until all memory transfers/write buffers drain (required before WFI and ISR exit per ES0430 §2.1.3); `ISB` flushes the instruction pipeline (required after `VTOR`, `CPACR`, `MPU->CTRL`, `CONTROL` updates).
+- **DWT (Data Watchpoint and Trace):** CoreSight debug block (`0xE0001000`) providing 4 hardware data watchpoints and the 32-bit exact CPU cycle counter **`DWT->CYCCNT`**.
+- **ECC (Error-Correcting Code):** STM32G4 Flash stores an 8-bit SECDED ECC code per 64-bit double-word (`FLASH_ECCR`), correcting 1-bit errors (`ECCC`) and flagging 2-bit errors (`ECCD`) via NMI.
+- **ELF (Executable and Linkable Format):** Standard binary output produced by `arm-none-eabi-gcc`/`ld` containing machine code, symbol tables, and DWARF debug info.
+- **EXC_RETURN:** Special `0xFFFFFFxx` sentinel loaded into `LR` on exception entry (`0xFFFFFFF9`/`FD` basic MSP/PSP; `0xFFFFFFE9`/`ED` extended FPU MSP/PSP) triggering hardware unstacking upon `BX LR`.
+- **EXTI (Extended Interrupt and Event Controller):** Manages 44 asynchronous GPIO and internal wakeup/event lines on STM32G474RE (operational in Stop 0 / Stop 1).
+- **FAULTMASK:** ARMv7-M register raising execution priority to `-1` (masking all exceptions except NMI; auto-clears on exception return).
+- **FDCAN (Flexible Data-Rate CAN):** Bosch M_CAN controller (`FDCAN1–3` on STM32G474RE) supporting CAN 2.0B and CAN-FD (up to 64-byte payloads & 8 Mbps BRS) backed by fixed-offset shared Message RAM (`0x4000A400`).
+- **Flash Wait State (Latency):** Bus wait cycles (`FLASH_ACR.LATENCY`) inserted at high HCLK; STM32G474RE requires **4 WS** for 136–170 MHz in Range 1 Boost Mode.
+- **FMAC (Filter Math Accelerator):** STM32G4 AHB1 DSP coprocessor (`0x40021400`) with 256×16-bit RAM executing `q1.15` FIR/IIR (e.g., 3p3z power compensators) at 170 MMAC/s.
+- **FPB (Flash Patch and Breakpoint):** CoreSight unit providing 6 hardware instruction breakpoint comparators in Flash on Cortex-M4.
+- **FPU Lazy Stacking:** Cortex-M4F mechanism (`FPU->FPCCR.ASPEN`/`LSPEN`) that reserves stack space for `S0–S15`/`FPSCR` on exception entry without pushing registers unless the ISR actually executes a floating-point instruction.
+- **FSM / HSM (Finite / Hierarchical State Machine):** Structured event-driven behavioral model (HSM adds nested superstates to eliminate transition duplication).
+- **HardFault:** Highest-priority configurable-escalation fault exception (`IRQ -13`) triggered by invalid memory accesses, undefined instructions, or disabled configurable faults (`SCB->HFSR.FORCED`).
+- **HRTIM (High-Resolution Timer):** Flagship STM32G474RE timer (`0x40016800`) using an internal ×32 DLL for **184 ps** resolution (5.44 GHz equivalent) across Master + TIMA–TIMF units.
+- **ITM / SWO (Instrumentation Trace Macrocell / Serial Wire Output):** CoreSight single-pin trace (`PB3` on NUCLEO-G474RE) streaming non-blocking `ITM_SendChar()` telemetry without halting the CPU.
+- **IWDG / WWDG (Independent / Window Watchdog):** Hardware fault-recovery timers; `IWDG` runs autonomously on ~32 kHz LSI (survives main clock loss, supports `WINR` windowing), while `WWDG` runs on `PCLK1` with strict upper/lower refresh window and Early Wakeup IRQ (`WWDG_IRQn = 0`).
+- **Late Arrival:** Cortex-M4 NVIC optimization where a higher-priority IRQ arriving during exception stacking overrides the vector fetch to execute first without extra stacking cycles.
+- **LDREX / STREX / CLREX:** ARMv7-M load/store-exclusive instructions implementing lock-free atomic read-modify-write primitives using the core's local exclusive monitor (absent on Cortex-M0/M0+).
+- **LMA / VMA (Load / Virtual Memory Address):** `LMA` is the Flash storage address of a section (e.g., `.data` or `.ccmram` initializers); `VMA` is its runtime SRAM execution address.
+- **Memory-Mapped I/O (MMIO):** Hardware design exposing peripheral control/data registers inside the CPU's linear 32-bit address space.
+- **MISRA C / SEI CERT C:** Industry coding standards preventing undefined behavior, unsafe casts, integer wraps, and memory corruption in safety/security-critical C firmware.
+- **MPU (Memory Protection Unit):** ARMv7-M 8-region hardware unit (`0xE000ED90`) enforcing read/write/privilege (`AP`) and Execute-Never (`XN`) permissions per memory region (e.g., 32-byte stack overflow guard).
+- **NVIC (Nested Vectored Interrupt Controller):** Tightly coupled Cortex-M interrupt controller handling preemption, subpriority, 12-cycle entry, and 6-cycle tail-chaining (102 external IRQs & 4 priority bits on STM32G474RE).
+- **OPAMP (Operational Amplifier):** STM32G474RE integrates 6 rail-to-rail 13 MHz op-amps (`OPAMP1–6`) with programmable internal PGA gains (×2..×64), `TCMR` muxing, and internal ADC routing (`OPAINTOEN`).
+- **Open-Drain / Push-Pull Output:** Push-pull actively drives HIGH and LOW; open-drain actively pulls LOW and floats HIGH (requiring pull-up resistors; mandatory for wired-AND I2C).
+- **PCROP (Proprietary Code Readout Protection):** STM32G4 Flash execute-only IP protection (`FLASH_PCROPxSR/ER`) blocking D-bus reads of proprietary algorithms (requires GCC `-mpure-code`).
+- **PLL / VCO (Phase-Locked Loop / Voltage-Controlled Oscillator):** Clock synthesizer multiplying `HSI16`/`HSE` via `M`/`N`/`R`/`Q`/`P` dividers ($f_{\text{VCO}} \in [96, 344]\ \text{MHz}$ on STM32G474RE).
+- **PRIMASK:** 1-bit Cortex-M register masking all configurable-priority interrupts (`__disable_irq()` / `__enable_irq()`), leaving NMI and HardFault active.
+- **Priority Inversion & Priority Inheritance:** Priority inversion occurs when a medium-priority task preempts a low-priority task holding a resource needed by a high-priority task, causing unbounded blocking (NOT deadlock). Priority inheritance temporarily elevates the mutex holder's priority to match the waiting high-priority task.
+- **PVD (Programmable Voltage Detector):** Monitors $V_{\text{DD}}$ against 7 programmable thresholds (`PWR->CR2`) and triggers `PVD_PVM_IRQn = 1` (EXTI 16) for graceful power-fail shutdown before BOR trips.
+- **RDP (Readout Protection):** STM32G4 Flash option byte (`FLASH_OPTR.RDP`): Level 0 (`0xAA` open), Level 1 (debug/Flash/TAMP locked; regression mass-erases Flash), Level 2 (`0xCC` **permanent irreversible debug lockout!**).
+- **RMW (Read-Modify-Write):** 3-step sequence (`LDR` → `ORR`/`BIC` → `STR`) vulnerable to ISR data corruption unless atomic (`BSRR`, `LDREX`/`STREX`, or critical section).
+- **SAR ADC (Successive Approximation Register ADC):** Binary-search ADC architecture; STM32G474RE includes 5× 12-bit 4 MSPS SAR ADCs ($\le 60\ \text{MHz}$ single / $\le 52\ \text{MHz}$ multi-ADC).
+- **SPSC Ring Buffer:** Single-Producer Single-Consumer circular FIFO buffer enabling lock-free ISR-to-task byte streaming using separate head/tail indices.
+- **SVD (System View Description):** CMSIS XML file describing peripheral addresses and bitfields for GDB/Cortex-Debug live inspection.
+- **SysTick:** Standard 24-bit Cortex-M core down-counter (`0xE000E010`) providing millisecond OS ticks.
+- **Tail-Chaining:** Cortex-M4 optimization transitioning directly between back-to-back ISRs in **6 cycles** by skipping redundant unstacking and restacking.
+- **TAMP (Tamper & Backup Domain):** STM32G4 peripheral (`0x40002400`) housing 32 VBAT-retained Backup Registers (`BKP0R..BKP31R`) that hardware automatically zeroes upon external/internal tamper detection.
+- **TCB (Task Control Block):** RTOS kernel structure holding a task's current top-of-stack pointer (`pxTopOfStack`), priority, state list node, and notification value.
+- **Thumb-2:** Mixed 16-bit and 32-bit ARMv7-M instruction set combining high code density with 32-bit performance.
+- **TIMINGR:** STM32G4 I2C timing register (`I2C_TIMINGR`) decoupling SCL/SDA timing (`PRESC`, `SCLDEL`, `SDADEL`, `SCLH`, `SCLL`) from APB1 clock.
+- **UB (Undefined Behavior):** C language construct (e.g., signed overflow, out-of-bounds access, shifting by $\ge$ bit-width) for which the ISO C standard imposes no requirements, allowing aggressive compiler miscompilation.
+- **UCPD (USB Type-C & Power Delivery):** Hardware USB-C PD 3.0 PHY (`UCPD1` @ `0x4000A000`); its reset-enabled 5.1 kΩ dead-battery pull-downs on `PA9`/`PA10`/`PB6`/`PB4` must be disabled via `PWR_CR3.UCPD_DBDIS` when unused.
+- **Volatile:** C qualifier forcing the compiler to emit every memory read/write verbatim without caching in CPU registers or optimizing away loops.
+- **VREFBUF (Voltage Reference Buffer):** Internal precision reference (`0x40010030`) supplying 2.048 V, 2.500 V, or 2.900 V to ADC/DAC (requires opening `VREF+` bridge on NUCLEO-G474RE).
+- **VTOR (Vector Table Offset Register):** `SCB->VTOR` (`0xE000ED08`) relocating the Cortex-M4 exception vector table (must be **512-byte `0x200` aligned** on STM32G474RE).
+- **WCET (Worst-Case Execution Time):** Upper bound on the execution time of an ISR, control loop, or RTOS task (verified via `DWT->CYCCNT` and oscilloscope jitter profiling).
+- **WFI / WFE (Wait For Interrupt / Wait For Event):** ARM core instructions halting CPU clock execution until an unmasked IRQ (`WFI`) or internal/external event (`WFE`) occurs.

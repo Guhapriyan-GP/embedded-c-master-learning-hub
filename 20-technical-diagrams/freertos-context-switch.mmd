@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    participant TaskA as "Task A (Thread Mode, PSP_A)"
+    participant Core as "Cortex-M4F Core (ARMv7E-M)"
+    participant SysTick as "SysTick_Handler (Handler Mode, MSP, Prio 15)"
+    participant PendSV as "PendSV_Handler (Handler Mode, MSP, Prio 15)"
+    participant TaskB as "Task B (Thread Mode, PSP_B)"
+
+    TaskA->>Core: Executing user code (CONTROL.SPSEL = 1, using PSP_A)
+    Note over SysTick: 1 ms tick fires (or FromISR calls portYIELD_FROM_ISR)
+    Core->>Core: Auto-stacks 8 words [R0-R3, R12, LR, PC, xPSR] onto PSP_A (+ Lazy FPU reserve if FPCA=1)
+    Core->>SysTick: Enters SysTick_Handler on MSP (LR = EXC_RETURN 0xFFFFFFFD or 0xFFFFFFED)
+    SysTick->>SysTick: Increments xTickCount & checks Ready list for higher/equal prio task
+    SysTick->>Core: Sets SCB->ICSR.PENDSVSET (defers switch until all higher IRQs complete!)
+    SysTick->>Core: Returns via BX LR (tail-chains into PendSV in 6 cycles if no higher IRQ!)
+
+    Core->>PendSV: Enters PendSV_Handler on MSP (lowest priority 15)
+    PendSV->>Core: Reads PSP_A via MRS R0, PSP
+    PendSV->>Core: Checks EXC_RETURN bit 4 (TST LR, #0x10): if 0, VSTMDBEQ S16-S31 onto PSP_A
+    PendSV->>Core: Pushes callee-saved R4-R11 + LR (EXC_RETURN) onto PSP_A
+    PendSV->>PendSV: Stores updated R0 into pxCurrentTCB->pxTopOfStack
+    PendSV->>PendSV: Raises BASEPRI = configMAX_SYSCALL_INTERRUPT_PRIORITY -> calls vTaskSwitchContext() -> clears BASEPRI
+    PendSV->>PendSV: Loads new Task B stack pointer from new pxCurrentTCB->pxTopOfStack into R0
+    PendSV->>Core: Pops R4-R11 + LR (EXC_RETURN) from PSP_B; if LR[4]==0, VLDMIAEQ S16-S31
+    PendSV->>Core: Updates PSP via MSR PSP, R0 and executes BX LR
+
+    Core->>Core: Hardware auto-unstacks [R0-R3, R12, LR, PC, xPSR] from PSP_B
+    Core->>TaskB: Resumes Task B seamlessly in Thread Mode on PSP_B

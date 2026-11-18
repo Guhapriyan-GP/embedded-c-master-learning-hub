@@ -1,35 +1,42 @@
-```mermaid
-graph LR
-    subgraph Sources ["Clock Sources"]
-        HSI16["Internal 16 MHz RC (HSI16)"]
-        HSE["External 24 MHz Crystal (HSE)"]
-        LSI["Internal 32 kHz RC (LSI)"]
-        LSE["External 32.768 kHz Crystal (LSE)"]
+flowchart LR
+    subgraph Sources ["STM32G474RE Oscillators (NUCLEO-G474RE MB1367)"]
+        HSI16["HSI16: 16 MHz Internal RC (Reset Default)"]
+        HSE["HSE: 24 MHz Onboard Crystal X3 (PF0/PF1)"]
+        HSI48["HSI48: 48 MHz Internal RC + CRS Auto-Trim"]
+        LSI["LSI: ~32 kHz Internal RC"]
+        LSE["LSE: 32.768 kHz Crystal X2 (PC14/PC15)"]
     end
 
-    subgraph PLL_Engine ["Phase-Locked Loop (PLL)"]
-        PLL_M["Div M (1..16)"]
-        VCO["VCO Multiplier N (8..127)<br/>f_VCO = 64 to 344 MHz"]
-        PLL_R["Div R (2,4,6,8) -> PLL_R"]
-        PLL_Q["Div Q (2,4,6,8) -> PLL_Q"]
-        PLL_P["Div P (2..31) -> PLL_P"]
+    subgraph PLL_Engine ["Main PLL (RCC_PLLCFGR)"]
+        PLL_M["Div M (1..16) | f_PLL_IN = 2.66..16 MHz"]
+        VCO["VCO Mult N (8..127) | f_VCO = 96..344 MHz (Range 1)"]
+        PLL_R["Div R (2,4,6,8) -> PLL_R (<= 170 MHz)"]
+        PLL_Q["Div Q (2,4,6,8) -> PLL_Q (FDCAN, QSPI, SAI1, USB)"]
+        PLL_P["Div P (2..31) -> PLL_P (ADC1-5 <= 60 MHz)"]
     end
 
-    subgraph System_Distribution ["System Clock Distribution"]
-        SW_MUX{"SYSCLK Switch MUX<br/>(RCC_CFGR.SW)"}
+    subgraph System_Dist ["System Clock & Bus Prescalers (PWR Range 1 Boost + Flash 4WS)"]
+        SW_MUX{"SYSCLK MUX (RCC_CFGR.SW: 01=HSI16, 10=HSE, 11=PLL)"}
         SYSCLK["SYSCLK (Up to 170 MHz)"]
-        HPRE["AHB Prescaler /1..512"]
-        HCLK["HCLK (Core, Memory, DMA)"]
-        PPRE1["APB1 Prescaler /1..16"]
-        PCLK1["PCLK1 (APB1 Periphs)"]
-        PPRE2["APB2 Prescaler /1..16"]
-        PCLK2["PCLK2 (APB2 Periphs)"]
-        TIM_Mult1["Timer Clock Multiplier x1 / x2"]
-        TIM_Mult2["Timer Clock Multiplier x1 / x2"]
+        HPRE["AHB Prescaler HPRE (/2 >= 1us step for >150 MHz)"]
+        HCLK["HCLK (<= 170 MHz: Core, SRAM, DMA, AHB1, AHB2 GPIO/ADC/DAC1-4)"]
+        PPRE1["APB1 Prescaler PPRE1 (/1..16)"]
+        PCLK1["PCLK1 -> APB1 Peripherals & TIM2-7 (x1 if /1, else x2)"]
+        PPRE2["APB2 Prescaler PPRE2 (/1..16)"]
+        PCLK2["PCLK2 -> APB2 Peripherals, TIM1/8/15-17/20 & HRTIM1 (170 MHz)"]
+    end
+
+    subgraph Dedicated ["Dedicated Kernel Clocks (CCIPR / CCIPR2 / BDCR)"]
+        CLK48["CLK48SEL -> USB FS & RNG (48 MHz)"]
+        ADC_CLK["ADC12/345 Clock (<= 60 MHz Single / <= 52 MHz Multi)"]
+        FDCAN_CLK["FDCANSEL (HSE / PLL_Q / PCLK1) -> FDCAN1-3"]
+        RTC_WDG["IWDG (LSI) | RTC & LPTIM1 (LSE/LSI)"]
+        MCO_CSS["MCO Output (PA8 AF0) | HSE CSS -> NMI Fallback to HSI16"]
     end
 
     HSI16 --> PLL_M
     HSE --> PLL_M
+    HSE --> MCO_CSS
     PLL_M --> VCO
     VCO --> PLL_R
     VCO --> PLL_Q
@@ -41,13 +48,18 @@ graph LR
 
     SW_MUX --> SYSCLK
     SYSCLK --> HPRE
+    SYSCLK --> MCO_CSS
     HPRE --> HCLK
     HCLK --> PPRE1
     HCLK --> PPRE2
     PPRE1 --> PCLK1
     PPRE2 --> PCLK2
-    PCLK1 --> TIM_Mult1
-    PCLK2 --> TIM_Mult2
 
-    LSI --> IWDG["IWDG Watchdog Timer"]
-```
+    HSI48 --> CLK48
+    PLL_Q --> CLK48
+    PLL_P --> ADC_CLK
+    HCLK --> ADC_CLK
+    HSE --> FDCAN_CLK
+    PLL_Q --> FDCAN_CLK
+    LSI --> RTC_WDG
+    LSE --> RTC_WDG
