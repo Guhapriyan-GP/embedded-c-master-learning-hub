@@ -1,6 +1,8 @@
 # Lab 15: FreeRTOS Preemptive Producer-Consumer (Queues, Mutexes, Static Allocation & ISR Safety)
 
-> **Verification Status:** Statically Reviewed (Requires FreeRTOS Kernel `ARM_CM4F` Port Headers — Not Compiled Standalone Without FreeRTOS Tree / Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, 0 errors / 0 warnings on user & kernel code) via the standalone official **FreeRTOS-Kernel `V11.1.0`** project in [`23-code-library/freertos/`](../../23-code-library/freertos/README.md) (`build/nucleo_g474re_freertos.elf`, vector bindings `SVC_Handler`, `PendSV_Handler`, `SysTick_Handler` verified via `arm-none-eabi-nm` and `objdump`) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(see [`AUDIT/FREERTOS_VERIFICATION_REPORT.md`](../../AUDIT/FREERTOS_VERIFICATION_REPORT.md))*.
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`configCPU_CLOCK_HZ = SystemCoreClock = 170,000,000 Hz`, `1 ms` tick `LOAD = 169,999`, `USART2->BRR = 1,476`, `TIM2` 10 Hz `PSC = 16,999, ARR = 999`) | **Alternate = `160 MHz Range 1 Boost`** (`Clock_Init_160MHz()` sets `SystemCoreClock = 160,000,000 Hz`, auto-scaling `configCPU_CLOCK_HZ`, `LOAD = 159,999`, `USART2->BRR = 1,389`, `TIM2` `PSC = 15,999, ARR = 999`) | **Reusable Drivers:** [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), [`usart_g4.h`](../../23-code-library/Drivers/usart_g4.h), [`tim_g4.h`](../../23-code-library/Drivers/tim_g4.h), [`exti_g4.h`](../../23-code-library/Drivers/exti_g4.h), [`iwdg_g4.h`](../../23-code-library/Drivers/iwdg_g4.h).
 
 ---
 
@@ -24,11 +26,27 @@ Architect a production-safe **FreeRTOS** multi-task application on **STM32G474RE
 
 ---
 
-## 3. Required Software
+## 3. Required Software & Reproducible Firmware Project
 
-- `arm-none-eabi-gcc` (14.3.1+) with `-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard`
-- **FreeRTOS Kernel** (`v10.5+` or `v11.x`) using portable layer `portable/GCC/ARM_CM4F/port.c` + `portable/MemMang/heap_4.c`
-- CMSIS headers (`stm32g474xx.h`, `core_cm4.h`)
+- `arm-none-eabi-gcc` (`14.3.1+`) with `-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard`
+- **Pinned Official FreeRTOS-Kernel `V11.1.0`** (Commit `dbf70559b27d39c1fdb68dfb9a32140b6a6777a0`, MIT License) vendored directly in [`23-code-library/freertos/FreeRTOS-Kernel/`](../../23-code-library/freertos/FreeRTOS-Kernel/VERSION.txt) using `portable/GCC/ARM_CM4F/port.c` + `portable/MemMang/heap_4.c`
+- CMSIS headers (`23-code-library/Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g474xx.h`, `core_cm4.h`)
+
+### Build the Compiled Reference Firmware (`23-code-library/freertos/`)
+
+Instead of copying snippets manually, you can compile and flash the complete onboard-only reference implementation directly:
+
+```bash
+cd 23-code-library/freertos
+make clean all          # Produces build/nucleo_g474re_freertos.elf & .bin
+make nm-check           # Confirms SVC/PendSV/SysTick bind to FreeRTOS port.c
+make flash              # Flash to NUCLEO-G474RE via STM32_Programmer_CLI
+```
+
+Key project files in [`23-code-library/freertos/`](../../23-code-library/freertos/README.md):
+- [`Inc/FreeRTOSConfig.h`](../../23-code-library/freertos/Inc/FreeRTOSConfig.h) — Verified STM32G474RE `V11.1.0` kernel config (`PRIGROUP=0`, `MAX_SYSCALL_PRIO=5`, `CHECK_FOR_STACK_OVERFLOW=2`, static + dynamic allocation)
+- [`Src/rtos_bsp.c`](../../23-code-library/freertos/Src/rtos_bsp.c) — Self-contained 170 MHz Boost clock, `USART2` 115200 8N1 VCP, `PA5` LD2, `PC13` EXTI13, `TIM2` 10 Hz IRQ, and `IWDG` (`DBG_IWDG_STOP=1`)
+- [`Src/main.c`](../../23-code-library/freertos/Src/main.c) — 4-task architecture (`SupervisorTask`, `ConsumerTask`, `ProducerTask`, `MonitorTask`) with automated self-tests for NVIC config, Binary/Counting Semaphores, Mutex Priority Inheritance (`1 -> 5 -> 1`), Deadlock Guard (bounded timeout + lock order `A->B`), `TIM2_IRQHandler` `vTaskNotifyGiveFromISR`, Queue IPC, FPU preservation, Stack High-Water Marks, and Event-Group `IWDG` supervision.
 
 ---
 
@@ -51,6 +69,15 @@ Architect a production-safe **FreeRTOS** multi-task application on **STM32G474RE
 > 1. **Call `NVIC_SetPriorityGrouping(0U);` before `vTaskStartScheduler()`!** On STM32G474RE (`__NVIC_PRIO_BITS = 4`), `PRIGROUP = 0` (identical to ST HAL `NVIC_PRIORITYGROUP_4` = `3`) allocates all 4 bits to **Preemption Priority** (`0..15`) and `0` bits to Subpriority. Any non-zero subpriority split breaks FreeRTOS's `BASEPRI` critical-section masking!
 > 2. **Interrupt Priority Boundary:** Any ISR calling `...FromISR()` APIs (such as `EXTI15_10_IRQHandler`) **MUST** have a numerical NVIC priority **`>= configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY` (`5`)** and `<= 15`. Priorities `0..4` are never masked by FreeRTOS and **MUST NEVER** call any FreeRTOS API!
 > 3. **Stack Sizing on Cortex-M4F:** `printf()` via newlib-nano + 34-word Cortex-M4F FPU extended exception frame + FreeRTOS context requires **$\ge 512$ words (`2048 bytes`)** — allocating only `128` words (`512 bytes`) guarantees silent stack corruption!
+
+### Explicit Clock Configuration Profile Declaration (`170 MHz` vs `160 MHz` Range 1 Boost)
+
+In the compiled reference firmware ([`23-code-library/freertos/Inc/FreeRTOSConfig.h`](../../23-code-library/freertos/Inc/FreeRTOSConfig.h)), `configCPU_CLOCK_HZ` binds directly to CMSIS **`SystemCoreClock`** so FreeRTOS's `1000 Hz` `SysTick` reload, `USART2` baud rate, and `TIM2` ISR cadence never drift when switching between `170 MHz` and `160 MHz`:
+
+| Clock Profile | `clock_g4.h` API | `configCPU_CLOCK_HZ` | FreeRTOS `SysTick->LOAD` (`1 ms`) | `USART2->BRR` (`115200`) | `TIM2` 10 Hz (`PSC` / `ARR`) | `IWDG` (`~3.0 s` LSI) |
+|---|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` | `170,000,000 Hz` | `169,999` (`0x2980F`) | `1,476` (`0x05C4`) | `16,999` / `999` | Independent (`32 kHz LSI`) |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | `160,000,000 Hz` | `159,999` (`0x270FF`) | `1,389` (`0x056D`) | `15,999` / `999` | Independent (`32 kHz LSI`) |
 
 ### Complete `FreeRTOSConfig.h` for STM32G474RE @ 170 MHz
 
@@ -338,3 +365,24 @@ At `115200 8N1` on the ST-LINK Virtual COM port:
 1. **Direct-to-Task Notifications:** Replace `g_sensor_queue` for the button event with `vTaskNotifyGiveFromISR()` / `ulTaskNotifyTake()` and benchmark latency reduction (~45% faster, zero queue RAM).
 2. **Priority Inheritance Demonstration:** Add a medium-priority CPU-bound task (Priority `2`) competing while a low-priority task (Priority `1`) holds `g_uart_mutex` and a high-priority task (Priority `3`) waits on it — verify Mutex priority inheritance prevents unbounded inversion.
 3. **100% Zero-Heap Build:** Convert `g_sensor_queue`, `g_uart_mutex`, and `vTelemetryTask` to `xQueueCreateStatic`, `xSemaphoreCreateMutexStatic`, and `xTaskCreateStatic`, then set `configSUPPORT_DYNAMIC_ALLOCATION = 0` and remove `heap_4.c` from the link!
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard FreeRTOS `V11.1.0` Reference ELF Built — Queued for Physical Execution)* |
+| **Objective** | Build and verify a preemptive FreeRTOS `V11.1.0` (`ARM_CM4F`) multi-task firmware on STM32G474RE (`170 MHz` primary / `160 MHz` supported via `SystemCoreClock`) exercising `PRIGROUP = 0`, Static + Dynamic tasks, Queues, Binary/Counting Semaphores, Priority-Inheritance Mutexes, Deadlock Guard, `FromISR` notifications/queues, FPU preservation, Stack High-Water Marks, and Event-Group `IWDG` supervision. |
+| **Firmware Version** | `v2.2.0-remediation` — Pinned FreeRTOS-Kernel **`V11.1.0`** (`dbf70559b27d39c1fdb68dfb9a32140b6a6777a0`) in [`23-code-library/freertos/`](../../23-code-library/freertos/README.md) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `23-code-library/freertos/build/nucleo_g474re_freertos.elf` (`debug`: `FLASH = 21,480 B` `4.10%`, `RAM = 35,728 B` `36.34%`; `release`: `FLASH = 21,668 B` `4.13%`), **0 warnings, 0 errors**; `arm-none-eabi-nm` & `objdump` confirmed `SVC_Handler`, `PendSV_Handler`, `SysTick_Handler`, `TIM2_IRQHandler`, and `EXTI15_10_IRQHandler` vector bindings. |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, `NVIC`, `SysTick`, `USART2` (`PA2`/`PA3` ST-LINK VCP `COM8`), `TIM2` (10 Hz IRQ), `EXTI13` (`PC13` `B1`), `GPIOA` (`PA5` `LD2`), `IWDG` (`DBG_IWDG_STOP=1`), Cortex-M4F FPU. Zero external wiring required. |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Pin Configuration** | `PA2`/`PA3` (`USART2` `AF7` `115200 8N1` VCP), `PA5` (`LD2` Push-Pull Output), `PC13` (`B1` Input `00b`, `EXTI13` Rising Edge, NVIC prio `7` >= `5`). |
+| **Expected Behavior** | Emits 6 automated `[PASS]` self-test lines (`NVIC_CONFIG`, `SEMAPHORES`, `PRIORITY_INHERITANCE`, `DEADLOCK_GUARD`, `FROM_ISR_AND_QUEUE`, `STACK_HWM`), `[SUMMARY] FREERTOS_SELF_TESTS: 6/6 ALL_PASSED`, `[PASS] IWDG_SUPERVISOR`, and live `[TELEM t=... ms]` lines every `1000 ms` on `COM8` while `PA5` blinks steadily. |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(compiled ELF ready at `23-code-library/freertos/build/nucleo_g474re_freertos.elf`; not yet flashed/executed on physical silicon)*. |
+| **Register Values** | `SCB->AIRCR.PRIGROUP = 0`, `SHPR3`: `PendSV = 0xF0`, `SysTick = 0xF0`, `BASEPRI` critical mask = `0x50` (`MAX_SYSCALL_PRIO = 5`), `TIM2_IRQn` prio = `6`, `EXTI15_10_IRQn` prio = `7`, `DBGMCU->APB1FZR1[12] = 1`. |
+| **Debugging Procedure** | Flash via `cd 23-code-library/freertos && STM32_Programmer_CLI -c port=SWD -w build/nucleo_g474re_freertos.bin 0x08000000 -v -rst`; monitor `COM8` at `115200 8N1`; verify vector bindings via `make nm-check` and inspect `uxTaskGetStackHighWaterMark` in `arm-none-eabi-gdb`. |
+| **Remaining Limitations** | Tickless Idle (`configUSE_TICKLESS_IDLE = 0`) and `LPTIM1` Stop-1 RTOS sleep are deferred to future low-power RTOS extensions. Physical VCP self-test capture pending Agent 4. |

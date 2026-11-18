@@ -1,6 +1,8 @@
 # Lab 08: USART2 Bare-Metal Driver, SPSC Ring Buffer RX ISR & Retargeted `printf`
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`USART2->BRR = 1,476 = 0x05C4`, `-0.021%` err) | **Alternate = `160 MHz Range 1 Boost`** (`USART2->BRR = 1,389 = 0x056D`, `-0.008%` err) | **Reusable Drivers:** [`23-code-library/Drivers/usart_g4.h`](../../23-code-library/Drivers/usart_g4.h) (`usart_init()`, `usart_write_byte()`, `usart_rx_irq_handler()`, `usart_calc_brr()`), [`ring_buffer.h`](../../23-code-library/Drivers/ring_buffer.h), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -55,6 +57,18 @@ Actual baud rate: $\frac{170\,000\,000}{1476} = 115\,176.15\text{ baud}$ $\impli
 | `USART2->CR1` | `UE`, `TE`, `RE`, `RXNEIE` | Enabled | Enables TX, RX, and RX-Not-Empty interrupt |
 | `USART2->ISR` | `TXE`, `TC`, `RXNE`, `ORE`, `FE`, `NE`, `PE` | Status | Polled (with bounded timeout) on TX; handled in ISR on RX |
 | `USART2->ICR` | `ORECF`, `FECF`, `NECF`, `PECF` | Write-1-to-Clear | Clears error flags in ISR so RX never stalls on overrun |
+
+### 5.2 Explicit Clock Configuration Profile Comparison (`170 MHz` vs `160 MHz` vs `16 MHz` @ `115200 8N1`)
+
+Baud rate mismatches (`BRR` computed for `170 MHz` while running at `160 MHz` = `-5.88%` error — **exceeding the ±2–3% UART framing tolerance and producing garbled bytes!**) are eliminated by matching `BRR` to the active profile or using `usart_g4.h` which reads live `SystemCoreClock`:
+
+| Clock Profile | `clock_g4.h` API | `PCLK1` (`PPRE1 = /1`) | `USART2->BRR` (`115200` bps) | Hex `BRR` | Actual Baud | Baud Error |
+|---|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` | `170,000,000 Hz` | **`1,476`** | `0x05C4` | `115,176.15 bps` | **`-0.021%`** |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | `160,000,000 Hz` | **`1,389`** | `0x056D` | `115,190.78 bps` | **`-0.008%`** |
+| **`16 MHz HSI16` *(Reset Fallback)*** | Reset default | `16,000,000 Hz` | **`139`** | `0x008B` | `115,107.91 bps` | **`-0.080%`** |
+
+- **Reusable Production Drivers (`23-code-library/Drivers/`):** Call `usart_init(USART2, 115200U, true, 5U)` from [`usart_g4.h`](../../23-code-library/Drivers/usart_g4.h) paired with C11 `<stdatomic.h>` `ring_buffer_t` ([`ring_buffer.h`](../../23-code-library/Drivers/ring_buffer.h)) and `usart_rx_irq_handler(USART2, &g_rx_rb)` — dynamically computes `BRR` from `Clock_GetSysClkHz()` for `16 MHz`, `160 MHz`, and `170 MHz`.
 
 ---
 
@@ -316,3 +330,24 @@ RX Echo: 'A' (0x41)
 1. **Non-Blocking TX Ring Buffer (`TXEIE`):** Add a second SPSC ring buffer for transmission so `_write()` pushes bytes into SRAM and returns immediately while `USART2_IRQHandler` drains them via `USART_CR1_TXEIE_TXFNFIE`.
 2. **DMA Circular RX + `IDLE` Line Detection:** Connect `DMA1_Channel2` via DMAMUX ID **`26`** (`USART2_RX`) and enable `USART_CR1_IDLEIE` to receive variable-length binary protocol packets with near-zero CPU load.
 3. **Zero-Allocation CLI Parser:** Accumulate characters until `\r` or `\n` and dispatch commands (`LED ON`, `LED OFF`, `STAT`).
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Objective** | Configure `USART2` (`PA2`/`PA3` `AF7`, onboard ST-LINK VCP `COM8`) at `115200 8N1` (`170 MHz` primary / `160 MHz` equivalent), implement bounded TX polling, retarget `_write()` for `printf()`, and drain RX via lock-free SPSC ring buffer ISR with `ORE`/`FE`/`NE`/`PE` recovery. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`2,140 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, Virtual COM Port `COM8`) |
+| **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, `USART2`, `NVIC`, `GPIOA` (`PA2`/`PA3` hardwired to onboard ST-LINK/V3E VCP per UM2505). Zero external wiring required. |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Pin Configuration** | `PA2` (`USART2_TX`, `AF7`, `OSPEEDR = 10b`, `PUPDR = 00b`), `PA3` (`USART2_RX`, `AF7`, `OSPEEDR = 10b`, `PUPDR = 01b` Pull-Up). |
+| **Expected Behavior** | Prints banner & periodic heartbeat over `COM8` at `115200 8N1`; echoes any host-transmitted characters via `USART2_IRQHandler` + SPSC ring buffer with `rx_overruns == 0` and `rx_hw_errors == 0`. |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Register Values** | Reset: `USART2->CR1 = 0`, `USART2->BRR = 0`. Configured: `USART2->BRR = 0x05C4` (`1476` @ 170 MHz; `0x056D` = `1389` @ 160 MHz), `USART2->CR1 = 0x0000002D` (`UE\|RE\|TE\|RXNEIE`), `NVIC` `USART2_IRQn (38)` prio = `5`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; open `COM8` at `115200 8N1`; in `arm-none-eabi-gdb` check `p/x USART2->BRR`, `p/x USART2->CR1`, `p g_rx_rb.rx_overruns`, `p g_rx_rb.rx_hw_errors`. |
+| **Remaining Limitations** | Blocking `_write()` TX path polls `TXE` (bounded by `UART_TX_TIMEOUT`); high-throughput non-blocking TX requires `TXEIE` or DMA TX (Extension Exercises 1–2). Physical VCP echo verification pending Agent 4. |

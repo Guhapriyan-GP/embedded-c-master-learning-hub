@@ -1,6 +1,8 @@
 # Lab 02: GPIO Pushbutton Input with Non-Blocking 4-State SysTick FSM Debouncer
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+
+> **Clock Configuration Profile:** **Primary = `16 MHz HSI16` (Reset Default)** (`SysTick->LOAD = 15,999`) | **Alternate Boost Profiles:** `160 MHz` (`LOAD = 159,999`) / `170 MHz` (`LOAD = 169,999`) | **Reusable Drivers:** [`23-code-library/Drivers/gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h) (`GPIO_ConfigInput()`, `GPIO_ConfigOutput()`, `GPIO_ReadPin()`, `GPIO_TogglePin()`) & [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_160MHz()`, `Clock_Init_170MHz()`, `Clock_GetSysClkHz()`).
 
 ---
 
@@ -55,6 +57,18 @@ Read the NUCLEO-G474RE onboard Blue User Button (`B1` on `PC13`, **Active-HIGH**
 | `GPIOC->PUPDR` | `PUPDR13` `[27:26]` | `00b` | Disable internal pulls (external pull-down present) |
 | `GPIOC->IDR` | `IDR13` (bit 13) | Read-Only | `(GPIOC->IDR & GPIO_IDR_ID13) != 0U` $\implies$ Pressed |
 | `SysTick->LOAD` | `[23:0]` | `15999U` (at 16 MHz HSI16) | 1 ms tick: $\text{LOAD} = \frac{16\,000\,000}{1000} - 1 = 15\,999$ |
+
+### 5.1 Explicit Clock Configuration Profile Declaration (16 MHz vs 160 MHz vs 170 MHz)
+
+This lab runs at the **`16 MHz HSI16`** reset clock by default so learners focus on non-blocking FSM debouncing before Lab 03's PLL sequence. Never mix `SysTick->LOAD` values across clock profiles — if you enable a Range 1 Boost PLL profile via `clock_g4.h`, pass `Clock_GetSysClkHz()` (`SystemCoreClock`) to `SysTick_Init_1ms()`:
+
+| Clock Profile | `clock_g4.h` API | `SYSCLK` / `HCLK` | `SysTick->LOAD` (`1.000 ms`) | Hex `LOAD` | `DEBOUNCE_MS = 25` Exact Duration |
+|---|---|---|---|---|---|
+| **`16 MHz HSI16` *(Primary here)*** | Reset default (`CLOCK_PROFILE_HSI16`) | `16,000,000 Hz` | `15,999` | `0x00003E7F` | `25.00 ms ± 1%` |
+| **`160 MHz Range 1 Boost`** | `Clock_Init_160MHz()` (`M=4, N=80, R=2`) | `160,000,000 Hz` | `159,999` | `0x000270FF` | `25.00 ms ± 1%` |
+| **`170 MHz Range 1 Boost`** | `Clock_Init_170MHz()` (`M=4, N=85, R=2`) | `170,000,000 Hz` | `169,999` | `0x0002980F` | `25.00 ms ± 1%` |
+
+- **Reusable Production Driver Equivalent (`23-code-library/Drivers/`):** Use `GPIO_ConfigInput(GPIOC, 13U, GPIO_PULL_NONE)`, `GPIO_ConfigOutput(GPIOA, 5U, GPIO_OTYPE_PUSHPULL, GPIO_SPEED_LOW, GPIO_PULL_NONE)`, `GPIO_ReadPin(GPIOC, 13U)`, and `GPIO_TogglePin(GPIOA, 5U)` from [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h), paired with `Clock_Init_160MHz()` / `Clock_Init_170MHz()` from [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h).
 
 ### 4-State Non-Blocking Debounce FSM
 
@@ -245,4 +259,25 @@ Every discrete press of the blue user button `B1` toggles green LED `LD2` cleanl
 
 1. **Short Press vs Long Press:** Extend `button_fsm_t` so holding `B1` for $\ge 1000\text{ ms}$ emits a `BTN_EVENT_LONG_PRESS` while releasing before $1000\text{ ms}$ emits `BTN_EVENT_SHORT_PRESS`.
 2. **Shift-Register Integrator:** Implement an alternative 8-bit shift-register debouncer sampled every $5\text{ ms}$ (`history = (history << 1) | raw;`) that accepts a press only when `history == 0xFF`.
-3. **170 MHz Integration:** Import `Clock_Init_170MHz()` from Lab 03 and pass `170000000UL` to `SysTick_Init_1ms()`.
+3. **170 MHz / 160 MHz Integration:** Import `Clock_Init_170MHz()` or `Clock_Init_160MHz()` from [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) and pass `Clock_GetSysClkHz()` to `SysTick_Init_1ms()`.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Objective** | Read NUCLEO-G474RE Active-HIGH User Button `B1` (`PC13`) and debounce contact chatter via a non-blocking 4-state `SysTick` FSM (`DEBOUNCE_MS = 25 ms`), toggling `LD2` (`PA5`) atomically via `BSRR`. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,288 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only:** `RCC`, `GPIOA` (`PA5` `LD2`), `GPIOC` (`PC13` `B1` with onboard external pull-down `R31`), Cortex-M4 `SysTick`. Zero external wiring required. |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Pin Configuration** | `PC13`: `MODER[27:26] = 00b` (Digital Input), `PUPDR[27:26] = 00b` (No Pull, Active-HIGH press); `PA5`: `MODER[11:10] = 01b` (Push-Pull Output), `OSPEEDR = 00b`, `PUPDR = 00b`. |
+| **Expected Behavior** | Idle `PC13` reads `0`, `LD2` stays steady; each discrete press of `B1` lasting `>= 25 ms` toggles `LD2` exactly once with zero double-triggers on press or release bounce. |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Register Values** | Reset: `GPIOC->MODER = 0xFFFFFFFF`, `GPIOA->MODER = 0xABFFFFFF`. Configured (`16 MHz`): `RCC->AHB2ENR = 0x5` (`GPIOAEN\|GPIOCEN`), `GPIOC->MODER[27:26] = 00b`, `GPIOC->PUPDR[27:26] = 00b`, `SysTick->LOAD = 15999` (`159999` @ `160 MHz`, `169999` @ `170 MHz`), `SysTick->CTRL = 0x7`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` run `p/x GPIOC->MODER`, `p/x GPIOC->IDR`, `p/x SysTick->LOAD`, `p btn.state`, and break on `led_toggle_atomic`. |
+| **Remaining Limitations** | Polling-based superloop FSM keeps CPU active between presses (interrupt-driven `__WFI()` wakeup is implemented in Lab 05). Physical button press bounce testing pending Agent 4. |

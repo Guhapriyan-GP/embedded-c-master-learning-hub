@@ -1,6 +1,8 @@
 # Lab 12: I2C1 Master 400 kHz Fast Mode & SSD1306 OLED Display (with NACK/Bus Recovery)
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `EXTERNAL HARDWARE PENDING` *(Requires External SSD1306 I2C OLED + 2.2–4.7 kΩ Pull-Ups on `PA15`/`PB7` — User Connection Required)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`TIMINGR = 0x70811021` worst-case $t_r=300\text{ ns}$, or `i2c_g4.h` `0x30B21F3B`) | **Alternate = `160 MHz Range 1 Boost`** (`TIMINGR = 0x70710F1F` worst-case $t_r=300\text{ ns}$, or `i2c_g4.h` `0x30B21D38`) | **Reusable Drivers:** [`23-code-library/Drivers/i2c_g4.h`](../../23-code-library/Drivers/i2c_g4.h) (`i2c_init_master()`, `i2c_write()`, `i2c_read_reg()`, `i2c_recover_bus_9clks()`, `i2c_select_timingr()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -68,6 +70,18 @@ Choose **`PRESC = 7`** $\implies t_{\text{PRESC}} = \frac{7 + 1}{170\text{ MHz}}
 - **Maximum Frequency Check (zero edge delay + min analog filter $t_{\text{SYNC1+2}} \ge 123.5\text{ ns}$):** $T_{\text{SCL(min)}} = 800.0 + 1600.0 + 123.5 = 2523.5\text{ ns} \implies f_{\text{SCL(max)}} = \mathbf{396.3\text{ kHz}} \le 400\text{ kHz}\ \checkmark$ (typical bench bus with $t_r \approx 120\text{ ns}$ runs at $\approx 360\text{–}385\text{ kHz}$).
 
 $$\text{I2C1->TIMINGR} = (7 \ll 28) \mid (8 \ll 20) \mid (1 \ll 16) \mid (\text{0x10} \ll 8) \mid \text{0x21} = \mathbf{\text{0x70811021}}$$
+
+### 5.2 Explicit Clock Configuration Profile Comparison (`170 MHz` vs `160 MHz` vs `16 MHz`)
+
+Never reuse a `170 MHz` `I2C_TIMINGR` value at `160 MHz` or `16 MHz` without recalculating `PRESC`/`SCLH`/`SCLL` — use the exact matched `TIMINGR` below (or call `i2c_init_master(I2C1, I2C_SPEED_400KHZ)` in [`i2c_g4.h`](../../23-code-library/Drivers/i2c_g4.h), which selects the verified constant dynamically from live `SystemCoreClock`):
+
+| Clock Profile | `clock_g4.h` API | `400 kHz` Worst-Case $t_r=300\text{ ns}$ (`PRESC=7`) | `i2c_g4.h` `400 kHz` Fast Mode | `i2c_g4.h` `100 kHz` Standard Mode | Verified Timing Bounds (`PRESC=7` 400 kHz) |
+|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` | **`0x70811021`** | `0x30B21F3B` | `0x70C45D6C` | $t_{\text{SCLDEL}}=423.5\text{ ns}$, $t_{\text{SCLH}}=800\text{ ns}$, $t_{\text{SCLL}}=1600\text{ ns}$, $f_{\max}=396.3\text{ kHz}$ |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | **`0x70710F1F`** | `0x30B21D38` | `0x70C45866` | $t_{\text{SCLDEL}}=400.0\text{ ns}$, $t_{\text{SCLH}}=800\text{ ns}$, $t_{\text{SCLL}}=1600\text{ ns}$, $f_{\max}=396.0\text{ kHz}$ |
+| **`16 MHz HSI16` *(Reset Fallback)*** | Reset default | `0x00310C16` | `0x00310C16` | `0x00423F4F` | `I2C_TIMINGR_16MHZ_400KHZ` / `100KHZ` |
+
+- **Reusable Production Driver (`23-code-library/Drivers/i2c_g4.h`):** Call `i2c_recover_bus_9clks(GPIOA, 15U, GPIOB, 7U)`, configure `PA15`/`PB7` AF4 Open-Drain via `GPIO_ConfigAF()`, then call `i2c_init_master(I2C1, I2C_SPEED_400KHZ)` and `i2c_write()` (automatically chunks $> 255\text{ B}$ transfers with `RELOAD` + checks `NACKF`/`BERR`/`ARLO`).
 
 ---
 
@@ -355,3 +369,24 @@ With an SSD1306 OLED attached (and external `2.2 kΩ` pull-ups), `g_last_status 
 1. **Optional Arduino Header (`PB8`/`PB9`) Remap:** Program `FLASH->OPTR.nSWBOOT0 = 0` (`nBOOT0 = 1`) via STM32CubeProgrammer, verify `PB8-BOOT0` is ignored on reset, and remap `I2C1` to `PB8`/`PB9` (`AF4`) with `2.2 kΩ` pull-ups.
 2. **I2C Bus Scanner:** Sweep 7-bit addresses `0x08..0x77` and print all ACKing slave addresses over USART2 (Lab 08).
 3. **DMA Framebuffer Push:** Stream the 1024-byte OLED framebuffer via `DMA1` (`DMAMUX1` ID `17` = `I2C1_TX`) + `I2C_CR1_TXDMAEN`.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` / `EXTERNAL HARDWARE PENDING` |
+| **Objective** | Drive an `I2C1` 400 kHz Fast Mode Master on `PA15`/`PB7` (`AF4` Open-Drain, completely avoiding the `PB8-BOOT0` trap) with RM0440 §39.4.9 `TIMINGR` (`0x70811021` @ 170 MHz / `0x70710F1F` @ 160 MHz), 9-clock bus recovery, bounded `NACKF` handling, and `RELOAD` chunking for a 1025-byte SSD1306 framebuffer. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`2,284 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **External Hardware Required:** `I2C1`, `GPIOA`/`GPIOB` + external `0.96"` `128×64` SSD1306 I2C OLED (`0x3C`) + two external `2.2 kΩ`–`4.7 kΩ` pull-up resistors to `3.3 V` (+ optional oscilloscope/logic analyzer). |
+| **Hardware Availability** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` |
+| **Pin Configuration** | `PA15` (`CN7` pin 17, `I2C1_SCL`, `AF4`, `OTYPER=1` Open-Drain, `OSPEEDR=10b`, `PUPDR=00b`); `PB7` (`CN7` pin 21, `I2C1_SDA`, `AF4`, `OTYPER=1` Open-Drain, `OSPEEDR=10b`, `PUPDR=00b`). Avoids `PB8-BOOT0` (`R36` 10 kΩ pull-down). |
+| **Expected Behavior** | Bus idles at `3.3 V`; SSD1306 ACKs init + charge-pump (`0x8D, 0x14`) + 1025-byte `RELOAD` framebuffer displaying horizontal stripes (`g_last_status == I2C_OK`); disconnecting OLED returns `I2C_ERR_NACK` cleanly without hanging. |
+| **Actual Observations** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; physical SSD1306 OLED & I2C waveform measurement deferred until user connects external OLED & pull-ups)*. |
+| **Register Values** | Reset: `I2C1->CR1 = 0`, `I2C1->TIMINGR = 0`. Configured: `I2C1->TIMINGR = 0x70811021` (`170 MHz`) or `0x70710F1F` (`160 MHz`) — or via `i2c_g4.h`: `0x30B21F3B` (`170 MHz`) / `0x30B21D38` (`160 MHz`); `I2C1->CR1 = 0x1` (`PE=1`); `GPIOA->OTYPER[15] = 1`, `GPIOB->OTYPER[7] = 1`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` verify `p/x I2C1->TIMINGR`, `p/x I2C1->ISR`, `p g_last_status`; verify `3.3 V` idle + `<= 400 kHz` SCL on oscilloscope once OLED & pull-ups are wired. |
+| **Remaining Limitations** | Requires external SSD1306 OLED and external pull-ups for physical ACK and display validation; without pull-ups on `PA15`/`PB7`, `I2C1` reads `BUSY` or `NACK`. |

@@ -1,6 +1,8 @@
 # Lab 16: Mixed-Signal Hardware Safety — DAC1 + OPAMP1 PGA + COMP1 → `TIM1_BKIN` Sub-Microsecond Trip
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `EXTERNAL HARDWARE PENDING` *(Requires External Potentiometer/DC Stimulus on `PA1` & Oscilloscope on `PA8`/`PA4` — User Connection Required; internal `DAC1 -> COMP1 -> TIM1_BKIN` path can also be observed via GDB)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`DAC1->MCR.HFSEL = 10b` for $> 160\text{ MHz}$, `TIM1->ARR = 3,399` $\implies 50.00\text{ kHz}$) | **Alternate = `160 MHz Range 1 Boost`** (`DAC1->MCR.HFSEL = 01b` for $80\text{–}160\text{ MHz}$, `TIM1->ARR = 3,199` $\implies 50.00\text{ kHz}$) | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`) & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -65,6 +67,18 @@ Build a genuine **STM32G474RE mixed-signal hardware overcurrent protection chain
 | **`OPAMP1`** | `RCC->APB2ENR.SYSCFGEN` (b0) | `CSR`: `VPSEL = 00b` (`PA1`), `VMSEL = 10b` (PGA), `PGGAIN = 00010b` (`×8`), `OPAMPINTEN = 1` (internal to `ADC1_IN13`), `HIGHSPEEDEN = 1`, `OPAMPxEN = 1` |
 | **`COMP1`** | `RCC->APB2ENR.SYSCFGEN` (b0) | `CSR`: `INPSEL = 0` (`PA1`), `INMSEL = 0101b` (`5U` = `DAC1_CH1`), `HYST = 010b` (`20 mV`), `POLARITY = 0`, `EN = 1` |
 | **`TIM1`** | `RCC->APB2ENR.TIM1EN` (b11) | `ARR = 3399` (`50.0 kHz` @ 170 MHz), `CCR1 = 1700` (50% duty); `AF1 = TIM1_AF1_BKCMP1E` (disable external `BKINE`); `BDTR = TIM_BDTR_OSSI \| TIM_BDTR_OSSR \| TIM_BDTR_BKE \| TIM_BDTR_BKP \| TIM_BDTR_MOE` (`AOE = 0` latched safe off!) |
+
+### 5.1 Explicit Clock Configuration Profile Comparison (`170 MHz` vs `160 MHz` Range 1 Boost)
+
+Notice a critical **STM32G474RE silicon threshold right at `160 MHz`** in **RM0440 §22.7.14 (`DAC_MCR.HFSEL`)**: `170 MHz` requires **`HFSEL = 10b` (`DAC_MCR_HFSEL_1`)**, whereas `160 MHz` uses **`HFSEL = 01b` (`DAC_MCR_HFSEL_0`)**, and `TIM1->ARR`/`CCR1` must adjust for exact `50.000 kHz` PWM:
+
+| Clock Profile | `clock_g4.h` API | `DAC1->MCR.HFSEL[15:14]` | `TIM1->PSC` | `TIM1->ARR` (`50.000 kHz`) | `TIM1->CCR1` (`50%`) | `COMP1` Prop Delay |
+|---|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` | **`10b`** (`DAC_MCR_HFSEL_1`, $> 160\text{ MHz}$) | `0` | **`3,399`** | **`1,700`** | `~16.7 ns` (analog) |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | **`01b`** (`DAC_MCR_HFSEL_0`, $> 80\dots 160\text{ MHz}$) | `0` | **`3,199`** | **`1,600`** | `~16.7 ns` (analog) |
+| **`16 MHz HSI16` *(Reset Fallback)*** | Reset default | **`00b`** ($\le 80\text{ MHz}$) | `0` | **`319`** | **`160`** | `~16.7 ns` (analog) |
+
+- **Reusable Production Drivers (`23-code-library/Drivers/`):** Initialize system clocks via `Clock_Init_170MHz()` or `Clock_Init_160MHz()` ([`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h)) and configure `PA1`/`PA4` Analog + `PA8` `AF6` + `PA5` Output cleanly via [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 > [!IMPORTANT]
 > **Why Software Polling Cannot Protect Power Electronics:** An RTOS task wake + ADC read + GPIO/TIM disable takes `10–100 µs`. Under a dead short across a 48 V DC bus, power MOSFETs fail thermally in `< 2–5 µs`. Routing `COMP1` directly into `TIM1_BKIN` (`BKCMP1E`) guarantees **`< 50 ns`** asynchronous hardware shutdown — even if the Cortex-M4 CPU is halted at a breakpoint or trapped in a HardFault!
@@ -307,3 +321,24 @@ int main(void) {
 1. **One-Way Hardware Safety Lock:** Set `COMP1->CSR |= COMP_CSR_LOCK;` after configuration so runaway firmware can never accidentally disable overcurrent protection until a hardware reset!
 2. **Switch-Node Ringing Blanking:** Configure `COMP1->CSR` (`COMP_CSR_BLANKING`, bits `[21:19]`) to blank `COMP1` for the first 200 ns of each PWM cycle (`TIM1_OC5`) to reject MOSFET turn-on switching spikes.
 3. **Sample `OPAMP1` via `ADC1_IN13`:** Enable `ADC1` on Channel `13` (internally wired to `OPAMP1` via `OPAMPINTEN = 1`) and verify `200 mV` on `PA1` reads `~1600 mV` inside `ADC1->DR`.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` / `EXTERNAL HARDWARE PENDING` |
+| **Objective** | Build a zero-CPU-latency STM32G474RE mixed-signal hardware overcurrent trip chain (`DAC1_CH1` `1.65 V` ref + `OPAMP1` internal PGA ×8 + `COMP1` -> `TIM1_BKIN` clearing `TIM1->BDTR.MOE` in `< 50 ns` even while CPU is halted). |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,844 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **External Hardware Required (Full Trip Verification):** `DAC1`, `OPAMP1`, `COMP1`, `TIM1` + external `10 kΩ` potentiometer / bench DC supply (`0..3.3 V`) on `PA1` + oscilloscope on `PA8`/`PA1`/`PA4`. *(Note: internal `DAC1 -> OPAMP1 -> COMP1` silicon path & register state can also be inspected via GDB without external wiring.)* |
+| **Hardware Availability** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` *(Internal silicon path observable in GDB; external stimulus/scope trip verification pending user wiring)* |
+| **Pin Configuration** | `PA4` (`A2`, `DAC1_OUT1`, `MODER=11b`), `PA1` (`A1`, `OPAMP1_VINP` & `COMP1_INP`, `MODER=11b`), `PA8` (`D7`, `TIM1_CH1`, `AF6`, `OSPEEDR=10b`), `PA5` (`LD2`, Fault indicator Output `01b`). |
+| **Expected Behavior** | For `PA1 < 1.65 V`, `PA8` outputs `50.00 kHz` 50% PWM and `LD2` is OFF; raising `PA1 > 1.65 V` asserts `COMP1->CSR.VALUE = 1`, clears `TIM1->BDTR.MOE = 0` in `< 50 ns` (even with CPU halted in GDB), drives `PA8` safely LOW (`AOE = 0` latched), and illuminates `LD2` in `TIM1_BRK_TIM15_IRQHandler`. |
+| **Actual Observations** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; external `PA1` overcurrent stimulus and `< 50 ns` oscilloscope propagation measurement deferred until user connects external hardware)*. |
+| **Register Values** | Configured (`170 MHz` / `160 MHz`): `DAC1->MCR`: `HFSEL = 10b` (`01b` @ 160 MHz), `MODE1 = 001b`, `DAC1->DHR12R1 = 2048` (`1.650 V`); `OPAMP1->CSR`: `VMSEL=10b, PGGAIN=00010b (x8), OPAMPINTEN=1, EN=1`; `COMP1->CSR`: `INPSEL=0, INMSEL=5, HYST=2, EN=1`; `TIM1->ARR = 3399` (`3199` @ 160 MHz), `TIM1->AF1 = TIM1_AF1_BKCMP1E`, `TIM1->BDTR`: `OSSI\|OSSR\|BKE\|BKP\|MOE`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; halt CPU in `arm-none-eabi-gdb`, raise `PA1 > 1.65 V`, confirm `PA8` drops to `0 V` on scope while halted, and inspect `p/x COMP1->CSR`, `p/x TIM1->BDTR`, `p/x TIM1->AF1`. |
+| **Remaining Limitations** | Full end-to-end trip timing (`< 50 ns`) and `PA4`/`PA8` waveform proof require external DC stimulus on `PA1` and an oscilloscope. |

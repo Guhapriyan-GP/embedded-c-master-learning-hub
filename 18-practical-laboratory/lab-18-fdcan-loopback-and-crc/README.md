@@ -1,6 +1,8 @@
 # Lab 18: FDCAN1 Internal Loopback (500 kbps / 2 Mbps BRS) & Hardware CRC-32 Integrity
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`PCLK1 = 170 MHz`: `NBTP` `NBRP=9, NTSEG1=26, NTSEG2=5` = `500 kbps`; `DBTP` `DBRP=4, DTSEG1=11, DTSEG2=3` = `2.00 Mbps`) | **Alternate = `160 MHz Range 1 Boost`** (`PCLK1 = 160 MHz`: `NBTP` `NBRP=9, NTSEG1=24, NTSEG2=5` = `500 kbps`; `DBTP` `DBRP=4, DTSEG1=10, DTSEG2=3` = `2.00 Mbps`) | **Reusable Driver:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`, `Clock_Init_170MHz_HSE24()`).
 
 ---
 
@@ -48,6 +50,17 @@ No external wiring required in Internal Loopback Mode (`CCCR.TEST = 1`, `TEST.LB
    - `DBRP = 4` (divide by `5` $\implies f_{\text{TQ}} = 34.0\text{ MHz}$)
    - `Sync = 1`, `DTSEG1 = 11` (`12` TQ), `DTSEG2 = 3` (`4` TQ), `DSJW = 3` (`4` TQ)
    - $f_{\text{data}} = \frac{34.0\text{ MHz}}{1 + 12 + 4} = \frac{34.0\text{ MHz}}{17} = \mathbf{2.000\text{ Mbps}}$ exact! Sample Point = $\frac{13}{17} = 76.47\%$.
+
+### 5.1b Explicit Clock Configuration Profile Comparison (`170 MHz` vs `160 MHz` FDCAN1 Bit Timing)
+
+Switching `PCLK1` (`FDCANSEL = 10b`, `CKDIV = 0`) from `170 MHz` to `160 MHz` without updating `NBTP`/`DBTP` shifts CAN bit timing by **`-5.88%`** (guaranteed bus error on a physical CAN-FD bus!). Use these exact zero-error bit-timing profiles:
+
+| Clock Profile | `clock_g4.h` API | `NBTP` (`500.000 kbps` Nominal) | Nominal Sample Point | `DBTP` (`2.000 Mbps` Data BRS) | Data Sample Point | `CRC-32` Regs |
+|---|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` / `_HSE24()` | `NBRP=9` (`17 MHz`), `NTSEG1=26`, `NTSEG2=5`, `NSJW=5` (`34 TQ`) | `82.35%` (`28/34`) | `DBRP=4` (`34 MHz`), `DTSEG1=11`, `DTSEG2=3`, `DSJW=3` (`17 TQ`) | `76.47%` (`13/17`) | Clock-independent |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | `NBRP=9` (`16 MHz`), `NTSEG1=24`, `NTSEG2=5`, `NSJW=5` (`32 TQ`) | `81.25%` (`26/32`) | `DBRP=4` (`32 MHz`), `DTSEG1=10`, `DTSEG2=3`, `DSJW=3` (`16 TQ`) | `75.00%` (`12/16`) | Clock-independent |
+
+- **Physical CAN Bus Note:** Internal Loopback works cleanly on HSI16 (`±1%`), but any physical multi-node CAN-FD bus requires **`Clock_Init_170MHz_HSE24()`** ([`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h)) using the NUCLEO-G474RE onboard `24 MHz` crystal (`X3`, `±50 ppm`).
 
 ### 5.2 STM32G474RE Fixed FDCAN1 Message RAM Layout (`SRAMCAN_BASE = 0x4000A400`, `0x350` Bytes)
 
@@ -326,3 +339,24 @@ In GDB at `while (1)`:
 1. **Hardware Standard ID Filter:** Configure `RXGFC` (`LSS = 1`, `ANFS = 2` reject non-matching) and write a Standard Filter Element at `0x4000A400` accepting only ID range `0x100..0x1FF`.
 2. **External Loopback (`MON = 0`, `LBCK = 1`):** Observe the actual `500 kbps` arbitration header followed by `2 Mbps` BRS data bits on `PA12` (`AF9`) with an oscilloscope!
 3. **512 KB Flash CRC-32 Boot Check:** Stream `0x08000000..0x0807FFFB` through `CRC->DR` via Memory-to-Memory DMA1 to verify firmware image integrity on startup.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Objective** | Verify hardware IEEE 802.3 `CRC-32` (`"123456789" -> 0xCBF43926`) and transmit/receive a 64-byte CAN-FD frame (`500 kbps` nominal / `2.000 Mbps` BRS) with embedded CRC-32 trailer over `FDCAN1` Internal Loopback (`SRAMCAN_BASE = 0x4000A400`) with zero external CAN transceiver. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`2,116 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, `CRC` (`0x40023000`), `FDCAN1` (`0x40006400`), `FDCAN1` Message RAM (`0x4000A400`). Zero external wiring required in Internal Loopback Mode. |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Pin Configuration** | None required in Internal Loopback (`CCCR.TEST=1, TEST.LBCK=1, CCCR.MON=1`); physical CAN bus uses `PA11`/`PA12` (`AF9`) + external 3.3 V transceiver + `HSE` 24 MHz crystal `X3`. |
+| **Expected Behavior** | `g_crc_selftest_val == 0xCBF43926`, `g_fdcan_rx_id == 0x123`, `g_fdcan_rx_crc_ok == 1`, `g_fdcan_ecr == 0` (zero protocol errors), `g_fdcan_pass == 1`. |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Register Values** | Configured (`170 MHz` / `160 MHz`): `RCC->CCIPR.FDCANSEL = 10b` (`PCLK1`), `FDCAN_CONFIG->CKDIV = 0`, `FDCAN1->NBTP = 0x0A091A05` (`0x0A091805` @ 160 MHz), `FDCAN1->DBTP = 0x00040B33` (`0x00040A33` @ 160 MHz), `FDCAN1->TEST.LBCK = 1`, `CRC->POL = 0x04C11DB7`, `CRC->INIT = 0xFFFFFFFF`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` break at `while (1)` and verify `p/x g_crc_selftest_val`, `p/x g_fdcan_rx_id`, `p g_fdcan_rx_crc_ok`, `p/x g_fdcan_ecr`, `p g_fdcan_pass`, plus `x/18wx 0x4000A4B0`. |
+| **Remaining Limitations** | Internal Loopback validates Bosch M_CAN controller, Message RAM, BRS, and CRC-32 without exercising physical transceiver dominant/recessive bus arbitration (requires external transceiver + `Clock_Init_170MHz_HSE24()`). Physical silicon test pending Agent 4. |

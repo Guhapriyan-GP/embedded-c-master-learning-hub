@@ -1,6 +1,8 @@
 # Lab 13: Independent Watchdog (IWDG) System Health Protection & Fault Recovery
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+
+> **Clock Configuration Profile:** **Primary = `16 MHz HSI16`** (`SysTick->LOAD = 15,999`) + **Independent `32 kHz LSI` for `IWDG`** (`PR = 4` `/64`, `RLR = 499` $\implies 1.000\text{ s}$ regardless of `SYSCLK`!) | **Alternate = `160 MHz` (`LOAD = 159,999`) / `170 MHz` (`LOAD = 169,999`)** | **Reusable Drivers:** [`23-code-library/Drivers/iwdg_g4.h`](../../23-code-library/Drivers/iwdg_g4.h) (`iwdg_init_ms()`, `iwdg_kick()`, `iwdg_was_reset_cause()`, `iwdg_clear_reset_flags()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -62,6 +64,18 @@ Configure the hardware **Independent Watchdog (`IWDG`)** clocked from the intern
 | `IWDG->PR` | `4U` (`100b` = `IWDG_PR_PR_2`) | Prescaler `/64` |
 | `IWDG->RLR` | `499U` (`0x01F3`) | 500 ticks = `1.000 s` nominal |
 | `RCC->CSR` | `RCC_CSR_IWDGRSTF` (b29), `RCC_CSR_RMVF` (b23) | Detect and clear IWDG reset flag |
+
+### 5.2 Explicit Clock Configuration Profile Declaration (`16 MHz` vs `160 MHz` vs `170 MHz` + Independent `32 kHz LSI`)
+
+Because `IWDG` runs on its own dedicated **`32 kHz LSI`** oscillator, **`IWDG->PR` and `IWDG->RLR` NEVER change** when switching `SYSCLK`! Only `SysTick->LOAD` (used for the `250 ms` kick cadence) must track the active `SYSCLK` profile so the kick interval stays strictly below the worst-case `952 ms` (`+5%` LSI) timeout:
+
+| Clock Profile | `clock_g4.h` API | `SysTick->LOAD` (`1.000 ms`) | `IWDG` Clock | `IWDG->PR` (`/64`) | `IWDG->RLR` (`1.000 s`) | `250 ms` Kick Margin |
+|---|---|---|---|---|---|---|
+| **`16 MHz HSI16` *(Primary here)*** | Reset default | `15,999` (`0x03E7F`) | `32 kHz LSI` | `4` (`100b`) | `499` (`0x1F3`) | `702 ms` safety margin |
+| **`160 MHz Range 1 Boost`** | `Clock_Init_160MHz()` | `159,999` (`0x270FF`) | `32 kHz LSI` | `4` (`100b`) | `499` (`0x1F3`) | `702 ms` safety margin |
+| **`170 MHz Range 1 Boost`** | `Clock_Init_170MHz()` | `169,999` (`0x2980F`) | `32 kHz LSI` | `4` (`100b`) | `499` (`0x1F3`) | `702 ms` safety margin |
+
+- **Reusable Production Driver (`23-code-library/Drivers/iwdg_g4.h`):** Call `iwdg_was_reset_cause()`, `iwdg_clear_reset_flags()`, `iwdg_init_ms(1000U, true, 500000U)` (auto-computes optimal `PR`/`RLR` and enables `DBG_IWDG_STOP`), and `iwdg_kick()` — completely decoupled from `SYSCLK`.
 
 ---
 
@@ -225,3 +239,24 @@ int main(void) {
 1. **Windowed IWDG (`IWDG->WINR`):** Set `IWDG->WINR = 250U` so refreshing *too early* (runaway loop faster than 500 ms) ALSO triggers a watchdog reset!
 2. **Window Watchdog (`WWDG`, RM0440 Ch. 36):** Configure `WWDG` with Early Wakeup Interrupt (`EWI`) to log crash telemetry to Backup RAM before reset.
 3. **Multi-Task Supervisor:** Require 3 independent software subsystems to each set a health bit in a bitmask before `main()` executes `IWDG->KR = 0xAAAAU`.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Objective** | Arm STM32G474RE `IWDG` (`PR = 4` `/64`, `RLR = 499` $\implies 1.000\text{ s}$ nominal from `32 kHz LSI`) with `DBGMCU_APB1FZR1_DBG_IWDG_STOP`, safe `PC13` Active-HIGH fault injection, and `RCC->CSR.IWDGRSTF` post-reset recovery detection. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,388 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only:** `IWDG`, `LSI` (`32 kHz`), `DBGMCU`, `RCC->CSR`, `SysTick`, `GPIOA` (`PA5` `LD2`), `GPIOC` (`PC13` `B1`). Zero external wiring required. |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Pin Configuration** | `PC13` (`B1`): `MODER[27:26] = 00b` (Digital Input, Active-HIGH), `PUPDR[27:26] = 00b`; `PA5` (`LD2`): `MODER[11:10] = 01b` (Push-Pull Output). |
+| **Expected Behavior** | Normal run: `LD2` toggles every `250 ms` (`2 Hz`) indefinitely with zero resets; GDB halt freezes IWDG (`DBG_IWDG_STOP = 1`); pressing `B1` (or deliberate stop-kicking) triggers hardware reset after `~1.0 s`, setting `RCC_CSR_IWDGRSTF` and flashing `LD2` 5 times on reboot. |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Register Values** | Reset: `IWDG->PR = 0`, `IWDG->RLR = 0x0FFF`, `DBGMCU->APB1FZR1 = 0`. Configured: `DBGMCU->APB1FZR1[12] = 1`, `IWDG->PR = 0x4` (`/64`), `IWDG->RLR = 0x01F3` (`499`), `IWDG->SR = 0`, `SysTick->LOAD = 15999` (`159999` @ 160 MHz, `169999` @ 170 MHz); post-timeout `RCC->CSR[29] (IWDGRSTF) = 1`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` verify `p/x DBGMCU->APB1FZR1`, `p/x IWDG->PR`, `p IWDG->RLR`, confirm zero reset while halted `> 5 s`, then inject hang and verify `(RCC->CSR & (1<<29)) != 0` on reboot. |
+| **Remaining Limitations** | Once started, `IWDG` cannot be stopped by software until reset; LSI `±5%` tolerance yields `[0.952 s .. 1.053 s]` timeout window. Physical reset-recovery test pending Agent 4. |

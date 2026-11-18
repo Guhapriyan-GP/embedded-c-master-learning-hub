@@ -1,6 +1,8 @@
 # Lab 07: Hardware PWM Output & RGB LED Fading (TIM3 @ 25 kHz)
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `EXTERNAL HARDWARE PENDING` *(Requires External RGB LED + 3 × 330 Ω Resistors on `PA6`/`PA7`/`PB0` — User Connection Required)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`PSC = 0`, `ARR = 6,799` $\implies 25.000\text{ kHz}$, `SysTick->LOAD = 169,999`) | **Alternate = `160 MHz Range 1 Boost`** (`PSC = 0`, `ARR = 6,399` $\implies 25.000\text{ kHz}$, `SysTick->LOAD = 159,999`) | **Reusable Drivers:** [`23-code-library/Drivers/tim_g4.h`](../../23-code-library/Drivers/tim_g4.h) (`TIM_InitPwm()`, `TIM_SetPwmDutyPermille()`, `tim_calc_pwm_ccr()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -57,6 +59,18 @@ $$\text{Duty Cycle (\%)} = \frac{\text{CCR}x}{\text{ARR} + 1} \times 100\% = \fr
 - `CCR1 = 0` $\implies 0.0\%$ duty (LED OFF).
 - `CCR1 = 3400` $\implies 50.0\%$ duty.
 - `CCR1 = 6800` (or `6799` for 99.99%) $\implies 100.0\%$ duty (LED full ON).
+
+### 5.1b Explicit Clock Configuration Profile Comparison (`170 MHz` vs `160 MHz` Range 1 Boost)
+
+When switching between `170 MHz` and `160 MHz`, update **`TIM3->ARR`**, **`max_duty`**, and **`SysTick->LOAD`** together so both the `25.000 kHz` PWM carrier and the `5 ms` fade cadence stay exact:
+
+| Clock Profile | `clock_g4.h` API | `f_TIM3` | `TIM3->PSC` | `TIM3->ARR` (`25.000 kHz`) | `50%` `CCR` | `SysTick->LOAD` (`1 ms`) |
+|---|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` | `170 MHz` | `0` | **`6,799`** (`max_duty = 6799`) | `3,400` | `169,999` (`0x2980F`) |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | `160 MHz` | `0` | **`6,399`** (`max_duty = 6399`) | `3,200` | `159,999` (`0x270FF`) |
+| **`16 MHz HSI16` *(Reset Fallback)*** | Reset default | `16 MHz` | `0` | **`639`** (`max_duty = 639`) | `320` | `15,999` (`0x03E7F`) |
+
+- **Reusable Production Driver (`23-code-library/Drivers/tim_g4.h`):** Use `GPIO_ConfigAF(GPIOA, 6U, 2U, ...)` + `TIM_InitPwm(TIM3, 1U, 25000U, 0U)` and `TIM_SetPwmDutyPermille(TIM3, 1U, duty_permille)` — auto-computes `PSC`/`ARR`/`CCR` from live `SystemCoreClock` and clamps `100%` duty cleanly against 16-bit `0xFFFF` wraparound!
 
 ### 5.2 Critical Bug Analysis: Unsigned Integer Underflow Trap
 
@@ -249,3 +263,24 @@ The RGB LED (or single LED on `PA6`) smoothly breathes from 0% to 100% brightnes
 1. **Perceptual Gamma Correction ($\gamma = 2.2$):** Human eye brightness perception is logarithmic. Replace linear `duty` steps with a 256-entry `const uint16_t gamma_lut[256]` stored in Flash so fading looks visually uniform at low brightness.
 2. **Center-Aligned PWM:** Set `TIM3->CR1 |= TIM_CR1_CMS_0` (Center-Aligned Mode 1) and update `ARR = 3399` to maintain 25 kHz while reducing switching harmonics.
 3. **Zero-CPU DMA Waveform:** Stream a breathing lookup table into `TIM3->CCR1` automatically using `TIM3_UP` DMAMUX request (`ID = 65`) with DMA1.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` / `EXTERNAL HARDWARE PENDING` |
+| **Objective** | Generate glitch-free `25.000 kHz` 3-channel RGB PWM on `TIM3` (`PA6`/`PA7`/`PB0`, `AF2`) with `ARPE`/`OCxPE` shadow preloading, `EGR = UG`, and signed `int32_t` anti-underflow fading ramp. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,656 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **External Hardware Required:** `TIM3` (`CH1`/`CH2`/`CH3`) + `GPIOA`/`GPIOB` + external common-cathode RGB LED (or 3 discrete LEDs) + three `330 Ω` resistors + breadboard/jumpers (+ optional oscilloscope). |
+| **Hardware Availability** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` |
+| **Pin Configuration** | `PA6` (`D12`, `TIM3_CH1`, `AF2`), `PA7` (`D11`, `TIM3_CH2`, `AF2`), `PB0` (`A3`, `TIM3_CH3`, `AF2`): `MODER = 10b` (AF), `OSPEEDR = 10b` (High). |
+| **Expected Behavior** | Continuous smooth RGB breathing with `25.00 kHz` (`40.0 µs` period) carrier on `PA6`/`PA7`/`PB0`, zero mid-cycle glitches, and clean exit at `duty = 0` without unsigned underflow hang. |
+| **Actual Observations** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; physical RGB LED / oscilloscope verification deferred until external wiring is connected by user)*. |
+| **Register Values** | Reset: `TIM3->CR1 = 0`, `TIM3->ARR = 0xFFFF`, `TIM3->CCER = 0`. Configured (`170 MHz` / `160 MHz`): `TIM3->PSC = 0`, `TIM3->ARR = 6799` (`6399` @ 160 MHz), `TIM3->CCMR1 = 0x6868` (`OC1M=6, OC1PE=1, OC2M=6, OC2PE=1`), `TIM3->CCMR2 = 0x0068` (`OC3M=6, OC3PE=1`), `TIM3->CCER = 0x0111`, `TIM3->CR1 = 0x0081` (`ARPE\|CEN`). |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` verify `p TIM3->ARR`, `p/x TIM3->CCMR1`, `p/x TIM3->CCER`, `p TIM3->CCR1`; probe `PA6` at `10 us/div` on oscilloscope once wired. |
+| **Remaining Limitations** | Requires external RGB LED + resistors (or oscilloscope on `PA6`/`PA7`/`PB0`) for optical/waveform confirmation; linear duty sweep does not include perceptual gamma correction (Extension Exercise 1). |

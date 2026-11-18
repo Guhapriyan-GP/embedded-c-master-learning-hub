@@ -1,6 +1,8 @@
 # Lab 19: Cortex-M4 MPU Stack Guard, Naked-ASM HardFault Decoder & `.noinit` Persistent Crash Recovery
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+
+> **Clock Configuration Profile:** **Primary = `16 MHz HSI16` (Reset Default)** | **160 MHz / 170 MHz Boost Compatibility:** 100% identical `MPU`/`SCB`/`.noinit` register behavior across `16 MHz`, `160 MHz`, and `170 MHz` | **Reusable Drivers:** [`23-code-library/Drivers/fault_handler.h`](../../23-code-library/Drivers/fault_handler.h) (`FaultHandler_EnableDetailedFaults()`, `FaultHandler_HasValidCrashLog()`, `FaultHandler_ClearCrashLog()`, `HardFault_Handler_C()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -48,6 +50,12 @@ Uses onboard `PC13` (`B1`, Active-HIGH) and `PA5` (`LD2`, Fault/Recovery indicat
     - `RBAR = (guard_addr & ~0x1FUL)`
     - `RASR = MPU_RASR_XN_Msk | (0U << MPU_RASR_AP_Pos) | (4U << MPU_RASR_SIZE_Pos) | MPU_RASR_ENABLE_Msk` (`AP = 000` = **No Access** even for Privileged mode, `XN = 1` = Execute-Never!)
 - Enable dedicated configurable faults in `SCB->SHCSR |= SCB_SHCSR_MEMFAULTENA_Msk | SCB_SHCSR_BUSFAULTENA_Msk | SCB_SHCSR_USGFAULTENA_Msk;` (and optionally `SCB->CCR |= SCB_CCR_DIV_0_TRP_Msk;` to trap divide-by-zero!).
+
+### 5.1b Explicit Clock Configuration Profile Declaration (`16 MHz` vs `160 MHz` vs `170 MHz`)
+
+Cortex-M4 core `MPU` and `SCB` fault registers operate synchronously at `HCLK` with **zero frequency-dependent divisors**. Running this lab at `16 MHz HSI16`, `160 MHz` (`Clock_Init_160MHz()`), or `170 MHz` (`Clock_Init_170MHz()`) uses identical `MPU->RNR`/`RBAR`/`RASR`/`CTRL` and `SCB->SHCSR` values — only optional `USART2` post-mortem printing requires matching `BRR` (`139` @ `16 MHz`, `1,389` @ `160 MHz`, `1,476` @ `170 MHz`, handled automatically by [`usart_g4.h`](../../23-code-library/Drivers/usart_g4.h))!
+
+- **Reusable Production Driver (`23-code-library/Drivers/fault_handler.h`):** Links directly with `23-code-library/templates/stm32g474re.ld`'s `.noinit (NOLOAD)` section and `startup_stm32g474re.c`'s naked-ASM trampoline, including SRAM1/SRAM2 (`0x20000000..0x20017FFF`) + CCM-SRAM (`0x10000000..0x10007FFF`) stacked-SP bounds checks.
 
 ### 5.2 Hardware Exception Frame Layout (Stacked Automatically on Fault)
 
@@ -290,3 +298,24 @@ int main(void) {
 1. **Real MSP Stack Guard:** Move `g_mpu_guard_zone` to the linker symbol `_estack - _Min_Stack_Size` and induce an infinite recursive function to catch a real stack overflow before `.bss` corruption!
 2. **Execute-Never (`XN`) SRAM Defense:** Add an MPU region marking all SRAM1 (`0x20000000`, 64 KB + 16 KB) as `XN = 1` to block code-injection attacks from data buffers.
 3. **Imprecise BusFault Localization:** Temporarily set `SCnSCB->ACTLR |= SCnSCB_ACTLR_DISDEFWBUF_Msk;` (`ACTLR` lives in `SCnSCB_Type` at `0xE000E008`, NOT `SCB_Type`!) to disable the Cortex-M4 write buffer so imprecise BusFaults become exact precise BusFaults during debugging.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `ONBOARD HARDWARE TESTED` *(DIV0 `UsageFault` + `.noinit` persistence across `NVIC_SystemReset()` verified on NUCLEO-G474RE via `onboard_selftest` Test 8; dedicated MPU `MemManage` trap pending extension test)* |
+| **Objective** | Configure Cortex-M4 8-region `MPU` with a 32-byte No-Access (`AP=000`, `XN=1`) guard region, trap violations via naked-ASM `MemManage_Handler`/`HardFault_Handler` with SRAM/CCM SP bounds checking, persist `CFSR`/`HFSR`/`MMFAR`/`BFAR`/`PC`/`LR` into `.noinit` SRAM across `NVIC_SystemReset()`, and signal recovery on `LD2` (`PA5`). |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,916 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only:** Cortex-M4 `MPU`, `SCB`, `CoreDebug->DHCSR`, `.noinit` SRAM, `GPIOA` (`PA5` `LD2`), `GPIOC` (`PC13` `B1`). Zero external wiring required. |
+| **Hardware Availability** | `ONBOARD — VERIFIED (DIV0 .noinit Persistence; MPU Trap Pending Extension)` |
+| **Pin Configuration** | `PA5` (`LD2` Push-Pull Output, ON after crash recovery), `PC13` (`B1` Input `00b`, Active-HIGH fault trigger); optional `PA2`/`PA3` `USART2` VCP for crash telemetry printout. |
+| **Expected Behavior** | Clean boot leaves `LD2` OFF (`g_recovered_from_crash == 0`). Writing `g_mpu_guard_zone[0]` triggers `MemManage_Handler` with `DACCVIOL=1`, `MMARVALID=1`, `mmfar == &g_mpu_guard_zone[0]`, exact faulting `pc`, and valid `.noinit` checksum surviving `NVIC_SystemReset()` to set `g_recovered_from_crash = 1` and turn `LD2` ON. |
+| **Actual Observations** | Agent 4 Onboard Test (`onboard_selftest` Test 8 on NUCLEO-G474RE): Verified `MPU->CTRL = 0x5` (Region 7 guard armed), `DIV_0_TRP` `UsageFault` capture (`CFSR` `DIVBYZERO` + stacked `PC`/`LR`), and `.noinit` crash-log persistence across `NVIC_SystemReset()`. Dedicated MPU `MemManage` fault-injection (`DACCVIOL`/`MMARVALID`) remains pending as an extension test. |
+| **Register Values** | Reset: `MPU->CTRL = 0`, `SCB->SHCSR = 0`. Configured: `MPU->RNR = 7`, `MPU->RBAR = (&g_mpu_guard_zone[0] & ~0x1F)`, `MPU->RASR = 0x10000009` (`XN=1, AP=000, SIZE=4 (32 B), ENABLE=1`), `MPU->CTRL = 0x00000005` (`PRIVDEFENA\|ENABLE`), `SCB->SHCSR`: `MEMFAULTENA\|BUSFAULTENA\|USGFAULTENA`, `SCB->CCR.DIV_0_TRP = 1`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; trigger fault, inspect `p/x g_crash_log` in `arm-none-eabi-gdb`, and resolve `g_crash_log.pc` via `arm-none-eabi-addr2line -e build/firmware.elf -f -C <pc>`. |
+| **Remaining Limitations** | Requires linker script `.noinit (NOLOAD)` section (already provided in `23-code-library/templates/stm32g474re.ld`) so `Reset_Handler` does not zero `g_crash_log`. Dedicated MPU `MemManage` violation (`g_mpu_guard_zone[0]` write trap) pending extension execution. |

@@ -1,6 +1,8 @@
 # Lab 17: STM32G474RE Hardware Math Coprocessors — CORDIC & FMAC Benchmarked via `DWT->CYCCNT`
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`170 MMAC/s` FMAC, `6 cycles = 35.3 ns` CORDIC) | **Alternate = `160 MHz Range 1 Boost`** (`160 MMAC/s` FMAC, `6 cycles = 37.5 ns` CORDIC; `CORDIC`/`FMAC` registers and `DWT->CYCCNT` cycle counts are identical!) | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`, `Clock_DWT_Init()`, `Clock_GetCycles()`).
 
 ---
 
@@ -55,6 +57,17 @@ For an $N = 8$-tap FIR filter ($y[n] = \sum_{k=0}^{7} b_k \cdot x[n-k]$) in `q1.
 - **`X1` (Input Delay Line):** `X1_BASE = 8`, `X1_BUF_SIZE = 16` (must be $\ge N$; words `8..23`).
 - **`Y` (Output Buffer):** `Y_BASE = 24`, `Y_BUF_SIZE = 16` (words `24..39`).
 - **FMAC `PARAM` Function Codes (RM0440 §18.4.4):** `FUNC = 2` (`LOAD_X2` coefficients), `FUNC = 8` (`CONVO_FIR`, with `P = 8` taps, `Q = 0`, `R = 0` post-shift, `START = 1`).
+
+### 5.3 Explicit Clock Configuration Profile Comparison (`170 MHz` vs `160 MHz` Range 1 Boost)
+
+Both `CORDIC` and `FMAC` sit directly on **`AHB1` (`HCLK`)** with zero clock dividers — so their register configurations and `DWT->CYCCNT` **cycle counts** remain identical across `170 MHz` and `160 MHz`, while wall-clock throughput scales linearly with `HCLK`:
+
+| Clock Profile | `clock_g4.h` API | `AHB1` (`HCLK`) | `CORDIC->CSR` / `FMAC` Regs | Peak `FMAC` Throughput | `CORDIC` 6-Cycle Wall Time |
+|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` | `170 MHz` (`4 WS`, Boost) | Identical | `170 MMAC/s` | `35.3 ns` |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | `160 MHz` (`4 WS`, Boost) | Identical | `160 MMAC/s` | `37.5 ns` |
+
+- **Reusable Production Driver (`23-code-library/Drivers/clock_g4.h`):** Replace inline clock/DWT setup with `Clock_Init_170MHz()` (or `Clock_Init_160MHz()`), `Clock_DWT_Init()`, and `Clock_GetCycles()`.
 
 ---
 
@@ -326,3 +339,24 @@ Inspecting benchmark globals in GDB after completion:
 1. **Zero-CPU DMA Streaming into FMAC:** Wire `DMAMUX1` ID `111` (`FMAC_WRITE`) and ID `110` (`FMAC_READ`) to run a 64-tap FIR filter at `500 kSPS` with near-0% CPU utilization!
 2. **3p3z IIR Digital Power Compensator:** Switch `FMAC->PARAM` to `FUNC = 9` (`IIR_DIRECT_FORM_1`, `P=4, Q=3`) to implement a hardware closed-loop buck converter compensator (ST AN5305).
 3. **CORDIC `atan2` & `hypot` (`FUNC = 2` Phase / `FUNC = 3` Modulus):** Compute polar coordinates `(r, θ)` for Field-Oriented Control (FOC) Clarke/Park transforms.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Objective** | Execute `CORDIC` `q1.31` `(cos, sin)` acceleration and `FMAC` 8-tap `q1.15` FIR filtering on AHB1 (`170 MHz` primary / `160 MHz` supported), verifying numerical accuracy (`< 1e-5` CORDIC, `<= 1 LSB` FMAC) and speedup vs Cortex-M4F FPU via `DWT->CYCCNT`. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`2,748 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, Cortex-M4F `FPU` (`SCB->CPACR`), `DWT->CYCCNT`, `CORDIC` (`0x40020C00`), `FMAC` (`0x40021400`). Zero external wiring required. |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Pin Configuration** | None required (100% on-chip AHB1 coprocessor benchmark; optional `USART2` `PA2`/`PA3` VCP for telemetry). |
+| **Expected Behavior** | `g_cordic_cycles` is `~5×–10×` lower than `g_fpu_cycles` with `g_cordic_max_err < 1e-5f`; `g_fmac_max_lsb_diff <= 1` with `FMAC->SR` error flags (`OVFL`/`UNFL`/`SAT`) all `0`. |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Register Values** | Configured: `SCB->CPACR[23:20] = 0xF` (FPU full access), `RCC->AHB1ENR`: `CORDICEN=1, FMACEN=1`, `CORDIC->CSR`: `FUNC=0, PRECISION=6, NRES=1` (`0x00080060`), `FMAC->X2BUFCFG = 0x0800`, `FMAC->X1BUFCFG = 0x1008`, `FMAC->YBUFCFG = 0x1018`, `FMAC->CR = FMAC_CR_CLIPEN`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` break at `while (1)` and run `p g_cordic_cycles`, `p g_fpu_cycles`, `p g_cordic_max_err`, `p g_fmac_cycles`, `p g_sw_fir_cycles`, `p g_fmac_max_lsb_diff`, `p/x FMAC->SR`. |
+| **Remaining Limitations** | Uses polling loops for FMAC streaming (`X1FULL`/`YEMPTY`); DMA streaming (`DMAMUX1` IDs `110`/`111`) maximizes throughput for large filters (Extension Exercise 1). Physical `DWT->CYCCNT` measurement pending Agent 4. |

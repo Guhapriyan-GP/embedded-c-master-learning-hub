@@ -1,6 +1,8 @@
 # Lab 09: ADC1 Single-Channel Acquisition & Hardware Self-Calibration
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `EXTERNAL HARDWARE PENDING` *(Requires External `10 kΩ` Potentiometer on `PA0` — User Connection Required)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`CKMODE = 11b` $\implies f_{\text{ADC}} = 42.5\text{ MHz} \le 60\text{ MHz}$) | **Alternate = `160 MHz Range 1 Boost`** (`CKMODE = 11b` $\implies f_{\text{ADC}} = 40.0\text{ MHz} \le 60\text{ MHz}$) | **Reusable Drivers:** [`23-code-library/Drivers/adc_g4.h`](../../23-code-library/Drivers/adc_g4.h) (`adc_init_single_ended()`, `adc_read_channel()`, `adc_raw_to_mv()`, `adc_calc_vdda_mv()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -49,6 +51,18 @@ Per **DS12288 §5.3.19**, the maximum STM32G474RE ADC kernel clock is **$f_{\tex
 - Even `CKMODE = 10b` (`HCLK / 2 = 85 MHz`) violates the `60 MHz` limit!
 - **Verified Safe Synchronous Setting at 170 MHz:** `CKMODE = 11b` (`HCLK / 4`):
   $$f_{\text{ADC}} = \frac{170\text{ MHz}}{4} = 42.5\text{ MHz} \le 60\text{ MHz}\ \checkmark$$
+
+### 5.1b Explicit Clock Configuration Profile Comparison (`170 MHz` vs `160 MHz` Range 1 Boost)
+
+Because DS12288 limits $f_{\text{ADC,max}} \le 60\text{ MHz}$, **BOTH `170 MHz` and `160 MHz` MUST use `CKMODE = 11b` (`HCLK / 4`)** (`HCLK / 2` would be `85 MHz` or `80 MHz`, both illegal!):
+
+| Clock Profile | `clock_g4.h` API | `ADC12_COMMON->CCR.CKMODE` | $f_{\text{ADC}}$ | `SMP1 = 100b` (`47.5` cyc) $t_S$ | Total $t_{\text{CONV}}$ (`60` cyc) | Sample Rate |
+|---|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` | **`11b`** (`HCLK / 4`) | **`42.5 MHz`** ($\le 60\text{ MHz}$) | `1.118 µs` | `1.412 µs` | `708.3 kSPS` |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | **`11b`** (`HCLK / 4`) | **`40.0 MHz`** ($\le 60\text{ MHz}$) | `1.188 µs` | `1.500 µs` | `666.7 kSPS` |
+| **`16 MHz HSI16` *(Reset Fallback)*** | Reset default | `01b` (`HCLK / 1`) or `11b` (`4 MHz`) | `16.0 MHz` (`CKMODE=01b`) | `2.969 µs` | `3.750 µs` | `266.7 kSPS` |
+
+- **Reusable Production Driver (`23-code-library/Drivers/adc_g4.h`):** Call `adc_init_single_ended(ADC1, 500000U)`, `adc_read_channel(ADC1, 1U, ADC_SMP_47_5_CYCLES, &raw, 500000U)`, and `adc_raw_to_mv(raw, 3300U)` — enforces `CKMODE = 11b`, `DEEPPWD=0 -> ADVREGEN=1 -> Clock_DelayUs(25U) -> ADCAL -> rc_w1 ADRDY -> ADEN` identically across `160 MHz` and `170 MHz`.
 
 ### 5.2 Sampling Time & Conversion Math
 
@@ -273,3 +287,24 @@ Rotating the `10 kΩ` potentiometer wiper from `GND` to `3.3 V` smoothly sweeps 
 1. **True $V_{\text{DDA}}$ Self-Calibration via `VREFINT`:** Sample internal channel `ADC1_IN18` (`VREFINT`, $t_S \ge 4\ \mu\text{s}$, enable `ADC_CCR_VREFEN`) and compute exact $V_{\text{DDA}} = 3000\text{ mV} \times \frac{\text{VREFINT\_CAL}}{\text{raw}_{\text{vref}}}$ using the factory constant at `0x1FFF75AA` (`*VREFINT_CAL_ADDR`).
 2. **Hardware 16× Oversampling:** Enable `ADC1->CFGR2 |= ADC_CFGR2_ROVSE | (3U << ADC_CFGR2_OVSR_Pos) | (4U << ADC_CFGR2_OVSS_Pos)` to average 16 samples in hardware with zero CPU overhead.
 3. **Differential Input Mode:** Configure `ADC1->DIFSEL` and run differential calibration (`ADCALDIF = 1`) across `PA0`/`PA1`.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` / `EXTERNAL HARDWARE PENDING` |
+| **Objective** | Initialize `ADC1` with safe DS12288 synchronous clocking (`CKMODE = 11b`, `42.5 MHz @ 170 MHz` / `40.0 MHz @ 160 MHz <= 60 MHz`), execute `DEEPPWD -> ADVREGEN -> ADCAL -> ADEN` with bounded timeouts, and read an external `10 kΩ` potentiometer on `PA0` (`ADC1_IN1`). |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,612 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **External Hardware Required:** `ADC1`, `GPIOA` (`PA0`) + external `10 kΩ` linear potentiometer (wiper -> `PA0`, ends -> `3V3`/`GND`) + optional `100 nF` filter cap and handheld DMM. |
+| **Hardware Availability** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` |
+| **Pin Configuration** | `PA0` (Arduino `A0`, `ADC1_IN1`): `MODER[1:0] = 11b` (Analog), `PUPDR[1:0] = 00b` (No Pull). Voltage strictly constrained to `0..3.3 V`. |
+| **Expected Behavior** | Sweeping potentiometer wiper from `0 V` to `3.3 V` smoothly varies `g_adc_raw` across `0..4095` and `g_adc_mv` across `0..3300 mV` within `±25 mV` of DMM reading. |
+| **Actual Observations** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; external potentiometer sweep deferred until user connects hardware. Note: onboard internal ADC1 `VREFINT`/`Temp` verification is covered in Lab 10)*. |
+| **Register Values** | Reset: `ADC1->CR = 0x20000000` (`DEEPPWD=1`), `ADC12_COMMON->CCR = 0x00000000`. Configured: `ADC12_COMMON->CCR[17:16] = 11b` (`0x00030000`), `ADC1->CR`: `DEEPPWD=0, ADVREGEN=1, ADEN=1, ADCAL=0`, `ADC1->SQR1 = 0x00000040` (`SQ1=1, L=0`), `ADC1->SMPR1[5:3] = 100b` (`47.5` cyc). |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` verify `p/x ADC12_COMMON->CCR`, `p/x ADC1->CR`, `p/x ADC1->CALFACT`, `p g_adc_raw`, `p g_adc_mv` against DMM on `PA0`. |
+| **Remaining Limitations** | Assumes nominal `3300 mV` $V_{\text{DDA}}$ unless dynamically calibrated via `VREFINT` (`ADC1_IN18`, demonstrated in Lab 10 and `adc_g4.h`). External potentiometer test pending user wiring. |

@@ -1,6 +1,8 @@
 # Lab 01: Bare-Metal GPIO LED Blinky (Register vs LL vs HAL)
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+
+> **Clock Configuration Profile:** **Primary = `16 MHz HSI16` (Reset Default)** | **Reusable Drivers:** [`23-code-library/Drivers/gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h) (`GPIO_EnableClock()`, `GPIO_ConfigOutput()`, `GPIO_SetPin()`, `GPIO_ResetPin()`, `GPIO_TogglePin()`) & [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_160MHz()`, `Clock_Init_170MHz()`, `Clock_DelayMs()`).
 
 ---
 
@@ -55,6 +57,18 @@ Per **ST UM2505 (NUCLEO-G474RE User Manual)**, onboard green user LED **`LD2`** 
 | `GPIOA->OSPEEDR` | `0x48000000 + 0x08` | Bits `[11:10]` (`OSPEEDR5`) | `00b` | `00b` | Low slew rate (minimizes EMI for slow LED) |
 | `GPIOA->PUPDR` | `0x48000000 + 0x0C` | Bits `[11:10]` (`PUPDR5`) | `00b` | `00b` | No internal pull-up/pull-down |
 | `GPIOA->BSRR` | `0x48000000 + 0x18` | Bit `5` (`BS5`), Bit `21` (`BR5`) | `0x00000000` (WO) | `1U << 5` / `1U << 21` | Single-cycle atomic set/reset of `ODR5` |
+
+### 5.1 Explicit Clock Configuration Profile Declaration (16 MHz vs 160 MHz vs 170 MHz)
+
+This introductory lab intentionally runs at the STM32G474RE reset clock (**`16 MHz HSI16`**) so learners master GPIO registers before PLL switching (Lab 03). Because `delay_cycles()` is a software busy-wait loop, switching to a Range 1 Boost PLL profile scales the loop count directly with `SYSCLK`:
+
+| Clock Profile | `clock_g4.h` API | `SYSCLK` / `HCLK` | `FLASH->ACR` Latency | Equivalent `delay_cycles()` Count for Same Cadence | Recommended Deterministic Delay |
+|---|---|---|---|---|---|
+| **`16 MHz HSI16` *(Primary here)*** | Reset default (`CLOCK_PROFILE_HSI16`) | `16,000,000 Hz` | `0 WS` (Range 1 Normal) | `400,000` | `SysTick` (`LOAD = 15,999`) or `Clock_DelayMs()` |
+| **`160 MHz Range 1 Boost`** | `Clock_Init_160MHz()` (`M=4, N=80, R=2`) | `160,000,000 Hz` | `4 WS` (`R1MODE = 0`) | `4,000,000` (10.0× faster) | `Clock_DelayMs()` (auto-scales via `SystemCoreClock`) |
+| **`170 MHz Range 1 Boost`** | `Clock_Init_170MHz()` (`M=4, N=85, R=2`) | `170,000,000 Hz` | `4 WS` (`R1MODE = 0`) | `4,250,000` (10.625× faster) | `Clock_DelayMs()` (auto-scales via `SystemCoreClock`) |
+
+- **Reusable Production Driver Equivalent (`23-code-library/Drivers/`):** Replace manual register setup with `GPIO_ConfigOutput(GPIOA, 5U, GPIO_OTYPE_PUSHPULL, GPIO_SPEED_LOW, GPIO_PULL_NONE)` and `GPIO_TogglePin(GPIOA, 5U)` from [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h), paired with `Clock_DelayMs(500U)` from [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h).
 
 ### Bitfield Mask Calculation
 
@@ -220,3 +234,24 @@ On a NUCLEO-G474RE running at default reset clock (`16 MHz HSI16`), green LED **
 1. **Multi-Pin Atomic Update:** Connect two external LEDs to `PA6` and `PA7` (with 330 $\Omega$ series resistors) and write a single `GPIOA->BSRR` store that simultaneously turns `PA5` ON and `PA6` OFF in one clock cycle.
 2. **Disassembly Audit:** Compile both Approach A (Register) and Approach B (LL) with `-O2` and run `arm-none-eabi-objdump -d` to verify that LL compiles to identical `STR` machine instructions with zero call overhead.
 3. **Slew-Rate Measurement:** Toggle `PA5` in a tight loop and compare edge rise times on an oscilloscope across `OSPEEDR5 = 00b, 01b, 10b, 11b` (referencing DS12288 §5.3.14).
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Objective** | Configure onboard Green LED `LD2` (`PA5`) out of STM32G4 Analog reset mode (`MODER5 = 11b -> 01b`) and blink atomically via `GPIOA->BSRR` while comparing Register, ST LL, and ST HAL APIs. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`960 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only:** `RCC`, `GPIOA`, onboard Green LED `LD2` (`PA5` via `SB42`/`SB6`). Zero external wiring required. |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Pin Configuration** | `PA5`: `MODER = 01b` (Output), `OTYPER = 0` (Push-Pull), `OSPEEDR = 00b` (Low), `PUPDR = 00b` (No Pull); `PA13`/`PA14` SWD pins preserved untouched. |
+| **Expected Behavior** | At `16 MHz HSI16`, `LD2` (`PA5`) blinks steadily; `GPIOA->ODR` bit 5 toggles `0 <-> 1` cleanly via atomic `BSRR` writes (`BS5` / `BR5`). |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Register Values** | Reset: `RCC->AHB2ENR = 0x00000000`, `GPIOA->MODER = 0xABFFFFFF`. Configured: `RCC->AHB2ENR[0] = 1`, `GPIOA->MODER = 0xABFFF7FF` (`MODER5[11:10] = 01b`), `GPIOA->OTYPER[5] = 0`, `GPIOA->BSRR = 0x00000020` (`BS5`) / `0x00200000` (`BR5`). |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD (`openocd -f interface/stlink.cfg -f target/stm32g4x.cfg`); in `arm-none-eabi-gdb` verify `x/1wx 0x4002104C`, `x/1wx 0x48000000`, and `x/1wx 0x48000014` across `BSRR` steps. |
+| **Remaining Limitations** | Busy-wait `delay_cycles()` timing depends on optimization level (`-O0` vs `-O2`) and `SYSCLK`; deterministic timing is implemented via `SysTick` (Lab 04) or `Clock_DelayMs()` (`clock_g4.h`). Physical board execution pending Agent 4. |

@@ -1,6 +1,8 @@
 # Lab 03: RCC PLL 170 MHz Clock Switch in Range 1 Boost Mode
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost` (`M=4, N=85, R=2`, `R1MODE=0`, `4WS`, `MCO/16 = 10.625 MHz`)** | **Alternate = `160 MHz Range 1 Boost` (`M=4, N=80, R=2`, `R1MODE=0`, `4WS`, `MCO/16 = 10.000 MHz`)** | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`, `Clock_Init_170MHz_HSE24()`, `Clock_GetSysClkHz()`) & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -57,6 +59,24 @@ $$f_{\text{VCO\_IN}} = \frac{f_{\text{HSI16}}}{M} = \frac{16\text{ MHz}}{4} = 4\
 $$f_{\text{VCO\_OUT}} = f_{\text{VCO\_IN}} \times N = 4\text{ MHz} \times 85 = 340\text{ MHz} \quad \in [96,\ 344]\text{ MHz}\ \checkmark$$
 
 $$f_{\text{SYSCLK}} = f_{\text{PLL\_R}} = \frac{f_{\text{VCO\_OUT}}}{R} = \frac{340\text{ MHz}}{2} = 170\text{ MHz} \quad \le 170\text{ MHz}\ \checkmark$$
+
+### 5.1b Explicit Clock Configuration Profile Comparison (`170 MHz` vs `160 MHz` Range 1 Boost)
+
+Both **`170 MHz`** and **`160 MHz`** exceed `150 MHz` and therefore **BOTH** require **Range 1 Boost Mode (`PWR->CR5.R1MODE = 0`)**, **`4 WS` Flash latency** (RM0440 Table 9: $> 136\text{ MHz}\dots 170\text{ MHz}$), and the mandatory **RM0440 §6.1.5 two-step `HPRE = /2` $\to \ge 1\ \mu\text{s} \to$ `HPRE = /1`** switch! Never omit Boost Mode or the intermediate `HPRE = /2` step when targeting `160 MHz`:
+
+| Parameter / Register | **`170 MHz` Range 1 Boost *(Primary)*** | **`160 MHz` Range 1 Boost *(Alternate)*** | **`170 MHz` HSE 24 MHz X3** |
+|---|---|---|---|
+| **Reusable Driver API** | `Clock_Init_170MHz()` | `Clock_Init_160MHz()` | `Clock_Init_170MHz_HSE24()` |
+| **`RCC->PLLCFGR.PLLSRC`** | `10b` (`HSI16 = 16 MHz`) | `10b` (`HSI16 = 16 MHz`) | `11b` (`HSE = 24 MHz`) |
+| **`PLLM` / `PLLN` / `PLLR`** | `3` (`/4`) / `85` / `0` (`/2`) | `3` (`/4`) / `80` / `0` (`/2`) | `5` (`/6`) / `85` / `0` (`/2`) |
+| **VCO Clock ($f_{\text{VCO}}$)** | `340 MHz` (`[96..344] MHz`) | `320 MHz` (`[96..344] MHz`) | `340 MHz` (`[96..344] MHz`) |
+| **Intermediate `HPRE = /2` HCLK** | `85.0 MHz` ($\ge 1\ \mu\text{s}$ hold) | `80.0 MHz` ($\ge 1\ \mu\text{s}$ hold) | `85.0 MHz` ($\ge 1\ \mu\text{s}$ hold) |
+| **Final `SYSCLK`/`HCLK`/`PCLK1`/`PCLK2`** | `170,000,000 Hz` | `160,000,000 Hz` | `170,000,000 Hz` |
+| **`PWR->CR1.VOS` / `PWR->CR5.R1MODE`** | `01b` / **`0` (Boost)** | `01b` / **`0` (Boost)** | `01b` / **`0` (Boost)** |
+| **`FLASH->ACR.LATENCY`** | `4 WS` (`0x4`) + `PRFTEN\|ICEN\|DCEN` | `4 WS` (`0x4`) + `PRFTEN\|ICEN\|DCEN` | `4 WS` (`0x4`) + `PRFTEN\|ICEN\|DCEN` |
+| **`PA8` `MCO` (`SYSCLK / 16`)** | **`10.625 MHz ± 1%`** | **`10.000 MHz ± 1%`** | **`10.625 MHz ± 50 ppm`** |
+
+- **Reusable Production Driver (`23-code-library/Drivers/clock_g4.h`):** Call `Clock_Init_170MHz()`, `Clock_Init_160MHz()`, or `Clock_Init_170MHz_HSE24()` directly — all three implement bounded timeouts on `VOSF`/`FLASH_ACR`/`HSIRDY`/`PLLRDY`/`SWS` and automatically call `SystemCoreClockUpdate()` so downstream drivers (`tim_g4`, `usart_g4`, `spi_g4`, `i2c_g4`) stay synchronized.
 
 ### 5.2 Critical Register Map (Verified Against `stm32g474xx.h`)
 
@@ -231,4 +251,25 @@ int main(void) {
 
 1. **HSE 24 MHz Crystal PLL:** Modify `Clock_Init_170MHz()` to use the onboard NUCLEO-G474RE **24 MHz crystal (`HSEON`, `HSERDY`)** with $M=6$ ($4\text{ MHz}$), $N=85$ ($340\text{ MHz}$), $R=2$ ($170\text{ MHz}$) for $\pm 50\text{ ppm}$ frequency accuracy (required for FDCAN and USB!).
 2. **Clock Security System (CSS):** Enable `RCC->CR |= RCC_CR_CSSON` when running from HSE and write `NMI_Handler()` to detect clock failure and safely fall back to HSI16.
-3. **Slew-Rate EMI Study:** Measure overshoot on `PA8` (`10.625 MHz`) across `OSPEEDR = 01b, 10b, 11b` and observe how `10b` (High) reduces ringing compared to `11b` (Very High).
+3. **Slew-Rate EMI Study:** Measure overshoot on `PA8` (`10.625 MHz` @ 170 MHz or `10.000 MHz` @ 160 MHz) across `OSPEEDR = 01b, 10b, 11b` and observe how `10b` (High) reduces ringing compared to `11b` (Very High).
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Objective** | Execute the RM0440 §6.1.5 Range 1 Boost Mode clock switch from `16 MHz HSI16` to `170 MHz` (and document exact `160 MHz` equivalent), verifying `VOSF`, `R1MODE = 0`, `4 WS` Flash latency, two-step `HPRE = /2 -> /1` ramp, and `PA8` `MCO/16`. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,416 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, `GPIOA` (`PA5` `LD2`, `PA8` `MCO`). Optional oscilloscope on `PA8` for frequency confirmation; register/DWT verification requires zero external hardware. |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Pin Configuration** | `PA5`: `MODER = 01b`, `OSPEEDR = 11b` (`LD2`); `PA8`: `MODER = 10b` (`AF0` = `MCO`), `OSPEEDR = 11b`. |
+| **Expected Behavior** | Zero HardFault/BOR across clock switch; `RCC->CFGR.SWS == 11b` (PLL), `HPRE == 0`, `SystemCoreClock == 170000000` (or `160000000` with `PLLN = 80`), `PA8` outputs `10.625 MHz` (`10.000 MHz` @ 160 MHz). |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Register Values** | Reset: `PWR->CR5 = 0x00000100` (`R1MODE=1`), `FLASH->ACR[3:0] = 0x0` (`0WS`), `RCC->CFGR.SWS = 01b` (HSI16). Configured (`170 MHz` / `160 MHz`): `PWR->CR1.VOS = 01b`, `PWR->SR2.VOSF = 0`, `PWR->CR5.R1MODE = 0`, `FLASH->ACR[3:0] = 0x4` (`4WS`) + `PRFTEN\|ICEN\|DCEN`, `RCC->PLLCFGR`: `PLLSRC=10b, PLLM=3, PLLN=85 (80 @ 160 MHz), PLLR=0, PLLREN=1`, `RCC->CFGR.SWS = 11b`, `HPRE = 0`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` break after `Clock_Init_170MHz()` and inspect `p/x PWR->CR5`, `p/x PWR->SR2`, `p/x FLASH->ACR`, `p/x RCC->PLLCFGR`, `p/x RCC->CFGR`, and `p SystemCoreClock`. |
+| **Remaining Limitations** | Uses internal HSI16 (`±1%` tolerance); applications needing `±50 ppm` precision (USB/CAN-FD on physical bus) should invoke `Clock_Init_170MHz_HSE24()` in `clock_g4.h`. Physical execution pending Agent 4. |

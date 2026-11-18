@@ -1,6 +1,8 @@
 # Lab 14: Low-Power Stop 0 Mode & EXTI13 Wakeup with Full 170 MHz Clock Restore
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware; optional `JP6` `IDD` µA check requires external DMM)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (Stop 0 halts PLL, wakes on `16 MHz HSI16`, restores `170 MHz` via `Clock_Init_170MHz()`) | **Alternate = `160 MHz Range 1 Boost`** (restores `160 MHz` via `Clock_Init_160MHz()`) | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`), [`exti_g4.h`](../../23-code-library/Drivers/exti_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h) (`GPIO_ConfigAnalog()`).
 
 ---
 
@@ -60,6 +62,17 @@ Place the STM32G474RE safely into **Stop 0** low-power mode (`PWR->CR1.LPMS = 00
 | 6 | `SCB->SCR \|= SCB_SCR_SLEEPDEEP_Msk; __DSB(); __WFI(); __ISB();` | Enters deep sleep deterministically |
 | 7 | `SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;` | Prevents subsequent normal `__WFI()` calls from re-entering Stop 0! |
 | 8 | `Clock_Init_170MHz();` | **Stop 0 halts the PLL and wakes on `16 MHz HSI16`!** Must re-enable 170 MHz PLL. |
+
+### 5.1 Explicit Clock Configuration Profile Declaration (`170 MHz` vs `160 MHz` Post-Stop Restore)
+
+Entering **Stop 0** (`LPMS = 000b`) unconditionally stops the Main PLL (`RCC->CR.PLLON = 0`) and switches `SYSCLK` back to **`16 MHz HSI16`** on wakeup! Failing to call the exact matching Boost-mode restore function causes all timers/UARTs to run `10.0×` (at `160 MHz`) or `10.625×` (at `170 MHz`) too slow after wakeup:
+
+| Active Run Profile | Post-Stop Restore API (`clock_g4.h`) | Wakeup Clock Before Restore | Restored `PLLM`/`PLLN`/`PLLR` | `PWR->CR5.R1MODE` / `FLASH->ACR` | Intermediate `HPRE = /2` Step |
+|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` | `16 MHz HSI16` (`SWS=01b`) | `3` (`/4`) / `85` / `0` (`/2`) | `0` (Boost) / `4 WS` | `85 MHz` ($\ge 1\ \mu\text{s}$) $\to 170\text{ MHz}$ |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | `16 MHz HSI16` (`SWS=01b`) | `3` (`/4`) / `80` / `0` (`/2`) | `0` (Boost) / `4 WS` | `80 MHz` ($\ge 1\ \mu\text{s}$) $\to 160\text{ MHz}$ |
+
+- **Reusable Production Drivers (`23-code-library/Drivers/`):** Call `Clock_Init_170MHz()` or `Clock_Init_160MHz()` ([`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h)) immediately after `__WFI(); __ISB(); SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;`, configure `EXTI13` via `EXTI_ConfigLine()` ([`exti_g4.h`](../../23-code-library/Drivers/exti_g4.h)), and park unused GPIOs with `GPIO_ConfigAnalog()` ([`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h)).
 
 ---
 
@@ -269,3 +282,24 @@ int main(void) {
 1. **Stop 1 Mode Comparison:** Change `PWR_CR1_LPMS_STOP0` to `PWR_CR1_LPMS_STOP1` (`001b`) and compare `JP6` current draw against Stop 0 (verify DS12288 table values!).
 2. **Periodic `LPTIM1` / `RTC` Auto-Wakeup:** Wake automatically every 5 seconds using the Low-Power Timer (`LPTIM1` clocked by `LSI`) without pressing `B1`.
 3. **Standby Mode + SRAM2 Retention:** Configure `PWR_CR1_LPMS_STANDBY` (`011b`) and `PWR->CR3 |= PWR_CR3_RRS` to retain `SRAM2` across Standby reset.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard Wakeup — Queued for Physical Execution; optional `JP6` DMM µA measurement external)* |
+| **Objective** | Enter STM32G474RE **Stop 0** low-power mode (`PWR->CR1.LPMS = 000b`, `SLEEPDEEP = 1`, SysTick suspended), wake cleanly via rising-edge `EXTI13` (`PC13` `B1`) with full SRAM retention, clear `SLEEPDEEP`, and restore the `170 MHz` (or `160 MHz`) PLL clock tree. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,848 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only (Functional Wakeup & Clock Restore):** `PWR`, `RCC`, `SYSCFG`, `EXTI13`, `SCB`, `GPIOA` (`PA5` `LD2`), `GPIOC` (`PC13` `B1`). *(Optional external DMM in series across `JP6` `IDD` — NEVER `JP5` — for absolute µA validation.)* |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` *(Functional Stop 0 + Wake + PLL Restore)* |
+| **Pin Configuration** | `PC13` (`B1`): `MODER[27:26] = 00b`, `PUPDR = 00b`, `EXTI13` Rising Edge; `PA5` (`LD2`): `MODER = 01b` (driven LOW prior to Stop 0); all other GPIOs kept in reset Analog (`11b`) for minimum leakage. |
+| **Expected Behavior** | Blinks `LD2` 3 times at `170 MHz`, enters Stop 0 (`LD2` OFF); pressing `B1` wakes MCU via `EXTI15_10_IRQHandler`, increments retained `g_wakeup_count`, clears `SLEEPDEEP`, restores `170 MHz` (`SWS = PLL`), and repeats. |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon; absolute `JP6` µA figure requires standalone DMM test without SWD probe attached)*. |
+| **Register Values** | Reset: `PWR->CR1.LPMS = 000b`, `SCB->SCR = 0`. Pre-Stop: `RCC->APB1ENR1[28] (PWREN) = 1`, `PWR->CR1.LPMS = 000b` (Stop 0), `SCB->SCR[2] (SLEEPDEEP) = 1`. Post-Wake: `SCB->SCR[2] = 0`, `RCC->CFGR.SWS = 11b` (PLL `170 MHz` or `160 MHz`), `g_wakeup_count >= 1`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD (set `DBGMCU->CR |= DBGMCU_CR_DBG_STOP` only during GDB sessions, clear for true current check); inspect `p g_wakeup_count`, `p/x SCB->SCR`, `p/x RCC->CFGR`. |
+| **Remaining Limitations** | Active SWD probe keeps debug domains powered and inflates `JP6` current above datasheet Stop 0 typ (~150–400 µA); measure true microamp draw standalone with DMM on `JP6` (`IDD`). Physical wakeup/clock-restore test pending Agent 4. |

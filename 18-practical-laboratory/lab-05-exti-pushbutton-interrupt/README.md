@@ -1,6 +1,8 @@
 # Lab 05: EXTI Pushbutton Interrupt, NVIC Priority & 3-Way API Comparison
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+
+> **Clock Configuration Profile:** **Primary = `16 MHz HSI16` (Reset Default)** | **160 MHz / 170 MHz Boost Compatibility:** Identical `SYSCFG`/`EXTI`/`NVIC` registers (`__DSB()` becomes even more critical at `160 MHz` / `170 MHz`) | **Reusable Drivers:** [`23-code-library/Drivers/exti_g4.h`](../../23-code-library/Drivers/exti_g4.h) (`EXTI_ConfigLine()`, `EXTI_RegisterCallback()`, `EXTI_DispatchRange()`, `EXTI_ClearPending()`), [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h), & [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h).
 
 ---
 
@@ -49,6 +51,18 @@ Route the NUCLEO-G474RE onboard Blue Button (`B1` on `PC13`, **Active-HIGH** per
 | `EXTI->IMR1` | Bit 13 (`IM13`) | `1` | Unmasks `EXTI13` interrupt to NVIC |
 | `EXTI->PR1` | Bit 13 (`PIF13`, `rc_w1`) | Write `1U << 13` | Direct assignment clears pending bit (never use `|=`) |
 | `NVIC` | `EXTI15_10_IRQn` (`IRQ 40`) | Priority `3` (`PRIGROUP=0`) | 4 preemption bits, 0 subpriority bits (`__NVIC_PRIO_BITS = 4`) |
+
+### Explicit Clock Configuration Profile Declaration (`16 MHz` vs `160 MHz` vs `170 MHz`)
+
+`EXTI13` edge detection is asynchronous to `SYSCLK` and requires no frequency-dependent prescalers. However, at `160 MHz` and `170 MHz` Range 1 Boost, the AHB-to-APB2 posted-write latency (`EXTI->PR1` clear) relative to CPU instruction retirement makes the trailing **`__DSB()`** (ES0430 §2.1.3 / ARM Errata 838869) strictly mandatory:
+
+| Clock Profile | `clock_g4.h` API | `SYSCFG`/`EXTI`/`NVIC` Registers | `EXTI->PR1` Clear & Barrier | Interrupt Stacking Latency (`12` Core Cycles) |
+|---|---|---|---|---|
+| **`16 MHz HSI16` *(Primary here)*** | Reset default | `EXTICR[3]=0x20`, `RTSR1=0x2000`, `IMR1=0x2000` | `EXTI->PR1 = EXTI_PR1_PIF13; __DSB();` | `~750 ns` |
+| **`160 MHz Range 1 Boost`** | `Clock_Init_160MHz()` | **Identical** (`EXTI` is clock-independent) | `EXTI->PR1 = EXTI_PR1_PIF13; __DSB();` | `~75.0 ns` |
+| **`170 MHz Range 1 Boost`** | `Clock_Init_170MHz()` | **Identical** (`EXTI` is clock-independent) | `EXTI->PR1 = EXTI_PR1_PIF13; __DSB();` | `~70.6 ns` |
+
+- **Reusable Production Driver (`23-code-library/Drivers/exti_g4.h`):** Replace boilerplate setup with `GPIO_ConfigInput(GPIOC, 13U, GPIO_PULL_NONE)`, `EXTI_RegisterCallback(13U, on_btn, NULL)`, `EXTI_ConfigLine(GPIOC, 13U, EXTI_EDGE_RISING, 3U)`, and call `EXTI_DispatchRange(10U, 15U)` inside `EXTI15_10_IRQHandler()` (includes `EXTI_ClearPending()` + `__DSB()` automatically).
 
 > [!IMPORTANT]
 > **Why `__DSB()` Is Mandatory Before ISR Exit on Cortex-M4:** Peripheral writes to APB2 (`EXTI->PR1 = EXTI_PR1_PIF13`) traverse the Cortex-M4 write buffer and AHB-to-APB2 bridge. If the ISR executes `BX LR` before the write reaches the EXTI peripheral, NVIC still sees `EXTI13` asserted and immediately tail-chains a **spurious duplicate ISR entry**! Executing `__DSB()` forces the write to complete before exception return.
@@ -231,3 +245,24 @@ The CPU stays halted in `__WFI()` sleep mode consuming zero active loop cycles u
 1. **ISR-Safe Debouncing:** Instead of toggling the LED directly in `EXTI15_10_IRQHandler`, mask `EXTI13` inside the ISR and start a 25 ms one-shot timer (TIM6/SysTick) that re-samples `PC13` and re-enables `EXTI13` once bounce settles.
 2. **Nested Priority Preemption:** Add a higher-priority `SysTick` (Priority `1`) and lower-priority `EXTI15_10_IRQn` (Priority `3`), and inspect the `IPSR` register in GDB during nested preemption.
 3. **Zero-Latency Event Wakeup (`__WFE`):** Replace `EXTI->IMR1` with `EXTI->EMR1` and `__WFI()` with `__WFE()` to wake the CPU without stacking an exception frame.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Objective** | Route Active-HIGH `B1` (`PC13`) via `SYSCFG->EXTICR[3]` to rising-edge `EXTI13` (`EXTI15_10_IRQn`), toggle `LD2` (`PA5`) atomically via `BSRR`, and clear `rc_w1` `EXTI->PR1` with `__DSB()` while comparing Register vs LL vs HAL. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,284 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only:** `RCC`, `SYSCFG`, `EXTI`, `NVIC`, `GPIOA` (`PA5` `LD2`), `GPIOC` (`PC13` `B1`). Zero external wiring required (also supports software self-test via `EXTI->SWIER1` / `EXTI_TriggerSoftware(13)`). |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Pin Configuration** | `PC13`: `MODER[27:26] = 00b`, `PUPDR[27:26] = 00b`, `EXTICR[3][7:4] = 0010b` (Port C), Rising Edge `RTSR1[13] = 1`; `PA5`: `MODER[11:10] = 01b`, `OTYPER[5] = 0`. |
+| **Expected Behavior** | CPU sleeps in `__WFI()` until `B1` rising edge (or software trigger `EXTI->SWIER1 = (1U << 13)`), enters `EXTI15_10_IRQHandler`, clears `PR1[13]`, toggles `LD2`, increments `g_button_irq_count`, and returns without spurious re-entry. |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Register Values** | Reset: `RCC->APB2ENR = 0`, `SYSCFG->EXTICR[3] = 0x0000`, `EXTI->IMR1 = 0x1F800000` (lines 0..15 masked). Configured: `RCC->APB2ENR[0] = 1` (`SYSCFGEN`), `SYSCFG->EXTICR[3][7:4] = 0x2`, `EXTI->RTSR1[13] = 1`, `EXTI->FTSR1[13] = 0`, `EXTI->IMR1[13] = 1`, `NVIC` `PRIGROUP = 0`, `EXTI15_10_IRQn (40)` prio = `3`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` break on `EXTI15_10_IRQHandler`, inspect `p/x SYSCFG->EXTICR[3]`, `p/x EXTI->RTSR1`, `p/x EXTI->PR1`, and verify `p g_button_irq_count` increments cleanly. |
+| **Remaining Limitations** | Raw mechanical button edge interrupt without timer blanking may trigger multiple counts on noisy tactile bounce (see Extension Exercise 1 and Lab 02 FSM). Physical board execution pending Agent 4. |

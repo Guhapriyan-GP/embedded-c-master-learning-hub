@@ -1,6 +1,8 @@
 # Lab 04: SysTick Accurate Millisecond Delay & Non-Blocking Timer Generator
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`SysTick->LOAD = 169,999`) | **Alternate = `160 MHz Range 1 Boost`** (`SysTick->LOAD = 159,999`) | **Reusable Drivers:** [`23-code-library/Drivers/clock_g4.h`](../../23-code-library/Drivers/clock_g4.h) (`Clock_Init_170MHz()`, `Clock_Init_160MHz()`, `Clock_GetSysClkHz()`, `Clock_DWT_Init()`, `Clock_DelayMs()`) & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -45,6 +47,18 @@ Initialize the STM32G474RE system clock to **`170 MHz`** (eliminating the classi
 | `SysTick->LOAD` | `0xE000E014` | `RELOAD[23:0]` | `169999` (`0x0002980F`) | Reload count for 1 ms period |
 | `SysTick->VAL` | `0xE000E018` | `CURRENT[23:0]` | Write `0` | Clears current counter and `COUNTFLAG` |
 | `SysTick->CTRL` | `0xE000E010` | `CLKSOURCE` (b2), `TICKINT` (b1), `ENABLE` (b0) | `0x00000007` | HCLK (170 MHz), IRQ enabled, timer running |
+
+### Explicit Clock Configuration Profile Declaration (`170 MHz` vs `160 MHz` Range 1 Boost)
+
+To prevent the classic 10.625× or 6.25% silent timing drift when switching system clocks, always pair `SysTick->LOAD` with the exact active clock profile (or compute `(Clock_GetSysClkHz() / 1000UL) - 1UL` dynamically):
+
+| Clock Profile | `clock_g4.h` API | `SYSCLK` / `HCLK` | `SysTick->LOAD` (`1.000 ms`) | Hex `LOAD` | `SysTick->CTRL` |
+|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` (`M=4, N=85, R=2`) | `170,000,000 Hz` | **`169,999`** | `0x0002980F` | `0x00000007` |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` (`M=4, N=80, R=2`) | `160,000,000 Hz` | **`159,999`** | `0x000270FF` | `0x00000007` |
+| **`16 MHz HSI16` *(Reset Fallback)*** | Reset default (`CLOCK_PROFILE_HSI16`) | `16,000,000 Hz` | **`15,999`** | `0x00003E7F` | `0x00000007` |
+
+- **Reusable Production Driver (`23-code-library/Drivers/clock_g4.h`):** Call `Clock_Init_170MHz()` or `Clock_Init_160MHz()` followed by `SysTick->LOAD = (Clock_GetSysClkHz() / 1000UL) - 1UL;`, or use cycle-accurate `Clock_DelayUs()` / `Clock_DelayMs()` built on `DWT->CYCCNT`.
 
 ### Timing & Wraparound Math
 
@@ -216,4 +230,25 @@ int main(void) {
 
 1. **Microsecond `delay_us()` Using `SysTick->VAL`:** Combine `systick_ms` and the down-counting `SysTick->VAL` register (handling the double-read race condition when `VAL` wraps during the read!) to build a $1\ \mu\text{s}$-resolution timestamp function.
 2. **Multi-Rate Software Timers:** Add a second independent LED blinking at `333 ms` in the same non-blocking `while(1)` loop without modifying `delay_ms()`.
-3. **Compare with `DWT->CYCCNT`:** Enable `CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk` and `DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk` to measure exact cycle jitter of `SysTick_Handler`.
+3. **Compare with `DWT->CYCCNT`:** Enable `CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk` and `DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk` (or call `Clock_DWT_Init()` in [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h)) to measure exact cycle jitter of `SysTick_Handler`.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Objective** | Configure `170 MHz` Range 1 Boost (with explicit `160 MHz` equivalent), program Cortex-M4 24-bit `SysTick` for exact `1.000 ms` interrupts, and verify wraparound-safe `delay_ms()` + drift-free `millis()` scheduling on `LD2` (`PA5`). |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,520 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, Cortex-M4 `SysTick`, `GPIOA` (`PA5` `LD2`). Zero external wiring required. |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Pin Configuration** | `PA5`: `MODER[11:10] = 01b` (Push-Pull Output), `LD2` Green LED. |
+| **Expected Behavior** | 3 startup blinks (`200 ms` ON / `200 ms` OFF), then exact `1.000 Hz` (`500 ms` ON / `500 ms` OFF) drift-free toggling; survives `0xFFFFFFFF -> 0x00000000` rollover injection cleanly. |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Register Values** | Reset: `SysTick->CTRL = 0x00000000`, `SysTick->LOAD = UNKNOWN`. Configured: `RCC->CFGR.SWS = 11b` (PLL), `SysTick->LOAD = 0x0002980F` (`169,999` @ 170 MHz; `0x000270FF` = `159,999` @ 160 MHz), `SysTick->CTRL = 0x00000007` (`CLKSOURCE\|TICKINT\|ENABLE`), `SHPR3` SysTick prio = `15`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` verify `p/x SysTick->LOAD`, `p/x SysTick->CTRL`, `p systick_ms`, and inject rollover via `set systick_ms = 0xFFFFFFF0` then `continue`. |
+| **Remaining Limitations** | Accuracy inherits HSI16 tolerance (`±1%`); use `Clock_Init_170MHz_HSE24()` (`clock_g4.h`) for `±50 ppm` timing. Physical hardware execution pending Agent 4. |

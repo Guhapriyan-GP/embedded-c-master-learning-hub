@@ -1,6 +1,8 @@
 # Lab 06: General-Purpose Timer Periodic Interrupts (TIM2 @ 10 Hz)
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Queue:** `ONBOARD — READY FOR AGENT 4` *(Not Yet Executed on Physical NUCLEO-G474RE Hardware)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`PSC = 16,999`, `ARR = 999` $\implies 10.000\text{ Hz}$) | **Alternate = `160 MHz Range 1 Boost`** (`PSC = 15,999`, `ARR = 999` $\implies 10.000\text{ Hz}$) | **Reusable Drivers:** [`23-code-library/Drivers/tim_g4.h`](../../23-code-library/Drivers/tim_g4.h) (`TIM_InitPeriodic()`, `TIM_ClearUpdateFlag()`, `tim_calc_psc_arr()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -50,6 +52,18 @@ $$f_{\text{UEV}} = \frac{f_{\text{TIM2}}}{(\text{PSC} + 1) \times (\text{ARR} + 
 Choose $\text{PSC} = 16\,999$ (divides by $17\,000 \implies f_{\text{CNT}} = 10\,000\text{ Hz}$, i.e., $100\ \mu\text{s}$ per tick) and $\text{ARR} = 999$ ($1000$ counts):
 
 $$f_{\text{UEV}} = \frac{170\,000\,000}{(16\,999 + 1) \times (999 + 1)} = \frac{170\,000\,000}{17\,000 \times 1\,000} = 10.000\text{ Hz} \quad (T = 100.0\text{ ms})$$
+
+### 5.1b Explicit Clock Configuration Profile Comparison (`170 MHz` vs `160 MHz` Range 1 Boost)
+
+Never copy `TIM2->PSC` across clock profiles without verifying $f_{\text{TIM2}}$ (`170 MHz` vs `160 MHz` causes a `5.88%` period error if `PSC` is left at `16,999`!). Compare exact `10.000 Hz` (`100.0 ms`) settings across all three profiles:
+
+| Clock Profile | `clock_g4.h` API | `f_TIM2` (`PPRE1 = /1`) | `TIM2->PSC` | `TIM2->ARR` | $f_{\text{CNT}}$ | Exact $f_{\text{UEV}}$ |
+|---|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` | `170,000,000 Hz` | **`16,999`** | **`999`** | `10,000 Hz` | `10.000 Hz` (`100.0 ms`) |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | `160,000,000 Hz` | **`15,999`** | **`999`** | `10,000 Hz` | `10.000 Hz` (`100.0 ms`) |
+| **`16 MHz HSI16` *(Reset Fallback)*** | Reset default | `16,000,000 Hz` | **`1,599`** | **`999`** | `10,000 Hz` | `10.000 Hz` (`100.0 ms`) |
+
+- **Reusable Production Driver (`23-code-library/Drivers/tim_g4.h`):** Call `TIM_InitPeriodic(TIM2, 10U, true, 4U)` after `Clock_Init_170MHz()` or `Clock_Init_160MHz()` — `tim_g4.c` queries live `SystemCoreClock` + `RCC->CFGR.PPRE1` automatically (including the STM32 $\times 2$ APB timer multiplier), runs `EGR = UG` + `SR = ~UIF`, and provides `TIM_ClearUpdateFlag(TIM2)` (`rc_w0` + `__DSB()`).
 
 ### 5.2 Critical Register Hazards (`EGR` Shadow Load & `SR` `rc_w0`)
 
@@ -223,4 +237,25 @@ int main(void) {
 
 1. **Freeze During Debug:** Add `DBGMCU->APB1FZR1 |= DBGMCU_APB1FZR1_DBG_TIM2_STOP;` and verify in GDB that `TIM2->CNT` stops incrementing while single-stepping.
 2. **APB Prescaler Doubler Verification:** Change `RCC_CFGR_PPRE1` to `/2` (`85 MHz` APB1) and prove experimentally that `TIM2` *still* runs at `170 MHz` because the STM32 timer clock multiplier applies $\times 2$ whenever `PPRE1 != /1` (RM0440 §7.2.15).
-3. **32-Bit Microsecond Free-Running Counter:** Reconfigure `TIM2` with `PSC = 169` ($1\text{ MHz}$ = $1\ \mu\text{s}$ resolution) and `ARR = 0xFFFFFFFF` as a 71.5-minute hardware timestamp counter.
+3. **32-Bit Microsecond Free-Running Counter:** Reconfigure `TIM2` with `PSC = 169` @ `170 MHz` (or `PSC = 159` @ `160 MHz`) for $1\text{ MHz}$ ($1\ \mu\text{s}$ resolution) and `ARR = 0xFFFFFFFF` as a 71.5-minute hardware timestamp counter.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` *(Self-Contained Onboard — Queued for Physical Execution)* |
+| **Objective** | Configure 32-bit `TIM2` at `170 MHz` (with explicit `160 MHz` equivalent) for exact `10.000 Hz` (`100 ms`) update interrupts using `EGR = UG` shadow preload, direct `rc_w0` `TIM2->SR = ~TIM_SR_UIF`, atomic `BSRR`, and `__DSB()`. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,520 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **Onboard Only:** `RCC`, `PWR`, `FLASH`, `TIM2`, `NVIC`, `GPIOA` (`PA5` `LD2`). Zero external wiring required. |
+| **Hardware Availability** | `ONBOARD — READY FOR AGENT 4` |
+| **Pin Configuration** | `PA5`: `MODER[11:10] = 01b` (Push-Pull Output), `LD2` toggled at `10.000 Hz` (`5.000 Hz` square wave). |
+| **Expected Behavior** | Zero glitch on first period; `TIM2_IRQHandler` fires every `100.0 ms ± 1%`, increments `g_tim2_ticks`, clears `TIM2->SR.UIF` without corrupting other flags, and toggles `LD2` while CPU sleeps in `__WFI()`. |
+| **Actual Observations** | Pending Agent 4 Onboard Test *(not yet executed on physical silicon)*. |
+| **Register Values** | Reset: `TIM2->CR1 = 0`, `TIM2->PSC = 0`, `TIM2->ARR = 0xFFFFFFFF`. Configured: `TIM2->PSC = 16999` (`15999` @ 160 MHz), `TIM2->ARR = 999`, `TIM2->DIER = 0x1` (`UIE`), `TIM2->CR1 = 0x81` (`ARPE\|CEN`), `NVIC` `TIM2_IRQn (28)` prio = `4`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` break on `TIM2_IRQHandler`, verify `p TIM2->PSC`, `p TIM2->ARR`, `p/x TIM2->CR1`, `p g_tim2_ticks`, and step over `TIM2->SR = ~TIM_SR_UIF`. |
+| **Remaining Limitations** | HSI16 clock source has `±1%` accuracy (use `Clock_Init_170MHz_HSE24()` for crystal precision). Physical hardware execution pending Agent 4. |

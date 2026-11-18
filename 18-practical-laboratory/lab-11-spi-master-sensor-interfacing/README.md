@@ -1,6 +1,8 @@
 # Lab 11: SPI1 Master Full-Duplex Sensor Interfacing (10.625 MHz, Mode 3)
 
-> **Verification Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`) / Statically Reviewed (Not Tested on Physical NUCLEO-G474RE Hardware)
+> **Verification Status:** `CROSS-COMPILED` (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror -O2`, 0 warnings) | **Hardware Status:** `EXTERNAL HARDWARE PENDING` *(Requires External 3.3 V SPI Mode 3 Sensor on `SPI1` `PA4`/`PA5`/`PA6`/`PA7` — User Connection Required)*
+
+> **Clock Configuration Profile:** **Primary = `170 MHz Range 1 Boost`** (`BR = 011b` `/16` $\implies f_{\text{SCK}} = 10.625\text{ MHz}$) | **Alternate = `160 MHz Range 1 Boost`** (`BR = 011b` `/16` $\implies f_{\text{SCK}} = 10.000\text{ MHz}$ exact!) | **Reusable Drivers:** [`23-code-library/Drivers/spi_g4.h`](../../23-code-library/Drivers/spi_g4.h) (`spi_init_master()`, `spi_transfer_byte()`, `spi_transfer_buf()`, `spi_wait_idle()`, `spi_calc_br_div()`), [`clock_g4.h`](../../23-code-library/Drivers/clock_g4.h), & [`gpio_g4.h`](../../23-code-library/Drivers/gpio_g4.h).
 
 ---
 
@@ -54,6 +56,18 @@ Initialize the STM32G474RE to **`170 MHz`**, configure **`SPI1`** as an 8-bit fu
 - **Critical STM32G4 8-Bit Packing Rule (RM0440):** The STM32G4 SPI peripheral has a 32-bit RX/TX FIFO. For 8-bit frames (`DS[3:0] = 0111b = 7U`):
   1. You **MUST** set **`SPI_CR2_FRXTH = 1`** so `RXNE` asserts after **1 byte (8 bits)** instead of waiting for 2 bytes (16 bits)!
   2. You **MUST** perform **8-bit byte accesses** (`*(__IO uint8_t *)&SPI1->DR`) rather than 16-bit writes (`SPI1->DR = byte;`), which would erroneously push **two** bytes into the TX FIFO!
+
+### 5.1b Explicit Clock Configuration Profile Comparison (`170 MHz` vs `160 MHz` Range 1 Boost)
+
+Notice a huge practical benefit of the **`160 MHz` Range 1 Boost** profile for `10 MHz`-rated SPI sensors (like Bosch `BME280`): at `170 MHz`, `BR = /16` yields `10.625 MHz` (slightly above `10.0 MHz`, requiring `BR = /32` = `5.3125 MHz` for strict datasheet compliance), whereas at **`160 MHz`**, `BR = /16` yields an **exact `10.000 MHz`**!
+
+| Clock Profile | `clock_g4.h` API | `PCLK2` (`PPRE2 = /1`) | `SPI1->CR1.BR[2:0]` (`011b` = `/16`) | Strict `<= 10 MHz` `BR[2:0]` | `SPI1->CR2` (`DS=7, FRXTH=1`) |
+|---|---|---|---|---|---|
+| **`170 MHz Range 1 Boost` *(Primary)*** | `Clock_Init_170MHz()` | `170 MHz` | `10.625 MHz` (`BR = 3`) | `BR = 4` (`/32` = `5.3125 MHz`) | `0x1700` |
+| **`160 MHz Range 1 Boost` *(Alternate)*** | `Clock_Init_160MHz()` | `160 MHz` | **`10.000 MHz`** (`BR = 3`) | **`BR = 3`** (`/16` = `10.000 MHz`) | `0x1700` |
+| **`16 MHz HSI16` *(Reset Fallback)*** | Reset default | `16 MHz` | `1.000 MHz` (`BR = 3`) | `BR = 0` (`/2` = `8.000 MHz`) | `0x1700` |
+
+- **Reusable Production Driver (`23-code-library/Drivers/spi_g4.h`):** Call `spi_init_master(SPI1, SPI_MODE_3, 10000000U)` — automatically selects `BR = 4` (`5.3125 MHz <= 10 MHz`) at `170 MHz` and `BR = 3` (`10.000 MHz <= 10 MHz`) at `160 MHz`, sets `SPI_CR2_FRXTH = 1`, performs strict 8-bit `DR` accesses, and provides `spi_wait_idle()` before CS deassertion!
 
 ### 5.2 Why a Single-Byte SPI Read Always Fails
 
@@ -274,3 +288,24 @@ With a `BME280` attached (and `who_am_i_reg = 0x50`, transmitting `0xD0`), `g_se
 1. **Hardware Loopback Self-Test:** Connect a jumper wire between `PA6` (`MISO`) and `PA7` (`MOSI`), send a 256-byte ramp `0x00..0xFF`, and assert every received byte equals the transmitted byte.
 2. **DMA Full-Duplex Burst:** Route `DMAMUX1` ID `10` (`SPI1_RX`) and ID `11` (`SPI1_TX`) to `DMA1` Channels 2 and 3 to read a 6-axis IMU burst (14 bytes) with zero CPU polling.
 3. **Zero-Conflict Pin Remap:** Port `SPI1` to `PB3` (`SCK`), `PB4` (`MISO`), `PB5` (`MOSI`) (`AF5`) to free `PA5` (`LD2`) completely.
+
+---
+
+## 12. Standardized Verification Record
+
+| Field | Record |
+|---|---|
+| **Verification Status** | `CROSS-COMPILED` / `EXTERNAL HARDWARE PENDING` |
+| **Objective** | Configure `SPI1` as an 8-bit full-duplex Master (Mode 3, `SPI_CR2_FRXTH = 1`, strict 8-bit `DR` accesses) at `10.625 MHz` @ `170 MHz` (or exact `10.000 MHz` @ `160 MHz`) and execute a proper 2-byte sensor register read (`WHO_AM_I`) with bounded timeouts. |
+| **Firmware Version** | `v2.2.0-remediation` (branch `feature/complete-remediation`, base commit `585dc4fa`) |
+| **Compiler Version** | `arm-none-eabi-gcc 14.3.1 20250623 (GNU Tools for STM32 14.3.rel1.20251027-0700)` |
+| **Build Result** | **PASS** — `arm-none-eabi-gcc -std=c11 -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DSTM32G474xx -Wall -Wextra -Werror -O2 -c` succeeded with **0 warnings, 0 errors** (`1,536 B` object file). |
+| **Test Environment** | Windows 11 + ARM GNU Toolchain 14.3.rel1 + NUCLEO-G474RE (`MB1367` Rev C, `STM32G474RET6`, STLINK-V3E `V3J17M11`, `COM8`) |
+| **Required Peripherals** | **External Hardware Required:** `SPI1`, `GPIOA` + external 3.3 V SPI Mode 3 sensor (e.g., Bosch `BME280` `WHO_AM_I` = `0x60`) OR external jumper wire connecting `PA6` (`MISO`) to `PA7` (`MOSI`) for loopback (+ optional 4-ch logic analyzer). |
+| **Hardware Availability** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` |
+| **Pin Configuration** | `PA5` (`SPI1_SCK`, `AF5`, shared with `LD2`!), `PA6` (`SPI1_MISO`, `AF5`), `PA7` (`SPI1_MOSI`, `AF5`), `PA4` (Manual `CS` Output Push-Pull, idle HIGH); all `OSPEEDR = 10b` (High). |
+| **Expected Behavior** | `CS` asserts LOW, 16 `SCK` pulses clock out `[0xD0, 0x00]` in Mode 3 (`CPOL=1, CPHA=1`), `BME280` returns `g_sensor_id == 0x60` on Byte 2 with `g_spi_errors == 0`, then `BSY == 0` before `CS` returns HIGH. |
+| **Actual Observations** | `EXTERNAL HARDWARE PENDING — USER CONNECTION REQUIRED` *(cross-compiled cleanly with 0 warnings; physical SPI sensor / loopback jumper test deferred until user connects external hardware)*. |
+| **Register Values** | Reset: `SPI1->CR1 = 0x0000`, `SPI1->CR2 = 0x0700` (`DS=7, FRXTH=0`). Configured: `SPI1->CR1 = 0x035F` (`MSTR\|CPOL\|CPHA\|BR=3\|SSM\|SSI\|SPE`), `SPI1->CR2 = 0x1700` (`DS=7\|FRXTH=1`). Note: For strict `<= 10 MHz` at `170 MHz`, use `BR = 4` (`0x0367`); at `160 MHz`, `BR = 3` gives exact `10.000 MHz`. |
+| **Debugging Procedure** | Flash via `STM32_Programmer_CLI -c port=SWD -w firmware.bin 0x08000000 -v -rst` or OpenOCD; in `arm-none-eabi-gdb` verify `p/x SPI1->CR1`, `p/x SPI1->CR2`, `p/x g_sensor_id`, `p g_spi_errors`; capture `PA4..PA7` on logic analyzer once wired. |
+| **Remaining Limitations** | `PA5` shares load with onboard `LD2` (`SB42`/`SB6`), which degrades edge rates $> 10\text{ MHz}$ unless remapped to `PB3`/`PB4`/`PB5` (`AF5`). External SPI device or loopback jumper required for physical verification. |
