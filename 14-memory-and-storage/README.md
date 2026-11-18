@@ -13,7 +13,7 @@
 | `STM32-FLASH-001` (`PROF-PERF-002`) | ART Accelerator (`PRFTEN`, 1 KB `ICEN`, 256 B `DCEN`) & Post-Write Cache Flush (`DCRST`/`ICRST`, ES0430 §2.2.2) | `[STM32G474RE Exact]` | Level 2 (Production) |
 | `STM32-SRAM-001` | SRAM1 (80 KB), SRAM2 (16 KB Parity + Standby `RRS`), & CCM-SRAM (32 KB Parity + `SYSCFG->SWPR` 1 KB Write-Protect) | `[STM32G474RE Exact]` | Level 2 (Production) |
 | `BOOT-JUMP-001` | Bootloader Partitioning, `SCB->VTOR` 512-Byte Alignment, & **9-Step Safe Application Jump Sequence** | `[ARM Cortex-M4F]` / `[STM32G474RE Exact]` | Level 2 (Production) |
-| `BOOT-VERIF-001` / `BOOT-UPD-001` | Option Bytes (`OPTR`), Dual-Bank A/B Swap (`BFB2`/`FB_MODE`), Trial-Boot Rollback, Hardware CRC-32 & Ed25519 Verification, ST ROM Bootloader (`AN2606`) | `[STM32G474RE Exact]` | Level 3 (Specialist) |
+| `BOOT-VERIF-001` / `BOOT-UPD-001` / `MEM-OB-001` | Option Bytes (`OPTR`), **`FLASH_CR_OPTSTRT` / `OBL_LAUNCH` Cold-Reset Mechanics & `BFB2`/`DBANK` Dual-Bank Swap Brick Traps**, Trial-Boot Rollback, Hardware CRC-32 & Ed25519 Verification, ST ROM Bootloader (`AN2606`) | `[STM32G474RE Exact]` | Level 3 (Specialist) |
 | `BOOT-CFG-001` / `REL-CRASH-001` | `.noinit (NOLOAD)` SRAM & `TAMP->BKP0R..31R` Persistent Storage Across Reset/Standby | `[STM32G474RE Exact]` | Level 2 (Production) |
 
 ---
@@ -54,10 +54,23 @@ STM32G474RE (Category 3 device) implements **512 KB Flash (`0x08000000..0x0807FF
 
 > **Parity Warning:** If `FLASH->OPTR.SRAM_PE = 0` (hardware parity enabled), `Reset_Handler` MUST initialize **every word** of parity-protected SRAM before reading (including unused stack/heap!) to generate valid parity bits; otherwise reading uninitialized SRAM fires a spurious parity NMI!
 
-### 3.3 Option Bytes (`FLASH->OPTR`) & ST Factory Bootloader (`AN2606`) `[STM32G474RE Exact]`
-- Stored at `0x1FFF7800` (unlocked via `FLASH->OPTKEYR`: `0x08192A3B`, then `0x4C5D6E7F`, committed via `OPTSTRT` and loaded via `OBL_LAUNCH`).
-- Key bits: `RDP[7:0]` (Readout Protection), `BOR_LEV[2:0]` (Brown-Out levels 0–4), `BFB2` (bit 20: Dual-Bank Boot Bank 2 swap), `DBANK` (bit 22), `nBOOT1` (b23), `SRAM_PE` (b24), `nSWBOOT0` (b26: `1`=use `PB8-BOOT0` pin, `0`=use `nBOOT0` b27), `NRST_MODE[29:28]`.
-- **ST System ROM Bootloader (`0x1FFF0000`, 28 KB):** Activated via `PB8-BOOT0 = 1` (`nBOOT1 = 1`) OR automatically on blank Flash (`FLASH->ACR.EMPTY = 1`), supporting flashing over USART1/2/3, I2C2/3/4, SPI1/2/3, **FDCAN1**, and **USB DFU**.
+### 3.3 Option Bytes (`FLASH->OPTR`), `OBL_LAUNCH` Cold-Reset Mechanics & `BFB2`/`DBANK` Brick Traps (`MEM-OB-001`) `[STM32G474RE Exact]`
+- Stored in non-volatile Option Flash (`0x1FFF7800`) and shadowed into `FLASH->OPTR` (`0x40022020`) on every cold/OBL reset. Key bits: `RDP[7:0]` (Readout Protection), `BOR_LEV[10:8]` (Brown-Out levels 0–4), **`BFB2` (bit 20: Dual-Bank Boot Bank 2 swap)**, **`DBANK` (bit 22: Dual-Bank 2 KB vs Single-Bank 4 KB)**, `nBOOT1` (b23), `SRAM_PE` (b24), `nSWBOOT0` (b26: `1`=use `PB8-BOOT0` pin, `0`=use `nBOOT0` b27), `NRST_MODE[29:28]`.
+- **Mandatory Dual-Unlock + `OPTSTRT` + `OBL_LAUNCH` Sequence (RM0440 §3.4.2):**
+  1. Ensure **`HSI16` is ON** (`RCC->CR.HSIRDY == 1`) and `FLASH->SR.BSY == 0`.
+  2. **Idempotency Guard FIRST:** Compare desired `new_optr` against live `FLASH->OPTR` — if identical, **skip programming and skip `OBL_LAUNCH`**! Unconditionally calling `OBL_LAUNCH` on boot creates an infinite cold-reset loop!
+  3. Unlock **BOTH** `FLASH->KEYR` (`0x45670123`, `0xCDEF89AB` $\to$ clears `CR.LOCK` b31) **AND** `FLASH->OPTKEYR` (`0x08192A3B`, `0x4C5D6E7F` $\to$ clears `CR.OPTLOCK` b30).
+  4. Write modified value to `FLASH->OPTR`, set **`FLASH->CR |= FLASH_CR_OPTSTRT;`** (bit 17), and poll `FLASH->SR.BSY == 0`. *(At this point the Option Flash is written, **but the running MCU still operates under the OLD Option Bytes**!)*
+  5. Set **`FLASH->CR |= FLASH_CR_OBL_LAUNCH;`** (bit 27). Hardware **immediately executes an Option-Byte Loader Cold System Reset** (latching **`RCC->CSR.OBLRSTF`**, bit 25): SWD momentarily disconnects, **no C line after `OBL_LAUNCH` ever executes**, and the MCU reboots with the newly loaded `FLASH->OPTR`!
+- **Fatal Dual-Bank Swap Brick Traps (`BFB2` & `DBANK`) & Recovery Protocol:**
+  1. **`BFB2 = 1` Into Unvalidated Bank 2 (`0x08040000`):** When `BFB2 = 1` and `DBANK = 1`, ST's boot ROM checks whether Bank 2 word 0 (`MSP`) lies inside valid SRAM (`0x20000000..0x2001FFFF`). If Bank 2 is blank (`0xFFFFFFFF`), ROM falls back to Bank 1 — **HOWEVER**, if Bank 2 contains partially flashed or corrupted code whose first word *happens* to look like a valid SRAM pointer (`0x20018000`) while `Reset_Handler` or `.text` is corrupt, the CPU remaps Bank 2 to `0x08000000` (`SYSCFG->MEMRMP.FB_MODE = 1`) and HardFault-loops indefinitely! **Rule:** Always execute a **Pre-Flight Bank 2 Validator** (verifying `DBANK == 1`, 8-byte aligned SRAM `MSP`, valid Thumb `Reset_Handler` inside `0x08040000..0x0807FFFF`, Hardware `CRC-32`, and cryptographic signature) *before* touching `BFB2`!
+  2. **Toggling `DBANK` (Bit 22) in the Field:** Flipping `DBANK` (`1` $\leftrightarrow$ `0`) changes Flash page geometry (`2 KB` $\leftrightarrow$ `4 KB`), destroys Bank 2 RWW isolation, and shifts erase page indices — **never toggle `DBANK` while `BFB2 == 1` or during a field OTA update!**
+  3. **Hardware Recovery Protocol:** If bad Option Bytes cause an `OBL_LAUNCH` reset loop or broken `BFB2` boot, recover cleanly without losing the board via **SWD Connect Under Reset**:
+     ```bash
+     STM32_Programmer_CLI -c port=SWD mode=UR -ob BFB2=0 DBANK=1 nSWBOOT0=1
+     ```
+     Alternatively, pull **`PB8-BOOT0 = HIGH`** during reset (provided `nSWBOOT0 = 1` & `nBOOT1 = 1`) to enter the **28 KB ST System ROM Bootloader (`0x1FFF0000`, `AN2606`)** over USART1/2/3, I2C2/3/4, SPI1/2/3, FDCAN1, or USB DFU and restore factory Option Bytes!
+- **Cross-Reference — Anti-Rollback Security Counter (`SEC-BOOT-002`):** To prevent attackers from replaying older signed images across dual-bank swaps, pair `BFB2` / bootloader verification with a strictly monotonic **64-bit ECC Flash / OTP `security_version` counter** — see [Stage 16 (`17-advanced-firmware-engineering/README.md`) §3.5.1](../17-advanced-firmware-engineering/README.md).
 
 ### 3.4 Mandatory 9-Step Safe Application Jump Sequence (`BOOT-JUMP-001`) `[ARM Cortex-M4F]`
 A naive 3-line bootloader jump (`VTOR`, `__set_MSP`, `app_reset()`) crashes real firmware because pending SysTick/UART IRQs, active PLL/DMA, or non-zero `CONTROL` (PSP) immediately fault inside the new Application! Always execute the complete **9-step ARMv7-M handoff**:
@@ -249,6 +262,92 @@ void Bootloader_JumpToApp(uint32_t app_base)
 }
 ```
 
+### 8.3 Pre-Flight Bank 2 Validator & Idempotent `OPTSTRT` / `OBL_LAUNCH` Commit (`MEM-OB-001`)
+
+> **Verification Status:** **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror -Wconversion -Wdouble-promotion -Wvla`)** against `stm32g474xx.h` (Not Tested on Physical Hardware).
+
+```c
+#include "stm32g474xx.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+#define BANK2_BASE_ADDR   0x08040000UL
+#define BANK2_END_ADDR    0x0807FFFFUL
+#define FLASH_KEY1_VAL    0x45670123UL
+#define FLASH_KEY2_VAL    0xCDEF89ABUL
+#define FLASH_OPTKEY1_VAL 0x08192A3BUL
+#define FLASH_OPTKEY2_VAL 0x4C5D6E7FUL
+
+bool Flash_ValidateBank2PreFlight(uint32_t expected_crc32, uint32_t img_len_bytes)
+{
+    if ((img_len_bytes < 472UL) || (img_len_bytes > (256UL * 1024UL))) {
+        return false;
+    }
+    /* Refuse BFB2 swap unless Flash is actually in Dual-Bank mode (DBANK = 1) */
+    if ((FLASH->OPTR & FLASH_OPTR_DBANK) == 0UL) {
+        return false;
+    }
+
+    uint32_t msp   = *(const volatile uint32_t *)(BANK2_BASE_ADDR);
+    uint32_t reset = *(const volatile uint32_t *)(BANK2_BASE_ADDR + 4UL);
+
+    if ((msp < 0x20000000UL) || (msp > 0x20020000UL) || ((msp & 0x7UL) != 0UL)) {
+        return false;
+    }
+    if ((reset < BANK2_BASE_ADDR) || (reset > BANK2_END_ADDR) || ((reset & 1UL) == 0UL)) {
+        return false;
+    }
+
+    RCC->AHB1ENR |= RCC_AHB1ENR_CRCEN;
+    (void)RCC->AHB1ENR;
+    CRC->POL  = 0x04C11DB7UL;
+    CRC->INIT = 0xFFFFFFFFUL;
+    CRC->CR   = CRC_CR_REV_IN_0 | CRC_CR_REV_OUT | CRC_CR_RESET;
+    const uint8_t *p = (const uint8_t *)BANK2_BASE_ADDR;
+    for (uint32_t i = 0UL; i < img_len_bytes; ++i) {
+        *(__IO uint8_t *)&CRC->DR = p[i];
+    }
+    return ((CRC->DR ^ 0xFFFFFFFFUL) == expected_crc32);
+}
+
+bool Flash_CommitBFB2_AndColdReset(bool enable_bfb2)
+{
+    uint32_t cur_optr = FLASH->OPTR;
+    uint32_t new_optr = enable_bfb2 ? (cur_optr | FLASH_OPTR_BFB2) : (cur_optr & ~FLASH_OPTR_BFB2);
+
+    /* Idempotency guard: NEVER trigger OBL_LAUNCH if desired OPTR is already active! */
+    if (new_optr == cur_optr) {
+        return true;
+    }
+    if ((RCC->CR & RCC_CR_HSIRDY) == 0UL) {
+        return false;
+    }
+    while ((FLASH->SR & FLASH_SR_BSY) != 0UL) { }
+
+    if ((FLASH->CR & FLASH_CR_LOCK) != 0UL) {
+        FLASH->KEYR = FLASH_KEY1_VAL;
+        FLASH->KEYR = FLASH_KEY2_VAL;
+    }
+    if ((FLASH->CR & FLASH_CR_OPTLOCK) != 0UL) {
+        FLASH->OPTKEYR = FLASH_OPTKEY1_VAL;
+        FLASH->OPTKEYR = FLASH_OPTKEY2_VAL;
+    }
+
+    FLASH->OPTR = new_optr;
+    FLASH->CR  |= FLASH_CR_OPTSTRT;
+    while ((FLASH->SR & FLASH_SR_BSY) != 0UL) { }
+
+    if ((FLASH->SR & (FLASH_SR_OPTVERR | FLASH_SR_PROGERR | FLASH_SR_WRPERR)) != 0UL) {
+        FLASH->CR |= FLASH_CR_OPTLOCK | FLASH_CR_LOCK;
+        return false;
+    }
+
+    /* Immediately triggers hardware Option-Byte Loader Cold Reset (RCC->CSR.OBLRSTF = 1) */
+    FLASH->CR |= FLASH_CR_OBL_LAUNCH;
+    for (;;) { __NOP(); }
+}
+```
+
 ---
 
 ## 9. Practical Laboratory Experiments & Debugging Checkpoints
@@ -290,6 +389,8 @@ void Bootloader_JumpToApp(uint32_t app_base)
    *Answer Check:* `SCB->VTOR` requires **512-byte (`0x200`) alignment** for 118 vectors (and Flash pages require 2 KB / `0x800` alignment).
 3. **Q:** Why does `Bootloader_JumpToApp()` store `app_msp` and `app_reset` in local variables *before* calling `__set_MSP(app_msp)`?  
    *Answer Check:* Once `MSP` switches to the Application's stack pointer, any stack-allocated local variable belonging to the bootloader is invalid!
+4. **Q:** (`MEM-OB-001`) What is the exact difference between setting `FLASH_CR_OPTSTRT` (bit 17) vs `FLASH_CR_OBL_LAUNCH` (bit 27), and how do you recover a board stuck in an `OBL_LAUNCH` / bad-`BFB2` reset loop?  
+   *Answer Check:* `OPTSTRT` writes the new Option Bytes into non-volatile Flash without reloading active silicon latches; `OBL_LAUNCH` triggers an immediate hardware cold system reset (`RCC->CSR.OBLRSTF = 1`) that reloads the new Option Bytes and never returns. Recover via `STM32_Programmer_CLI -c port=SWD mode=UR -ob BFB2=0 DBANK=1 nSWBOOT0=1` (Connect Under Reset) or by booting System ROM (`PB8-BOOT0 = 1`).
 
 ---
 
@@ -300,4 +401,5 @@ void Bootloader_JumpToApp(uint32_t app_base)
 | `BOOT-FLASH-001` | Erase Bank 2 page during Bank 1 RWW, write 256 B as 32 aligned 64-bit double-words, flush caches, verify `FLASH->SR == 0` & `ECCR == 0` | GDB (`x/64wx`) |
 | `BOOT-JUMP-001` | Bootloader using `SysTick` + `USART2` executes full 9-step teardown, validates MSP/Reset PC, sets `VTOR = 0x08008000`, and boots App cleanly | GDB + UART log |
 | `BOOT-VERIF-001` | Corrupt 1 byte in Bank 2 image $\to$ bootloader rejects via Hardware `CRC`; unconfirmed trial boot auto-rolls back via IWDG | Hardware Test / GDB |
+| `MEM-OB-001` | Run `Flash_ValidateBank2PreFlight()` checking `DBANK==1`, SRAM MSP, Thumb Reset_Handler, and CRC-32 prior to idempotent `OPTSTRT` + `OBL_LAUNCH`; confirm `RCC->CSR.OBLRSTF` and SWD `mode=UR` recovery | GDB + CubeProgrammer CLI |
 | `STM32-SRAM-001` | Verify `SYSCFG->SWPR` write-protect fault and `.noinit` / `TAMP->BKP0R` persistence across `NVIC_SystemReset()` | GDB |

@@ -15,9 +15,9 @@ Upon completing Stage 05, you will master the entire bare-metal compile → link
 |---|---|---|---|
 | Compilation & Binutils | `TOOL-PIPE-001`, `TOOL-GCC-001..003`, `TOOL-FMT-001` | L1–L2 | Trace `-E`/`-S`/`-c`/link (`-save-temps`), wield `objcopy`/`objdump`/`nm`/`readelf`/`size`/`addr2line`, configure hard-float FPv4-SP ABI, link `newlib-nano` (`--specs=nano.specs`, `_sbrk`, `_write`), and decode ELF/HEX/SREC/BIN formats. |
 | Optimizations & Warnings | `TOOL-OPT-001..002`, `TOOL-WARN-001` | L1–L2 | Compare `-O0`/`-Og`/`-Os`/`-O2`/`-O3`/`-flto`, apply `-ffunction-sections -fdata-sections -Wl,--gc-sections` with `KEEP()`, and enforce strict warnings (`-Werror -Wconversion -Wdouble-promotion -Wvla -fstack-usage`). |
-| Linker & Startup | `TOOL-LD-001..003`, `TOOL-BOOT-001..002`, `TOOL-LINK-001..002` | L1–L2 | Author STM32G474RE linker scripts (`FLASH`/`RAM`/`CCMRAM (xrw)`/`VMA` vs `LMA`/`ALIGN(512)` `.isr_vector`/`.noinit`/`ASSERT()`), build the complete 118-entry vector table & `Reset_Handler` (`.data`/`.ccmram`/`.bss`/`__libc_init_array`), manage `.a` archives/weak symbols, and explain why dynamic linking (`TOOL-LINK-002`) is `NOT_APPLICABLE` to bare-metal XIP firmware. |
+| Linker & Startup | `TOOL-LD-001..004`, `TOOL-BOOT-001..002`, `TOOL-LINK-001..002` | L1–L3 | Author STM32G474RE linker scripts (`FLASH`/`RAM`/`CCMRAM (xrw)`/`VMA` vs `LMA`/`ALIGN(512)` `.isr_vector`/`.noinit`/`ASSERT()`), use GNU `ld` `--wrap=symbol` link-time mocking & inspect `FLASH` $\leftrightarrow$ `CCMRAM` ARM long-branch veneers (`__attribute__((long_call))`), build the complete 118-entry vector table & `Reset_Handler`, manage `.a` archives/weak symbols, and explain why dynamic linking (`TOOL-LINK-002`) is `NOT_APPLICABLE` to bare-metal XIP firmware. |
 | Analysis & Memory Profiling | `TOOL-ANALYZE-001`, `TOOL-DASM-001`, `TOOL-MEM-001..002` | L1–L2 | Audit `.map` files (`--cref`, `--print-memory-usage`), mixed disassembly (`objdump -d -S`), DWARF `-g3`, static stack depth (`-fstack-usage`), and runtime `0xA5A5A5A5` stack watermarking. |
-| SWD, GDB, SVD & Trace | `TOOL-GDB-001..002`, `TOOL-PROBE-001..002`, `TOOL-FLASH-001`, `TOOL-DBG-001..003` | L1–L3 | Operate STLINK-V3E + OpenOCD + CLI GDB + `.gdbinit`, configure VS Code Cortex-Debug + `STM32G474.svd`, recover locked SWD via connect-under-reset, use 6 FPB breakpoints, 4 DWT watchpoints + `CYCCNT`, `DBGMCU` freeze, SWO/ITM (`PB3`), and SEGGER RTT. |
+| SWD, GDB, SVD & Trace | `TOOL-GDB-001..002`, `TOOL-PROBE-001..002`, `TOOL-FLASH-001`, `TOOL-DBG-001..004` | L1–L3 | Operate STLINK-V3E + OpenOCD + CLI GDB + `.gdbinit`, configure VS Code Cortex-Debug + `STM32G474.svd`, recover locked SWD via connect-under-reset, use 6 FPB breakpoints, 4 DWT watchpoints + `CYCCNT`, `DBGMCU` freeze, SWO/ITM (`PB3` AF0, NRZ vs Manchester, `TPI->ACPR` prescaler math at 170 MHz & 160 MHz), and SEGGER RTT. |
 | Build Systems & QA | `TOOL-BUILD-001..002`, `TOOL-QA-001..003` | L2–L3 | Architect portable GNU Make (`-MMD -MP`) and CMake + Ninja (`CMakePresets.json`, `compile_commands.json`), automate static analysis (`cppcheck`, `clang-tidy`, `-fanalyzer`), and run host unit tests (Unity/CMock) & HIL/emulation (`pytest`/Renode). |
 
 ---
@@ -103,6 +103,26 @@ The GNU Linker Script (`stm32g474re.ld`) maps input sections into physical STM32
    - Create reusable driver libraries with `arm-none-eabi-ar rcs libdrv.a gpio.o uart.o`. GNU `ld` scans archives **left-to-right**, so place `-ldrv` *after* `main.o` (or wrap circular deps in `-Wl,--start-group ... -Wl,--end-group`).
    - **`TOOL-LINK-002` (Dynamic Linking / `.so`/`.dll`/PLT/GOT): `NOT_APPLICABLE` to bare-metal STM32G474RE.** MMU-less Cortex-M4 executes statically linked Execute-In-Place (XIP) firmware directly from internal Flash with absolute VMA resolution.
 
+#### 3.4.1 GNU `ld` `--wrap=symbol` Link-Time Mocking & `FLASH` ↔ `CCMRAM` ARM Long-Branch Veneers (`TOOL-LD-004`)
+
+1. **Link-Time Symbol Interposition (`-Wl,--wrap=symbol`):**
+   Passing `-Wl,--wrap=hw_read_sensor` to `gcc`/`arm-none-eabi-gcc` instructs GNU `ld` to rewrite symbol resolution across all linked `.o` files with **zero modifications to production source code**:
+   - Every undefined reference to `hw_read_sensor` is redirected to **`__wrap_hw_read_sensor`**.
+   - Every reference to **`__real_hw_read_sensor`** resolves to the original definition of `hw_read_sensor`.
+   - **High-Value Embedded Uses:** (a) Mocking low-level drivers (`spi_transfer`, `flash_write`) in host Unity unit tests without `#ifdef UNIT_TEST` clutter; (b) wrapping `malloc`/`free` with `-Wl,--wrap=malloc` to trap accidental dynamic heap allocation or measure fragmentation; (c) injecting hardware faults (CRC/timeout failures) during deterministic regression testing! *(Caveat: Intra-TU calls where caller and callee live in the same `.c` file may be inlined by `-O2`/`-flto`, bypassing `--wrap` unless compiled with `-fno-inline` or placed in separate translation units!)*
+2. **`FLASH` (`0x08000000`) ↔ `CCMRAM` (`0x10000000`) ARM Long-Branch Veneers (`--long-calls`):**
+   - On ARMv7-M (Cortex-M4), the Thumb-2 `BL <label>` (Branch with Link) 32-bit instruction encodes a 24-bit signed halfword offset, limiting direct relative calls to **$\pm 16\text{ MB}$** ($\pm\texttt{0x01000000}$).
+   - On STM32G474RE, the address separation between **Main Flash (`0x08000000`)** and **0-WS CCM-SRAM (`0x10000000`)** is **`0x08000000` = 128 MB** — **$8\times$ beyond the reach of `BL`!**
+   - **Two Linker/Compiler Solutions:**
+     1. **Automatic GNU `ld` ARM Long-Branch Veneers (Default):** When GNU `ld` detects an out-of-range `R_ARM_THM_CALL` relocation between `.text` (Flash) and `.ccmram` (`0x10000000`), it automatically synthesizes an 8-byte **inter-section veneer thunk** (`__ccmram_fast_pid_step_veneer` in `.text`):
+        ```asm
+        08001240 <__ccmram_fast_pid_step_veneer>:
+        08001240: f8df f000   ldr.w pc, [pc, #0]   ; Load 32-bit absolute target + Thumb bit
+        08001244: 10000001    .word 0x10000001     ; CCM-SRAM function address | 1
+        ```
+        Inspect generated veneers directly with `arm-none-eabi-objdump -d firmware.elf | grep -A 3 veneer`!
+     2. **Explicit Indirect Long Calls (`__attribute__((long_call))` or `-mlong-calls`):** Instructs GCC to emit an indirect call (`ldr r3, =target; blx r3`) directly at the call site without relying on a linker veneer. Essential when calling *out* of `.ccmram` back to Flash helpers (keeping the hot path self-contained in CCM-SRAM without a Flash veneer round-trip) or when calling across separately linked bootloader/application images!
+
 ---
 
 ### 3.5 STLINK-V3E, SWD, OpenOCD, GDB, VS Code SVD & Real-Time Trace (`TOOL-GDB-*`, `TOOL-PROBE-*`, `TOOL-FLASH-001`, `TOOL-DBG-*`)
@@ -134,6 +154,40 @@ The GNU Linker Script (`stm32g474re.ld`) maps input sections into physical STM32
    - **DWT (4 Data Watchpoints + `CYCCNT`):** Catch elusive pointer corruption immediately on the exact offending `STR` instruction using `watch`.
    - **`DBGMCU` Freeze:** Set `DBGMCU->APB1FZR1 |= DBGMCU_APB1FZR1_DBG_IWDG_STOP | DBGMCU_APB1FZR1_DBG_TIM2_STOP;` so the watchdog doesn't reset the MCU while halted at a breakpoint!
    - **Non-Blocking Live Trace:** Stream `ITM_SendChar()` over `PB3` (`SWO`) at 2 MHz without halting the CPU, OR use **SEGGER RTT** (lock-free RAM ring buffer read by OpenOCD/probe-rs over SWD — needs **zero extra pins**!).
+
+#### 3.5.1 SWO Wire Encoding (NRZ vs Manchester) & `TPIU`/`TPI->ACPR` Baud Prescaler Math (`TOOL-DBG-004`)
+
+Single Wire Output (**SWO**) streams real-time **ITM** `printf`/event packets and **DWT** PC-sampling/exception trace out of **`PB3` (`TRACESWO`, AF0)** into the NUCLEO-G474RE's **STLINK-V3E** with near-zero CPU overhead (writing 1 byte to `ITM->PORT[0].u8` takes ~2 CPU cycles when the 10-byte hardware FIFO is not full!).
+
+1. **TPIU Wire Protocols (`TPI->SPPR`, offset `0x0F0` from `TPI_BASE = 0xE0040000`):**
+   *(CMSIS `core_cm4.h` Note: ARM's TRM calls this hardware block `TPIU`, while CMSIS `core_cm4.h` exposes it as `TPI` — `TPI->SPPR`, `TPI->ACPR`, `TPI->FFCR`!)*
+   - `TPI->SPPR = 0` (`00b`): Synchronous 4-bit Parallel Trace Port (`TRACECLK` + `TRACED0..3`) — not routed on NUCLEO-G474RE STLINK-V3E.
+   - `TPI->SPPR = 1` (`01b`): **Asynchronous Manchester Encoding** — self-clocking phase transitions (tolerates wider clock drift without exact baud match), but halves bit throughput and is **unsupported by many ST-LINK/OpenOCD setups**.
+   - `TPI->SPPR = 2` (`10b`): **Asynchronous NRZ (UART 8N1) Encoding** — **Standard mode for STLINK-V3E, OpenOCD, and J-Link!** Transmits standard 1 start + 8 data + 1 stop bit frames at exact baud rate determined by `TPI->ACPR`.
+2. **`TPI->ACPR` Prescaler Formula (170 MHz & 160 MHz Profiles):**
+   $$\text{SWO\_Baud} = \frac{f_{\text{SYSCLK}}}{\text{TPI->ACPR} + 1} \iff \text{TPI->ACPR} = \frac{f_{\text{SYSCLK}}}{\text{SWO\_Baud}} - 1 \qquad (\text{13-bit: } 0\dots 8191)$$
+
+   | STM32G474RE Clock Profile | Target NRZ SWO Baud | Exact `TPI->ACPR` Register Value | Actual Wire Baud & Error |
+   |---|---|---|---|
+   | **Profile A: 170 MHz Boost** | `2.000 MHz` | `170,000,000 / 2,000,000 - 1` = **`84` (`0x54`)** | `2.000 MHz` (**0.000% exact!**) |
+   | **Profile A: 170 MHz Boost** | `1.000 MHz` | `170,000,000 / 1,000,000 - 1` = **`169` (`0xA9`)** | `1.000 MHz` (**0.000% exact!**) |
+   | **Profile B: 160 MHz Boost** | `2.000 MHz` | `160,000,000 / 2,000,000 - 1` = **`79` (`0x4F`)** | `2.000 MHz` (**0.000% exact!**) |
+   | **Profile B: 160 MHz Boost** | `4.000 MHz` | `160,000,000 / 4,000,000 - 1` = **`39` (`0x27`)** | `4.000 MHz` (**0.000% exact!**) |
+   | **Reset Default: 16 MHz HSI16** | `2.000 MHz` | `16,000,000 / 2,000,000 - 1` = **`7` (`0x07`)** | `2.000 MHz` (**0.000% exact!**) |
+
+   > **Clock-Switch Trap:** Whenever firmware switches `SYSCLK` from 16 MHz HSI16 $\to$ 170 MHz (or 160 MHz), `TPI->ACPR` **MUST** be updated to match the new `SYSCLK` (and OpenOCD's `-traceclk` parameter must match!) — otherwise NRZ framing slips and the SWO viewer prints binary garbage!
+3. **Mandatory STM32G474RE Enable Chain:**
+   `GPIOB PB3 AF0 (TRACESWO)` $\to$ `DBGMCU->CR |= DBGMCU_CR_TRACE_IOEN` (with `TRACE_MODE = 00b` async!) $\to$ `CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk` $\to$ `TPI->SPPR = 2`, `TPI->ACPR = N`, `TPI->FFCR = 0x100` $\to$ `ITM->LAR = 0xC5ACCE55UL` $\to$ `ITM->TCR` (`ITMENA | SWOENA | DWTENA | SYNCENA`, `TraceBusID = 1`) $\to$ `ITM->TER = 1UL` (Port 0).
+4. **Matching OpenOCD SWO Capture Commands (170 MHz & 160 MHz):**
+   ```bash
+   # OpenOCD >= 0.11 (Profile A: 170 MHz SYSCLK, 2 MHz NRZ SWO -> swo.log):
+   openocd -f interface/stlink.cfg -f target/stm32g4x.cfg \
+     -c "init" \
+     -c "stm32g4x.tpiu configure -protocol uart -traceclk 170000000 -pin-freq 2000000 -output swo.log" \
+     -c "stm32g4x.tpiu enable" -c "itm port 0 on"
+
+   # Profile B (160 MHz SYSCLK, 2 MHz NRZ SWO): replace -traceclk 170000000 with -traceclk 160000000!
+   ```
 
 ---
 
@@ -295,6 +349,88 @@ void Reset_Handler(void)
 }
 ```
 
+### 8.3 Link-Time `--wrap` Mock, `.ccmram` Long-Call (`TOOL-LD-004`) & SWO/ITM NRZ Init (`TOOL-DBG-004`)
+
+> **Verification Status:** **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror -Wconversion -Wdouble-promotion -Wvla`)** against `stm32g474xx.h` & `core_cm4.h` (Not Tested on Physical Hardware).
+
+```c
+#include "stm32g474xx.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+/* --- TOOL-LD-004A: GNU ld -Wl,--wrap=hw_read_sensor link-time interposition --- */
+extern uint32_t __real_hw_read_sensor(uint32_t ch);
+static uint32_t g_mock_sensor_val = 0UL;
+static bool     g_mock_enabled    = false;
+
+uint32_t __wrap_hw_read_sensor(uint32_t ch)
+{
+    if (g_mock_enabled) {
+        (void)ch;
+        return g_mock_sensor_val;
+    }
+    return __real_hw_read_sensor(ch);
+}
+
+/* --- TOOL-LD-004B: 0-WS CCM-SRAM (0x10000000) function callable from FLASH (0x08000000) --- */
+__attribute__((section(".ccmram"), noinline, long_call))
+uint32_t ccmram_fast_pid_step(int32_t err, int32_t kp_q8)
+{
+    int32_t out = (err * kp_q8) >> 8;
+    if (out < 0) { out = 0; }
+    if (out > 4095) { out = 4095; }
+    return (uint32_t)out;
+}
+
+/* --- TOOL-DBG-004: NRZ SWO & ITM Port 0 Init (170 MHz -> ACPR=84; 160 MHz -> ACPR=79 @ 2 MHz) --- */
+void swo_itm_init(uint32_t sysclk_hz, uint32_t swo_baud_hz)
+{
+    if ((swo_baud_hz == 0U) || (sysclk_hz < swo_baud_hz)) {
+        return;
+    }
+
+    /* 1. Route PB3 to AF0 (TRACESWO), Very High Speed */
+    RCC->AHB2ENR  |= RCC_AHB2ENR_GPIOBEN;
+    (void)RCC->AHB2ENR;
+    GPIOB->AFR[0] &= ~(0xFUL << (3U * 4U));
+    GPIOB->OSPEEDR = (GPIOB->OSPEEDR & ~(3UL << (3U * 2U))) | (3UL << (3U * 2U));
+    GPIOB->MODER   = (GPIOB->MODER   & ~(3UL << (3U * 2U))) | (2UL << (3U * 2U));
+
+    /* 2. Enable async SWO pin in DBGMCU->CR (TRACE_IOEN=1, TRACE_MODE=00b) */
+    DBGMCU->CR = (DBGMCU->CR & ~DBGMCU_CR_TRACE_MODE_Msk) | DBGMCU_CR_TRACE_IOEN;
+
+    /* 3. Power up CoreSight trace unit (TRCENA = 1) */
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+
+    /* 4. Configure TPIU (CMSIS TPI @ 0xE0040000): NRZ protocol (SPPR = 2) + ACPR */
+    TPI->CSPSR = 1UL;
+    TPI->SPPR  = 2UL; /* 2 = NRZ (UART), 1 = Manchester */
+    TPI->ACPR  = ((sysclk_hz / swo_baud_hz) - 1UL) & TPI_ACPR_PRESCALER_Msk;
+    TPI->FFCR  = 0x00000100UL; /* Bypass formatter */
+
+    /* 5. Unlock ITM & enable Stimulus Port 0 */
+    ITM->LAR = 0xC5ACCE55UL;
+    ITM->TCR = (1UL << ITM_TCR_TraceBusID_Pos)
+             | ITM_TCR_SWOENA_Msk
+             | ITM_TCR_DWTENA_Msk
+             | ITM_TCR_SYNCENA_Msk
+             | ITM_TCR_ITMENA_Msk;
+    ITM->TPR = 0x0000000FUL;
+    ITM->TER = 1UL; /* Enable Stimulus Port 0 */
+}
+
+void itm_send_char_nonblocking(uint8_t ch)
+{
+    if (((ITM->TCR & ITM_TCR_ITMENA_Msk) != 0UL) && ((ITM->TER & 1UL) != 0UL)) {
+        uint32_t guard = 1000UL;
+        while ((ITM->PORT[0].u32 == 0UL) && (guard-- > 0UL)) { }
+        if (ITM->PORT[0].u32 != 0UL) {
+            ITM->PORT[0].u8 = ch;
+        }
+    }
+}
+```
+
 ---
 
 ## 9. Practical STM32G474RE Experiments
@@ -345,12 +481,16 @@ void Reset_Handler(void)
 4. Why does `arm-none-eabi-gdb` stop accepting new breakpoints in Flash after breakpoint #6 on Cortex-M4, and what hardware block limits data watchpoints to 4?
 5. Why does `arm-none-eabi-gcc -O2 -nostdlib` sometimes fail to link with `undefined reference to 'memset'` on `Reset_Handler`'s `.bss` zero-loop, and which flag prevents it?
 6. How do you recover an STM32G474RE whose firmware accidentally configured `PA13`/`PA14` as GPIO outputs at boot?
+7. (`TOOL-LD-004`) Why cannot a Thumb-2 `BL` instruction in Flash (`0x08000000`) reach a function in STM32G474RE CCM-SRAM (`0x10000000`) directly? Compare automatic GNU `ld` ARM long-branch veneers against `__attribute__((long_call))`.
+8. (`TOOL-DBG-004`) Calculate the exact `TPI->ACPR` values for `2 MHz` NRZ SWO (`TPI->SPPR = 2`) at BOTH `170 MHz` and `160 MHz` `SYSCLK`, and explain why `PB3` (`AF0`) outputs garbage if `TPI->ACPR` is configured before `SystemClock_Config()` without being updated afterward.
 
 ---
 
 ## 13. Measurable Completion Criteria
 
 - [ ] **Zero-Defect Linker & Startup Built:** Verify `readelf -S` shows `.isr_vector` = `0x1D8` (472 B, 512 B aligned), `CCMRAM` = `RWE`, `.ccmram` initialized cleanly at `0x10000000`, and zero `-Wpedantic -Werror` warnings.
+- [ ] **Link-Time Interposition & Long-Branch Veneers Verified (`TOOL-LD-004`):** Demonstrate `-Wl,--wrap=symbol` mocking in a host test build and inspect a generated `FLASH` $\leftrightarrow$ `CCMRAM` `__*_veneer` thunk (or `BLX` indirect call via `long_call`) using `arm-none-eabi-objdump -d`.
+- [ ] **SWO/ITM Trace Prescaler Verified (`TOOL-DBG-004`):** Compute and verify `TPI->ACPR` for 170 MHz (`84`) and 160 MHz (`79`) at 2 MHz NRZ (`SPPR = 2`) matching OpenOCD `tpiu configure -protocol uart -traceclk ... -pin-freq 2000000`.
 - [ ] **Binutils Fluency Verified:** Map a raw `PC` to C line via `addr2line`, rank top Flash/RAM symbols via `nm --size-sort`, and verify `.map` `--print-memory-usage` output.
 - [ ] **CLI GDB & VS Code SVD Verified:** Connect via OpenOCD + STLINK-V3E, execute a `.gdbinit` flash+debug script, catch a bug with a DWT watchpoint, and inspect live registers via `STM32G474.svd`.
 - [ ] **Automated Build & QA Gate:** Build cleanly with portable Make (`-MMD -MP`) or CMake+Ninja, passing `cppcheck`, `-fanalyzer`, and `-fstack-usage` with zero errors.

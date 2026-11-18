@@ -4,8 +4,8 @@
 **Base Addresses (AHB1):** `DMA1` `0x40020000` | `DMA2` `0x40020400` | `DMAMUX1` `0x40020800`  
 **Bus:** AHB1 (`RCC->AHB1ENR`: `DMA1EN` b0, `DMA2EN` b1, **`DMAMUX1EN` b2 — mandatory!**)  
 **Reference Manual:** RM0440, Chapter 12 (*DMA*) & Chapter 13 (*DMAMUX*, Table 91) | ES0430 §2.3–2.4  
-**Concept IDs:** `PERIPH-DMA-001`, `STM32-SRAM-001`, `STM32-ERRATA-001`  
-**Verification Status:** Every register offset, IRQ number, and DMAMUX Request ID verified directly against `stm32g474xx.h` and RM0440 Table 91; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Concept IDs:** `PERIPH-DMA-001`, `TIM-DMA-001`, `STM32-SRAM-001`, `STM32-ERRATA-001`  
+**Verification Status:** Every register offset, IRQ number, and DMAMUX Request ID verified directly against `stm32g474xx.h` and RM0440 Table 91; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
@@ -54,7 +54,7 @@
 | **`16`** | `0x10` | **`I2C1_RX`** | `95..101` | `0x5F..0x65` | `HRTIM1_M` / `HRTIM1_A..F` |
 | **`17`** | `0x11` | **`I2C1_TX`** | `108 / 109` | `0x6C / 0x6D` | `SAI1_A` / `SAI1_B` |
 | `18..23` | `0x12..0x17` | `I2C2..4_RX/TX` | `110 / 111` | `0x6E / 0x6F` | `FMAC_READ` / `FMAC_WRITE` |
-| `42..92` | `0x2A..0x5C` | `TIM1/8/2/3/4/5/15/16/17/20` | `112 / 113` | `0x70 / 0x71` | `CORDIC_READ` / `CORDIC_WRITE` |
+| `42..92` | `0x2A..0x5C` | `TIM1/8/2/3/4/5/15/16/17/20` (incl. **`46` / `0x2E` = `TIM1_UP`** for `TIM-DMA-001` burst!) | `112 / 113` | `0x70 / 0x71` | `CORDIC_READ` / `CORDIC_WRITE` |
 | `102..105` | `0x66..0x69` | `DAC3_CH1/2`, `DAC4_CH1/2` | `114 / 115` | `0x72 / 0x73` | `UCPD1_RX` / `UCPD1_TX` |
 
 ---

@@ -5,7 +5,7 @@
 **Bus:** AHB1  
 **Reference Manual:** RM0440, Chapter 7 (*Reset and clock control (RCC)*) | DS12288 §5.3.9–5.3.10  
 **Concept IDs:** `STM32-RCC-001`, `STM32-RCC-002`, `STM32-RCC-003`  
-**Verification Status:** Register offsets and bit positions verified directly against `stm32g474xx.h`; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Verification Status:** Every register offset and bit position verified directly against `stm32g474xx.h`; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
@@ -98,9 +98,27 @@ Per **DS12288**, valid STM32G474RE PLL limits are:
 
 ---
 
-### 3. CMSIS Code Example: Safe 170 MHz Boost Clock Switch (HSE 24 MHz X3 + RM0440 §6.1.5 Step)
+### 3. Dual Production Clock Profiles (170 MHz Boost vs 160 MHz Boost vs 150 MHz Normal)
 
-> **Status:** Statically Reviewed (Not Tested on Physical Hardware). Always configure PWR Range 1 Boost (`PWR_CR5.R1MODE = 0`) and Flash 4 Wait States (`FLASH_ACR.LATENCY = 4WS`) BEFORE switching to 170 MHz!
+> **CRITICAL SILICON RULE (RM0440 §6.1.5 & Table 9):** **160 MHz is STILL $> 150\text{ MHz}$**, so Profile B STILL requires **Range 1 Boost (`PWR->CR5.R1MODE = 0`)**, **4 Flash Wait States (`FLASH_ACR_LATENCY_4WS`)**, and the **intermediate `HPRE = /2` (80 MHz) $\ge 1\ \mu\text{s}$ transition**! Only $\le 150\text{ MHz}$ (Profile C) permits Range 1 Normal (`R1MODE = 1`).
+
+| Metric | **Profile A: 170 MHz Max (Boost)** | **Profile B: 160 MHz Clean Integer (Boost)** | **Profile C: 150 MHz Normal** |
+|---|---|---|---|
+| `PWR->CR5.R1MODE` / `FLASH` WS | `0` (Boost) / **`4 WS`** | `0` (Boost — `>150 MHz`!) / **`4 WS`** | `1` (Normal) / **`4 WS`** (`>120 MHz`) |
+| RM0440 §6.1.5 `HPRE=/2` Step | **Yes** (`85 MHz` $\ge 1\ \mu\text{s}$) | **Yes** (`80 MHz` $\ge 1\ \mu\text{s}$) | Not required |
+| `HSI16` (16 MHz) PLL | `M=4 (PLLM=3), N=85, R=2` (`VCO=340`) | `M=4 (PLLM=3), N=80, R=2` (`VCO=320`) | `M=4 (PLLM=3), N=75, R=2` (`VCO=300`) |
+| `HSE` (24 MHz X3) PLL | `M=6 (PLLM=5), N=85, R=2` (`VCO=340`) | `M=3 (PLLM=2), N=40, R=2` (or `M=6, N=80, R=2`) | `M=6 (PLLM=5), N=75, R=2` (or `M=2, N=25, R=2`) |
+| `ADC` (`CKMODE=11`, `HCLK/4`) | `42.5 MHz` ($\le 60/52\text{ MHz}$) | **`40.000 MHz`** (exact integer MHz!) | `37.5 MHz` (`PLL_P = 50.0 MHz`) |
+| `DAC->MCR.HFSEL` | **`10b`** (`> 160 MHz`) | **`01b`** ($\le 160\text{ MHz}$) | **`01b`** ($\le 160\text{ MHz}$) |
+| 1 µs Timer `PSC` / `MCO/16` | `PSC = 169` / `10.625 MHz` | **`PSC = 159`** / **`10.000 MHz`** | `PSC = 149` / `9.375 MHz` |
+| `USART` 115200 `BRR` / Error | `1476` (`0x05C4`, `-0.021%`) | **`1389`** (`0x056D`, **`-0.008%`**) | `1302` (`0x0516`, `+0.006%`) |
+| SWO 2 MHz NRZ (`TPI->ACPR`) | `84` (`0x54`) | **`79`** (`0x4F`) (`39` @ 4 MHz) | `74` (`0x4A`) |
+
+---
+
+### 4. CMSIS Code Examples: Safe 170 MHz & 160 MHz Boost Clock Switches (HSE 24 MHz X3 + RM0440 §6.1.5)
+
+> **Status:** Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware). Always configure PWR Range 1 Boost (`PWR_CR5.R1MODE = 0`) and Flash 4 Wait States (`FLASH_ACR.LATENCY = 4WS`) BEFORE switching above 150 MHz!
 
 ```c
 #include "stm32g474xx.h"
@@ -154,6 +172,47 @@ void SystemClock_Config_170MHz_HSE(void) {
     for (volatile uint32_t i = 0U; i < 100U; i++) { __NOP(); }
 
     /*    Step D: Set HPRE = /1 for full 170 MHz HCLK, PCLK1 = PCLK2 = 170 MHz */
+    RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_HPRE_Msk | RCC_CFGR_PPRE1_Msk | RCC_CFGR_PPRE2_Msk)) |
+                RCC_CFGR_HPRE_DIV1 | RCC_CFGR_PPRE1_DIV1 | RCC_CFGR_PPRE2_DIV1;
+}
+
+/* Profile B: 160 MHz Clean Integer Profile (HSE 24 MHz: M=3, N=40, R=2 -> VCO=320 MHz)
+ * STILL requires Boost Mode (R1MODE=0), 4 WS, and HPRE=/2 (80 MHz) >= 1 us step! */
+void SystemClock_Config_160MHz_HSE(void) {
+    RCC->APB1ENR1 |= RCC_APB1ENR1_PWREN;
+    (void)RCC->APB1ENR1;
+    PWR->CR1 = (PWR->CR1 & ~PWR_CR1_VOS_Msk) | PWR_CR1_VOS_0;
+    while (PWR->SR2 & PWR_SR2_VOSF) { }
+    PWR->CR5 &= ~PWR_CR5_R1MODE; /* 0 = Boost required for 160 MHz (> 150 MHz) */
+
+    FLASH->ACR = (FLASH->ACR & ~FLASH_ACR_LATENCY_Msk) |
+                 FLASH_ACR_LATENCY_4WS |
+                 FLASH_ACR_PRFTEN | FLASH_ACR_ICEN | FLASH_ACR_DCEN;
+    while ((FLASH->ACR & FLASH_ACR_LATENCY_Msk) != FLASH_ACR_LATENCY_4WS) { }
+
+    RCC->CR |= RCC_CR_HSEON;
+    while (!(RCC->CR & RCC_CR_HSERDY)) { }
+
+    RCC->CR &= ~RCC_CR_PLLON;
+    while (RCC->CR & RCC_CR_PLLRDY) { }
+
+    /* M=3 (PLLM=2), N=40, R=2 -> 160 MHz; Q=8 -> 40 MHz; P=8 -> 40.0 MHz exact ADC */
+    RCC->PLLCFGR = RCC_PLLCFGR_PLLSRC_HSE                 |
+                   ((3U - 1U) << RCC_PLLCFGR_PLLM_Pos)    |
+                   (40U << RCC_PLLCFGR_PLLN_Pos)          |
+                   (0U << RCC_PLLCFGR_PLLR_Pos)           |
+                   (3U << RCC_PLLCFGR_PLLQ_Pos)           |
+                   (8U << RCC_PLLCFGR_PLLPDIV_Pos)        |
+                   RCC_PLLCFGR_PLLREN | RCC_PLLCFGR_PLLPEN;
+
+    RCC->CR |= RCC_CR_PLLON;
+    while (!(RCC->CR & RCC_CR_PLLRDY)) { }
+
+    /* RM0440 §6.1.5 intermediate step: HPRE=/2 (80 MHz) -> SW=PLL -> >=1 us -> HPRE=/1 */
+    RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_HPRE_Msk) | RCC_CFGR_HPRE_DIV2;
+    RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW_Msk) | RCC_CFGR_SW_PLL;
+    while ((RCC->CFGR & RCC_CFGR_SWS_Msk) != RCC_CFGR_SWS_PLL) { }
+    for (volatile uint32_t i = 0U; i < 100U; i++) { __NOP(); }
     RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_HPRE_Msk | RCC_CFGR_PPRE1_Msk | RCC_CFGR_PPRE2_Msk)) |
                 RCC_CFGR_HPRE_DIV1 | RCC_CFGR_PPRE1_DIV1 | RCC_CFGR_PPRE2_DIV1;
 }

@@ -4,8 +4,8 @@
 **SPI Instances:** `SPI1` (`0x40013000`, APB2), `SPI2/I2S2` (`0x40003800`, APB1), `SPI3/I2S3` (`0x40003C00`, APB1) *(Note: `SPI4` @ `0x40013C00` is unbonded on LQFP64 — all pins reside on Port E!)*  
 **I2C Instances:** `I2C1` (`0x40005400`), `I2C2` (`0x40005800`), `I2C3` (`0x40007800`), `I2C4` (`0x40008400`) (all APB1)  
 **Reference Manual:** RM0440, Chapters 39–42 (Rev 8: I2C Ch 39, SPI Ch 40; Rev 9: I2C Ch 41, SPI Ch 42)  
-**Concept IDs:** `PERIPH-SPI-001`, `PERIPH-I2C-001`  
-**Verification Status:** Every register offset and bit position verified directly against `stm32g474xx.h`; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Concept IDs:** `PERIPH-SPI-001`, `PERIPH-I2C-001`, `GPIO-FMP-001`  
+**Verification Status:** Every register offset and bit position verified directly against `stm32g474xx.h`; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
@@ -54,7 +54,7 @@ STM32G4 implements **32-bit TX/RX FIFOs** with FIFO packing:
 - **`AUTOEND = 1` (Bit 25):** Hardware automatically transmits `STOP` after `NBYTES` complete (use for single-phase writes and the final read phase).
 - **`AUTOEND = 0`:** Hardware holds `SCL` LOW and sets `ISR.TC = 1` after `NBYTES` complete — ready for a **Repeated START** (`START = 1` with `RD_WRN = 1`).
 - **`RELOAD = 1` (Bit 24):** Used for transfers > 255 bytes; hardware sets `ISR.TCR = 1` when `NBYTES` reaches 0, letting software reload `NBYTES` seamlessly without a `STOP`.
-- **NUCLEO-G474RE Hardware Warning:** `PB8` (`I2C1_SCL`) is shared with `PB8-BOOT0` (external 10 kΩ pull-down `R36` on MB1367). Always use **external 2.2–4.7 kΩ pull-ups** to 3.3 V on `SCL`/`SDA` (or route `I2C1` to `PA15`/`PB7` AF4). Also note `RCC->CCIPR.I2C1SEL` can select `HSI16` (16 MHz) for stable, SYSCLK-independent `I2C_TIMINGR` values!
+- **NUCLEO-G474RE Hardware Warning & 1 MHz Fast-Mode Plus (`GPIO-FMP-001`):** `PB8` (`I2C1_SCL`) is shared with `PB8-BOOT0` (external 10 kΩ pull-down `R36` on MB1367). Always use **external 2.2–4.7 kΩ pull-ups** to 3.3 V on `SCL`/`SDA` (or route `I2C1` to `PA15`/`PB7` AF4). For **1 MHz Fast-Mode Plus (Fm+)**, enable `RCC->APB2ENR.SYSCFGEN` and set `SYSCFG->CFGR1.I2Cx_FMP` / `I2C_PBx_FMP` for 20 mA sink on `FT_f` pads (`470–680 Ω` pull-ups). Also note `RCC->CCIPR.I2C1SEL` can select `HSI16` (16 MHz) for stable, SYSCLK-independent `I2C_TIMINGR` values!
 
 ---
 

@@ -16,7 +16,7 @@
 | `PROF-CI-001` / `PROF-GIT-001`..`002` / `PROF-DOC-001`..`002` | GitHub Actions CI/CD, Git Discipline, Embedded `.fw_info` Version Struct, & Doxygen / ADR / ICD Docs | `[General C]` | Level 2 (Production) |
 | `PROF-STK-001`..`002` / `PROF-WCET-001`..`002` | Static Stack Analysis (`-fstack-usage`), Nested ISR+FPU Budgeting, & Cycle-Accurate WCET via **`DWT->CYCCNT`** | `[ARM Cortex-M4F]` | Level 2–3 (Production) |
 | `PROF-MEM-001`..`002` / `PROF-PERF-001`..`003` | Footprint Triage (`size`/`nm`/`.map`), Struct Packing, `-Os`/`-flto`, CCM-SRAM, ART, & `CORDIC`/`FMAC` Optimization | `[STM32G474RE Exact]` | Level 2–3 (Production) |
-| `SEC-RDP-001` / `SEC-MEM-001` / `SEC-BOOT-001` / `SEC-TAMP-001` / `SEC-CRYPTO-001` | **STM32G474RE Security:** `RDP` 0/1/2, `WRP`, `PCROP`, **`FLASH_SEC1R`/`SEC2R`**, **`TAMP`** Zeroization, & **`RNG`** (**NO AES on G474; G484-Only!**) | `[STM32G474RE Exact]` | Level 3 (Specialist) |
+| `SEC-RDP-001` / `SEC-MEM-001` / `SEC-BOOT-001`..`002` / `SEC-TAMP-001` / `SEC-CRYPTO-001` | **STM32G474RE Security:** `RDP` 0/1/2, `WRP`, `PCROP`, **`FLASH_SEC1R`/`SEC2R`**, **Anti-Rollback Monotonic Counters (`SEC-BOOT-002`)**, **`TAMP`** Zeroization, & **`RNG`** (**NO AES on G474; G484-Only!**) | `[STM32G474RE Exact]` | Level 3 (Specialist) |
 | `PROF-REL-001`..`002` / `REL-CRASH-001` / `REL-DEGRADE-001` | FMEA, BOR, Flash ECC & SRAM Parity `NMI_Handler`, `SYSCFG->CFGR2` Lockup Break, Watchdog Supervisor, & Naked MSP/PSP `.noinit` Crash Logger | `[STM32G474RE Exact]` | Level 2–3 (Production) |
 
 ---
@@ -79,6 +79,19 @@
    - `TAMP` automatically zeroes all 32 `TAMP->BKP0R..31R` registers + SRAM2 upon physical tamper pin (`TAMP_IN1` = `PC13`) or internal voltage/clock/temp attack.
    - Hardware **`RNG`** (`RCC->AHB2ENR.RNGEN` b26 + `HSI48`/`CLK48SEL`) provides NIST SP800-90B 32-bit true random numbers for cryptographic nonces/challenges (check `CECS`/`SECS` health flags!).
 
+#### 3.5.1 Bootloader Anti-Rollback Protection, Monotonic Counters & Security Version Pinning (`SEC-BOOT-002`)
+
+Cryptographic firmware signing (Ed25519 / ECDSA-P256) blocks *forged* images, but **does NOT prevent a Downgrade / Rollback Attack**: an attacker can replay an *older, genuinely signed* production image (e.g., `v1.2.0`) that contains a known CVE or debug backdoor! Per **MCUboot Security Design**, **NIST SP 800-193**, and **ST AN5156**:
+
+1. **Signed Metadata `security_version` Epoch:** Separate the human-facing SemVer (`major.minor.patch`) from an unsigned integer **`security_version`** inside the signed firmware header (`fw_signed_header_t`). Increment `security_version` *only* on security-relevant fixes, and **ALWAYS include `security_version` inside the SHA-256 / Ed25519 signed digest** alongside `magic`, `image_size`, and the firmware payload!
+2. **STM32G474RE Non-Volatile Monotonic Counter Backends (Why SRAM / `TAMP->BKPxR` Alone Fails):**
+   - SRAM loses state on power cycle and `TAMP->BKPxR` resets if VBAT drops. A true anti-rollback floor must reside in non-volatile memory writable **only by the Root-of-Trust bootloader** (inside `FLASH->SEC1R` before locking `SEC_PROT1` or `WRP1AR`-protected pages):
+   - **Backend A — 64-Bit ECC Append-Only Flash Log Page (Up to 256 Increments / 2 KB Page):** Because STM32G4 Flash enforces **64-bit double-word programming with 8-bit SECDED ECC** (you **cannot** clear individual bits inside an already-programmed double-word like legacy NOR Flash — doing so raises `PROGERR` and corrupts ECC!), store each increment as a fresh 64-bit double-word slot `{ uint32_t sec_ver; uint32_t sec_ver_inv; }` (`sec_ver == ~sec_ver_inv` detects power-loss torn writes!) sequentially down a reserved 2 KB bootloader-only Flash page.
+   - **Backend B — Hardware 1 KB OTP Area (`0x1FFF7000..0x1FFF73FF`, 128 × 64-Bit Permanent Write-Once Slots):** For physically irreversible, erase-proof security version pinning across product lifetime, program each new security epoch into the next erased (`0xFFFFFFFFFFFFFFFFULL`) 64-bit OTP slot — even a compromised runtime kernel with Flash erase access can **never** erase or decrement OTP!
+3. **CRITICAL Trial-Boot vs Counter-Commit Ordering (Avoid Self-Bricking!):**
+   - **NEVER increment the monotonic counter *before* the new image boots and passes self-test!**
+   - Safe OTA state flow: (1) Verify cryptographic signature over `[header || payload]` FIRST, (2) Enforce `hdr->security_version >= nv_counter`, (3) Boot new image in **Trial Mode** (`IWDG` armed; old bank remains valid because `old_sec_ver == nv_counter`), (4) If the new image crashes $\to$ watchdog rolls back to old bank cleanly, (5) Once the new image passes health self-test and commits $\to$ bootloader advances `nv_counter = hdr->security_version`, permanently blocking downgrade to any prior vulnerable epoch!
+
 ### 3.6 Fault Tolerance, FMEA, Memory Integrity & Post-Mortem Crash Logging (`PROF-REL-*`, `REL-*`)
 - **FMEA (Failure Mode & Effects Analysis):** Rank failure modes by $\text{RPN} = \text{Severity} \times \text{Occurrence} \times \text{Detection}$ (1–10 each) and assign deterministic hardware mitigations (e.g., `COMP1` $\to$ `TIM1_BKIN` hardware trip, `BOR_LEV >= 3`, fail-safe pull-downs on MOSFET gates).
 - **Hardware Memory Integrity & Lockup Safety (`PROF-REL-001/002`):**
@@ -136,7 +149,8 @@ Max single measurable interval before 32-bit wrap: $2^{32} / 170\times 10^6 = \m
 | **MISRA C:2012 (Amd 1–4) / MISRA C:2023 / MISRA Compliance:2020** | Safety-critical C guidelines & deviation management |
 | **SEI CERT C Coding Standard / Barr Group Embedded C Standard** | Secure & bug-resistant C coding rules |
 | **ST RM0440** (§2.4 SRAM Parity, §3.5 Security/RDP/WRP/PCROP/Securable Area, Ch. 33 RNG, Ch. 38 TAMP) & **DS12288 Table 2** (G474 vs G484 crypto matrix) | `[STM32G474RE Exact]` |
-| **ST AN5281 / AN4758 / AN4230** | Securable Memory Area, PCROP, & STM32 Hardware RNG Validation |
+| **ST AN5281 / AN4758 / AN4230 / AN5156** | Securable Memory Area, PCROP, STM32 Hardware RNG Validation, & STM32 Security Overview |
+| **MCUboot Security Design & NIST SP 800-193** | Platform Firmware Resiliency, Signed Metadata Headers & Anti-Rollback Monotonic Counters (`SEC-BOOT-002`) |
 | **James Grenning — *TDD for Embedded C* / Elecia White — *Making Embedded Systems*** | Host testing, fakes/mocks, and embedded architecture |
 
 ---
@@ -244,6 +258,77 @@ __attribute__((naked)) void HardFault_Handler(void)
 }
 ```
 
+### 8.3 Bootloader Anti-Rollback Verifier & 64-Bit ECC Monotonic Counter Reader (`SEC-BOOT-002`)
+
+> **Verification Status:** **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror -Wconversion -Wdouble-promotion -Wvla`)** against `stm32g474xx.h` (Not Tested on Physical Hardware). Works identically on a `FLASH->SEC1R`-protected 2 KB Flash page or STM32G474RE 1 KB OTP (`0x1FFF7000`, 128 × 64-bit slots).
+
+```c
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#define FW_HDR_MAGIC 0x47344657UL /* "G4FW" */
+
+typedef struct {
+    uint32_t magic;
+    uint32_t security_version; /* Strictly monotonic anti-rollback epoch */
+    uint32_t image_size;
+    uint32_t crc32;
+    uint8_t  signature[64];    /* Ed25519 signature covering [magic..crc32 || payload] */
+} fw_signed_header_t;
+
+typedef struct {
+    uint32_t sec_ver;
+    uint32_t sec_ver_inv;      /* Bitwise complement (~sec_ver) catches torn power-fail writes */
+} nv_counter_slot_t;
+
+_Static_assert(sizeof(nv_counter_slot_t) == 8U, "STM32G4 Flash/OTP ECC requires 64-bit double-word slots");
+
+uint32_t nv_counter_read_current(uint32_t page_base_addr, uint32_t num_slots)
+{
+    const volatile nv_counter_slot_t *slots = (const volatile nv_counter_slot_t *)page_base_addr;
+    uint32_t highest = 0UL;
+
+    for (uint32_t i = 0UL; i < num_slots; ++i) {
+        uint32_t v   = slots[i].sec_ver;
+        uint32_t inv = slots[i].sec_ver_inv;
+        if ((v == 0xFFFFFFFFUL) && (inv == 0xFFFFFFFFUL)) {
+            break; /* Reached blank tail of append-only Flash/OTP log */
+        }
+        if ((v == ~inv) && (v > highest)) {
+            highest = v;
+        }
+    }
+    return highest;
+}
+
+typedef enum {
+    BOOT_AUTH_OK = 0,
+    BOOT_AUTH_ERR_MAGIC,
+    BOOT_AUTH_ERR_ROLLBACK,
+    BOOT_AUTH_ERR_SIGNATURE
+} boot_auth_status_t;
+
+boot_auth_status_t bootloader_verify_anti_rollback(
+    const fw_signed_header_t *hdr,
+    uint32_t nv_min_security_ver,
+    bool (*verify_ed25519_fn)(const fw_signed_header_t *h))
+{
+    if ((hdr == NULL) || (hdr->magic != FW_HDR_MAGIC)) {
+        return BOOT_AUTH_ERR_MAGIC;
+    }
+    /* Authenticate cryptographic signature FIRST so unsigned headers cannot probe state */
+    if ((verify_ed25519_fn == NULL) || !verify_ed25519_fn(hdr)) {
+        return BOOT_AUTH_ERR_SIGNATURE;
+    }
+    /* Reject any replay/downgrade whose signed security_version < pinned NV floor */
+    if (hdr->security_version < nv_min_security_ver) {
+        return BOOT_AUTH_ERR_ROLLBACK;
+    }
+    return BOOT_AUTH_OK;
+}
+```
+
 ---
 
 ## 9. Practical Laboratory Experiments & Debugging Checkpoints
@@ -291,6 +376,8 @@ __attribute__((naked)) void HardFault_Handler(void)
    *Answer Check:* L1 $\to$ L0 triggers an automatic full hardware mass-erase of Flash, SRAM2, and `TAMP->BKPxR` (protecting secrets while keeping the chip reusable). L2 (`0xCC`) permanently bricks SWD/JTAG/bootloader forever.
 3. **Q:** Why does `HardFault_Handler` use `__attribute__((naked))` and test `lr & 4`?  
    *Answer Check:* A non-naked C function pushes registers onto `MSP`, corrupting stack offsets before capture; `EXC_RETURN` bit 2 indicates whether the exception frame was stacked onto `MSP` (`0`) or `PSP` (`1`).
+4. **Q:** (`SEC-BOOT-002`) Why can you NOT implement a bit-clearing monotonic counter inside a single 64-bit word of STM32G474RE Flash, and why must the monotonic counter only advance *after* a newly booted OTA image passes self-test?  
+   *Answer Check:* STM32G4 Flash stores 8-bit SECDED ECC per 64-bit double-word — overwriting a programmed double-word triggers `PROGERR` and ECC faults, requiring append-only 64-bit slots (or 1 KB OTP `0x1FFF7000`). Advancing the counter before self-test would block automatic rollback to the known-good previous bank if the new image crashes!
 
 ---
 
@@ -301,5 +388,5 @@ __attribute__((naked)) void HardFault_Handler(void)
 | `PROF-STD-001..004` / `PROF-SA-001..003` | Zero errors under `-Wall -Wextra -Werror -fanalyzer`, `cppcheck --error-exitcode=1`, `clang-format --dry-run --Werror`, + documented Rule 11.4 Deviation Permit | GCC / `cppcheck` / CI |
 | `TEST-UNIT-001..002` / `PROF-DA-002` | $\ge 15$ host Unity tests (using fake `GPIO_TypeDef`/`TIM_TypeDef` structs) passing under `-fsanitize=address,undefined` with $\ge 90\%$ branch coverage | Host GCC + `gcov` |
 | `PROF-STK-001` / `PROF-WCET-001` | `.su` worst-case call-graph + nested FPU frame $\le 75\%$ stack budget; `DWT->CYCCNT` min/avg/max WCET profiled on target | GCC `.su` + GDB |
-| `SEC-TAMP-001` / `SEC-CRYPTO-001` | `TAMP` pin zeroes `BKP0R..3R`; hardware `RNG` generates 10,000 words with `CECS==SECS==0`; G474 non-AES boundary documented | GDB + UART |
+| `SEC-TAMP-001` / `SEC-CRYPTO-001` / `SEC-BOOT-002` | `TAMP` pin zeroes `BKP0R..3R`; hardware `RNG` generates 10,000 words with `CECS==SECS==0`; `bootloader_verify_anti_rollback()` rejects downgraded `security_version` while permitting equal/higher signed epochs | GDB + Host Unit Test |
 | `REL-CRASH-001` / `PROF-REL-001` | Naked `HardFault_Handler` persists faulting `PSP` `PC`/`CFSR` in `.noinit` matching `addr2line`; 6-row FMEA + `SYSCFG->CFGR2` lockup break verified | GDB + Oscilloscope |

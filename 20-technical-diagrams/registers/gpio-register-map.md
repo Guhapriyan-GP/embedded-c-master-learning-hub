@@ -3,8 +3,8 @@
 **Target MCU:** STM32G474RET6 (LQFP64 — **52 bonded GPIOs**: `PA0–15`, `PB0–15`, `PC0–15`, `PD2`, `PF0–1`, `PG10-NRST`; **`GPIOE` has 0 pins on LQFP64**)  
 **Base Addresses (AHB2):** `GPIOA` `0x48000000` | `GPIOB` `0x48000400` | `GPIOC` `0x48000800` | `GPIOD` `0x48000C00` | `GPIOF` `0x48001400` | `GPIOG` `0x48001800`  
 **Reference Manual:** RM0440, Chapter 9 (*General-purpose I/Os (GPIO)*) | DS12288 Table 13 (*Alternate function mapping*) & Table 15 (*I/O current limits*)  
-**Concept IDs:** `PERIPH-GPIO-001`, `HWSW-PCB-001`, `HWSW-PCB-002`  
-**Verification Status:** Every register offset and reset value verified directly against `stm32g474xx.h` and RM0440 §9.4; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Concept IDs:** `PERIPH-GPIO-001`, `GPIO-FMP-001`, `HWSW-PCB-001`, `HWSW-PCB-002`  
+**Verification Status:** Every register offset and reset value verified directly against `stm32g474xx.h` and RM0440 §9.4; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 

@@ -15,6 +15,7 @@
 | `PERIPH-GPIO-004` | Mechanical Switch Debouncing (Hardware RC + Schmitt Trigger vs Non-Blocking 4-State Software FSM) | `[General C]` / `[STM32G474RE Exact]` | Level 1 (Essential) |
 | `PERIPH-GPIO-005` | Hardware Configuration Lock (`LCKR` 4-Step Sequence) & Board Hardware Traps (`PB8-BOOT0`, `PA9/PA10` UCPD Dead-Battery, `PA5/LD2`) | `[STM32G474RE Exact]` | Level 2 (Production) |
 | `HWSW-PCB-001` | NUCLEO-G474RE (MB1367 / UM2505) Physical Pin Polarity (`B1 PC13` Active-HIGH!) & Electrical Current Limits | `[STM32G474RE Exact]` | Level 1 (Essential) |
+| `GPIO-FMP-001` | `SYSCFG->CFGR1` I2C Fast-Mode Plus (1 MHz, 20 mA Sink) High-Drive Activation (`I2C_PB6..9_FMP` & `I2C1..4_FMP`) on `FT_f` Pads | `[STM32G474RE Exact]` | Level 2 (Production) |
 
 ---
 
@@ -59,6 +60,27 @@ Unlike legacy STM32F4 microcontrollers (where GPIO pins reset to `00b` Digital I
    - **Open-Drain (`1`):** P-MOS permanently disabled; N-MOS pulls LOW (`0`), writing `1` releases the pin to **Hi-Z**, relying on an external pull-up resistor (mandatory for I2C wired-AND arbitration and level shifting).
 3. **Slew Rate (`OSPEEDR`):** `00` Low ($\le 5\text{ MHz}$), `01` Medium ($\le 25\text{ MHz}$), `10` High ($\le 50\text{ MHz}$), `11` Very High ($\le 100+\text{ MHz}$). Choose the **slowest speed that meets your signal rise-time requirement** — excessively fast edges on long jumper wires induce ground bounce, overshoot, and radiated EMI.
 4. **Electrical Limits (DS12288 Table 15):** Max $\pm 20\text{ mA}$ per standard I/O pin (recommend $\le 8\text{ mA}$ for clean $V_{\text{OL}}/V_{\text{OH}}$), max $160\text{ mA}$ combined $I_{\text{VDD}}/I_{\text{VSS}}$ across all I/Os.
+
+#### 3.3.1 `SYSCFG->CFGR1` I2C Fast-Mode Plus (Fm+, 1 MHz / 20 mA) High-Current Drive (`GPIO-FMP-001`) `[STM32G474RE Exact]`
+
+Standard I2C (`100 kHz`) and Fast Mode (`400 kHz`) sink $I_{OL} = 3\text{ mA}$ at $V_{OL} \le 0.4\text{ V}$. At **1 MHz Fast-Mode Plus (Fm+)**, **NXP UM10204** tightens maximum rise time to **$t_{r,\max} = 120\text{ ns}$** (for $C_b$ up to $550\text{ pF}$), demanding strong pull-up resistors ($R_p \approx 330\text{--}680\ \Omega$) and a **$20\text{ mA}$ open-drain sink driver** (`V_OL <= 0.4 V` at `I_OL = 20 mA`, **DS12288 Table 54**).
+
+On STM32G474RE, only **`FT_f`** pads physically implement the 20 mA Fm+ pull-down transistor, and it is **disabled at reset** until software unlocks **`SYSCFG`** (`RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN; (void)RCC->APB2ENR;`) and sets the corresponding control bit in **`SYSCFG->CFGR1`** (offset `0x004`, base `0x40010000`, verified in `stm32g474xx.h`):
+
+| `SYSCFG->CFGR1` Bit | CMSIS Macro (`stm32g474xx.h`) | Scope & Hardware Behavior (RM0440 §10.2.2) |
+|---|---|---|
+| **Bit 16** | `SYSCFG_CFGR1_I2C_PB6_FMP` | Forces 20 mA Fm+ drive on **`PB6`** (even in GPIO output mode, not only I2C AF!) |
+| **Bit 17** | `SYSCFG_CFGR1_I2C_PB7_FMP` | Forces 20 mA Fm+ drive on **`PB7`** (I2C1_SDA AF4 or high-sink GPIO!) |
+| **Bit 18** | `SYSCFG_CFGR1_I2C_PB8_FMP` | Forces 20 mA Fm+ drive on **`PB8`** *(beware MB1367 `R36` 10 kΩ `BOOT0` pull-down!)* |
+| **Bit 19** | `SYSCFG_CFGR1_I2C_PB9_FMP` | Forces 20 mA Fm+ drive on **`PB9`** |
+| **Bit 20** | `SYSCFG_CFGR1_I2C1_FMP` | Enables 20 mA Fm+ drive on whichever `FT_f` pins are AF-mapped to **`I2C1`** (e.g., `PA15`/`PB7`) |
+| **Bit 21** | `SYSCFG_CFGR1_I2C2_FMP` | Enables 20 mA Fm+ drive on `FT_f` pins AF-mapped to **`I2C2`** |
+| **Bit 22** | `SYSCFG_CFGR1_I2C3_FMP` | Enables 20 mA Fm+ drive on `FT_f` pins AF-mapped to **`I2C3`** |
+| **Bit 23** | `SYSCFG_CFGR1_I2C4_FMP` | Enables 20 mA Fm+ drive on `FT_f` pins AF-mapped to **`I2C4`** |
+
+> **Fm+ Pull-Up Calculation & Current-Budget Warning:** For $V_{DD} = 3.3\text{ V}$, $V_{OL(\max)} = 0.4\text{ V}$, $I_{OL} = 20\text{ mA}$, $C_b = 150\text{ pF}$, $t_{r,\max} = 120\text{ ns}$:
+> $$R_{p,\min} = \frac{3.3 - 0.4}{0.020} = \mathbf{145\ \Omega}, \qquad R_{p,\max} = \frac{120\times 10^{-9}}{0.8473 \times 150\times 10^{-12}} = \mathbf{944\ \Omega} \implies \text{Choose } \mathbf{470\ \Omega\text{ or }680\ \Omega}$$
+> Always confirm the pin's DS12288 Table 12 type is **`FT_f`** (standard `FT`/`TT_a` pins cannot drive 20 mA at $V_{OL} \le 0.4\text{ V}$) and account for 20 mA sinks against the package $\sum I_{VSS} \le 160\text{ mA}$ budget!
 
 ### 3.4 Atomic Pin Manipulation (`BSRR` & `BRR`) vs `ODR` Race Conditions
 Executing `GPIOA->ODR ^= (1U << 5)` compiles into a **3-instruction non-atomic Read-Modify-Write (RMW)** sequence (`LDR` $\to$ `EOR` $\to$ `STR`). If an ISR preempts between `LDR` and `STR` and modifies `PA6`, the main loop's `STR` overwrites and destroys the ISR's update!
@@ -267,6 +289,51 @@ bool GPIO_LockPins(GPIO_TypeDef *port, uint16_t pin_mask)
 }
 ```
 
+### 8.4 I2C1 1 MHz Fast-Mode Plus (20 mA Drive via `SYSCFG->CFGR1`, `GPIO-FMP-001`)
+
+> **Verification Status:** **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror -Wconversion -Wdouble-promotion -Wvla`)** against `stm32g474xx.h` (Not Tested on Physical Hardware). Uses `PA15` (`I2C1_SCL`, AF4) and `PB7` (`I2C1_SDA`, AF4) — both `FT_f` pads — avoiding the NUCLEO-G474RE `PB8-BOOT0` 10 kΩ pull-down!
+
+```c
+#include "stm32g474xx.h"
+
+void I2C1_FastModePlus_Init_PA15_PB7(void)
+{
+    /* 1. Enable SYSCFG (APB2), GPIOA/GPIOB (AHB2), and I2C1 (APB1) + sync readbacks */
+    RCC->APB2ENR  |= RCC_APB2ENR_SYSCFGEN;
+    (void)RCC->APB2ENR;
+    RCC->AHB2ENR  |= RCC_AHB2ENR_GPIOAEN | RCC_AHB2ENR_GPIOBEN;
+    (void)RCC->AHB2ENR;
+    RCC->APB1ENR1 |= RCC_APB1ENR1_I2C1EN;
+    (void)RCC->APB1ENR1;
+
+    /* 2. Enable 20 mA Fast-Mode Plus drive on I2C1 and PB7 via SYSCFG->CFGR1 */
+    SYSCFG->CFGR1 |= SYSCFG_CFGR1_I2C1_FMP | SYSCFG_CFGR1_I2C_PB7_FMP;
+
+    /* 3. PA15 (I2C1_SCL, AF4) & PB7 (I2C1_SDA, AF4): Open-Drain, High Speed, No internal pull */
+    GPIOA->OTYPER  |=  GPIO_OTYPER_OT15;
+    GPIOA->OSPEEDR  = (GPIOA->OSPEEDR & ~GPIO_OSPEEDR_OSPEED15_Msk) | (2UL << GPIO_OSPEEDR_OSPEED15_Pos);
+    GPIOA->PUPDR   &= ~GPIO_PUPDR_PUPD15_Msk;
+    GPIOA->AFR[1]   = (GPIOA->AFR[1]  & ~(0xFUL << ((15U - 8U) * 4U))) | (4UL << ((15U - 8U) * 4U));
+    GPIOA->MODER    = (GPIOA->MODER   & ~GPIO_MODER_MODE15_Msk) | (2UL << GPIO_MODER_MODE15_Pos);
+
+    GPIOB->OTYPER  |=  GPIO_OTYPER_OT7;
+    GPIOB->OSPEEDR  = (GPIOB->OSPEEDR & ~GPIO_OSPEEDR_OSPEED7_Msk) | (2UL << GPIO_OSPEEDR_OSPEED7_Pos);
+    GPIOB->PUPDR   &= ~GPIO_PUPDR_PUPD7_Msk;
+    GPIOB->AFR[0]   = (GPIOB->AFR[0]  & ~(0xFUL << (7U * 4U))) | (4UL << (7U * 4U));
+    GPIOB->MODER    = (GPIOB->MODER   & ~GPIO_MODER_MODE7_Msk) | (2UL << GPIO_MODER_MODE7_Pos);
+
+    /* 4. Clock I2C1 from HSI16 (16 MHz) for 1 MHz Fm+ (PRESC=0, SCLL=9, SCLH=3) */
+    RCC->CCIPR = (RCC->CCIPR & ~RCC_CCIPR_I2C1SEL_Msk) | RCC_CCIPR_I2C1SEL_1;
+    I2C1->CR1     = 0UL;
+    I2C1->TIMINGR = (0UL << I2C_TIMINGR_PRESC_Pos)
+                  | (2UL << I2C_TIMINGR_SCLDEL_Pos)
+                  | (0UL << I2C_TIMINGR_SDADEL_Pos)
+                  | (3UL << I2C_TIMINGR_SCLH_Pos)
+                  | (9UL << I2C_TIMINGR_SCLL_Pos);
+    I2C1->CR1     = I2C_CR1_PE;
+}
+```
+
 ---
 
 ## 9. Practical Laboratory Experiments & Debugging Checkpoints
@@ -313,6 +380,8 @@ bool GPIO_LockPins(GPIO_TypeDef *port, uint16_t pin_mask)
    *Answer Check:* **No.** `GPIOE` exists in `stm32g474xx.h` for larger packages (LQFP100+), but STM32G474RET6 (LQFP64) has **0 bonded Port E pins**.
 4. **Q:** If bit 5 (`BS5`) and bit 21 (`BR5`) of `GPIOA->BSRR` are both written `1` simultaneously, what is the resulting state of `PA5`?  
    *Answer Check:* **HIGH (`1`)** — Set (`BSy`) has hardware priority over Reset (`BRy`) per RM0440 §9.4.7.
+5. **Q:** (`GPIO-FMP-001`) Why does enabling `SYSCFG->CFGR1 |= SYSCFG_CFGR1_I2C1_FMP` silently fail if `RCC->APB2ENR.SYSCFGEN` was not set first, and what is the difference between `I2C_PB7_FMP` (bit 17) and `I2C1_FMP` (bit 20)?  
+   *Answer Check:* Without `SYSCFGEN` + readback, APB2 writes to `SYSCFG` are ignored. `I2C_PB7_FMP` forces 20 mA drive on `PB7` regardless of mode (even GPIO output), whereas `I2C1_FMP` enables 20 mA drive on whichever `FT_f` pins are AF-mapped to `I2C1`.
 
 ---
 
@@ -325,3 +394,4 @@ bool GPIO_LockPins(GPIO_TypeDef *port, uint16_t pin_mask)
 | `PERIPH-GPIO-003` | Eliminate 100% of multi-context pin glitches over 10M cycles using `BSRR`/`BRR` | Logic analyzer |
 | `PERIPH-GPIO-004` | Non-blocking 4-state debounce FSM produces exactly 1 event per press on Active-HIGH `PC13` with 0 blocking delays | Debugger / Logic analyzer |
 | `PERIPH-GPIO-005` | Execute 4-step `LCKR` sequence; verify `LCKR[16]==1` and subsequent `MODER` writes are ignored until reset | GDB |
+| `GPIO-FMP-001` | Enable `SYSCFGEN` + `SYSCFG->CFGR1` (`I2C1_FMP`/`I2C_PB7_FMP`); verify `CFGR1` bits `[23:16]` in GDB and measure $V_{OL} \le 0.4\text{ V}$ & $t_r \le 120\text{ ns}$ at 1 MHz Fm+ with $470\text{--}680\ \Omega$ pull-ups | GDB + Oscilloscope |

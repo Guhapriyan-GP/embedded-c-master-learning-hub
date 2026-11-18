@@ -19,6 +19,7 @@
 | `PERIPH-TIM-003` / `PERIPH-PWM-002` / `PERIPH-BDTR-001` / `002` | Advanced Timers (`TIM1/8/20`): Complementary `CHx`/`CHxN`, `RCR`, **`BDTR.DTG` 4-Range Dead-Time**, `MOE`, & Hardware **`BKIN`/`BKIN2` Safety Break** | `[STM32G474RE Exact]` | Level 3 (Specialist) |
 | `PERIPH-LPTIM-001` | Low-Power Asynchronous Timer (`LPTIM1`) — Autonomous Stop 0 / Stop 1 Wakeup & Tickless Timebase | `[STM32G474RE Exact]` | Level 3 (Specialist) |
 | `PERIPH-TIM-004` (`PERIPH-HRTIM-001`) | **High-Resolution Timer (`HRTIM1`)** — **184 ps DLL** (`5.44 GHz` equiv.), Master + Timers A–F, 12 Outputs, Faults & Dead-Time | `[STM32G474RE Exact]` | Level 3 (Specialist) |
+| `TIM-DMA-001` | **Timer DMA Burst Mode** (`TIMx->DCR` @ `0x3DC` `DBA`/`DBL` & `TIMx->DMAR` @ `0x3E0`) — Single-Channel Atomic Multi-Register Updates (`CCR1..CCR3` SVPWM / Arbitrary Waveform) | `[STM32G474RE Exact]` | Level 3 (Specialist) |
 
 ---
 
@@ -71,6 +72,20 @@
 - **Master/Slave Chaining:** A master timer outputs `TRGO` (`CR2.MMS = 010b` Update, `011b` Compare Pulse, etc.) over internal silicon interconnects (`ITR0..ITR11` per RM0440 Table 241) to clock/reset/gate a slave timer (e.g., cascading two 16-bit timers into a 32-bit counter) or trigger `ADC1–5`/`DAC1–4` with sub-nanosecond hardware determinism.
 - **Complementary Outputs & Dead-Time (`TIM1/8/20`):** Drives high-side (`CHx`) and low-side (`CHxN`) power MOSFETs. Hardware inserts programmable dead-time (`BDTR.DTG[7:0]` + STM32G4 asymmetric `DTR2.DTGF`) so both FETs are NEVER simultaneously ON (preventing destructive shoot-through!).
 - **Hardware Break (`BKIN` / `BKIN2`):** Asynchronous hardware fault path wired from external pin OR internal **`COMP1–7`** (`TIM1->AF1.BKCMP1E=1`) OR `SYSCFG->CFGR2` (CPU lockup/PVD/SRAM parity). Asserting Break clears `BDTR.MOE = 0` in **< 50 ns** — even if the CPU is frozen in a HardFault or halted in GDB!
+
+#### 3.4.1 Timer DMA Burst Mode (`TIMx->DCR @ 0x3DC` & `TIMx->DMAR @ 0x3E0`) (`TIM-DMA-001`) `[STM32G474RE Exact]`
+
+Updating multiple timer registers synchronously every PWM period (e.g., `CCR1`, `CCR2`, `CCR3` for 3-phase Space Vector PWM or RGB lighting, or `ARR` + `CCR1` for variable-frequency resonant converters) without DMA Burst would consume **3 separate DMA channels** and risk phase skew between channels! STM32G4 timers solve this with **DMA Burst Mode** using just **ONE DMA channel**:
+
+1. **CRITICAL STM32G4 Offset Trap (vs STM32F4):** Because STM32G4 added `CCR5/6`, `CCMR3`, `DTR2`, `ECR`, `TISEL`, and `AF1/2`, ST relocated **`TIMx->DCR` to offset `0x3DC`** and **`TIMx->DMAR` to offset `0x3E0`** (verified via `offsetof(TIM_TypeDef, DCR)` in `stm32g474xx.h` — NOT `0x48`/`0x4C` as on STM32F4!).
+2. **`TIMx->DCR` (`0x3DC`) Configuration:**
+   - **`DBA[4:0]` (`TIM_DCR_DBA_Pos = 0`):** Base register word offset relative to `TIMx->CR1` (`0x00`):
+     $$\text{DBA} = \frac{\text{offsetof}(\text{TIM\_TypeDef},\ \text{StartReg})}{4}$$
+     For `CCR1` (`0x34`): $\text{DBA} = \texttt{0x34} / 4 = \mathbf{13}$ (`0x0D`).
+   - **`DBL[12:8]` (`TIM_DCR_DBL_Pos = 8`):** Burst transfer length **minus 1** ($\text{DBL} = N_{\text{regs}} - 1$, supporting $1\dots 18$ consecutive 32-bit registers per trigger event). For `CCR1..CCR3` ($N = 3$): $\text{DBL} = 3 - 1 = \mathbf{2}$.
+3. **`TIMx->DMAR` (`0x3E0`) Hardware Address Redirector:**
+   - Configure `DMA1_Channel1` with **fixed peripheral address** `CPAR = &TIM1->DMAR` (`PINC = 0`), incrementing memory pointer `CMAR = lut` (`MINC = 1`), `DIR = 1` (Mem $\to$ Periph), `PSIZE = MSIZE = 32-bit`, and `DMAMUX1` Request ID **`46` (`0x2E` = `TIM1_UP`, RM0440 Table 91)**.
+   - On **each** `TIM1` Update Event (`DIER.UDE = 1`), hardware fires **`DBL + 1` (= 3) consecutive DMA transfers** targeting `TIM1->DMAR`. Internally, the timer burst controller redirects write #0 $\to$ `TIM1 + 4*(DBA+0)` (`CCR1`), write #1 $\to$ `TIM1 + 4*(DBA+1)` (`CCR2`), and write #2 $\to$ `TIM1 + 4*(DBA+2)` (`CCR3`). Because `OC1PE`/`OC2PE`/`OC3PE` preload is enabled, all three channels latch into their shadow registers simultaneously on the next UEV with **0 CPU interrupts and 0 phase skew**!
 
 ### 3.5 STM32G474RE Flagship: High-Resolution Timer (`HRTIM1`, 184 ps) `[STM32G474RE Exact]`
 `HRTIM1` is the signature differentiator of the STM32G474 vs G431/G473:
@@ -258,6 +273,67 @@ void HRTIM1_TimerA_200kHz_Init(void)
 }
 ```
 
+### 8.4 `TIM1` DMA Burst Mode (`DCR @ 0x3DC` & `DMAR @ 0x3E0`) Updating `CCR1..CCR3` Atomically (`TIM-DMA-001`)
+
+> **Verification Status:** **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror -Wconversion -Wdouble-promotion -Wvla`)** against `stm32g474xx.h` (Not Tested on Physical Hardware). Uses `DMAMUX1` Request ID `46` (`TIM1_UP`, RM0440 Table 91) and ES0430-safe individual DMA flag clears.
+
+```c
+#include "stm32g474xx.h"
+#include <stddef.h>
+#include <stdint.h>
+
+#define PWM_STEPS 8U
+static uint32_t g_pwm_burst_lut[PWM_STEPS][3] = {
+    { 500U, 1000U, 1500U }, { 600U, 1100U, 1400U },
+    { 700U, 1200U, 1300U }, { 800U, 1300U, 1200U },
+    { 900U, 1400U, 1100U }, { 800U, 1300U, 1200U },
+    { 700U, 1200U, 1300U }, { 600U, 1100U, 1400U }
+};
+
+void TIM1_DMA_Burst_CCR1_to_CCR3_Init(void)
+{
+    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
+    (void)RCC->APB2ENR;
+    RCC->AHB1ENR |= RCC_AHB1ENR_DMA1EN | RCC_AHB1ENR_DMAMUX1EN;
+    (void)RCC->AHB1ENR;
+
+    /* 1. TIM1 50 kHz PWM (170 MHz / 3400) with OC1PE..OC3PE shadow preloading */
+    TIM1->CR1   = 0UL;
+    TIM1->PSC   = 0UL;
+    TIM1->ARR   = 3399UL;
+    TIM1->CCMR1 = (6UL << TIM_CCMR1_OC1M_Pos) | TIM_CCMR1_OC1PE
+                | (6UL << TIM_CCMR1_OC2M_Pos) | TIM_CCMR1_OC2PE;
+    TIM1->CCMR2 = (6UL << TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE;
+    TIM1->CCER  = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
+
+    /* 2. TIM1->DCR (@ 0x3DC): DBA = offsetof(CCR1)/4 = 13, DBL = 3 - 1 = 2 */
+    const uint32_t dba = (uint32_t)(offsetof(TIM_TypeDef, CCR1) / sizeof(uint32_t));
+    const uint32_t dbl = 3UL - 1UL;
+    TIM1->DCR = (dba << TIM_DCR_DBA_Pos) | (dbl << TIM_DCR_DBL_Pos);
+
+    /* 3. Route DMAMUX1_Channel0 -> TIM1_UP (ID = 46) into DMA1_Channel1 -> TIM1->DMAR (@ 0x3E0) */
+    DMA1_Channel1->CCR &= ~DMA_CCR_EN;
+    while ((DMA1_Channel1->CCR & DMA_CCR_EN) != 0UL) { }
+    DMA1->IFCR = DMA_IFCR_CTCIF1 | DMA_IFCR_CHTIF1 | DMA_IFCR_CTEIF1; /* ES0430: never CGIF1 */
+
+    DMAMUX1_Channel0->CCR = (46UL << DMAMUX_CxCR_DMAREQ_ID_Pos);
+    DMA1_Channel1->CPAR   = (uint32_t)(uintptr_t)&TIM1->DMAR;
+    DMA1_Channel1->CMAR   = (uint32_t)(uintptr_t)&g_pwm_burst_lut[0][0];
+    DMA1_Channel1->CNDTR  = PWM_STEPS * 3UL;
+    DMA1_Channel1->CCR    = DMA_CCR_DIR | DMA_CCR_CIRC | DMA_CCR_MINC
+                          | (2UL << DMA_CCR_PSIZE_Pos) | (2UL << DMA_CCR_MSIZE_Pos)
+                          | (2UL << DMA_CCR_PL_Pos);
+    DMA1_Channel1->CCR   |= DMA_CCR_EN;
+
+    /* 4. Preload shadows, enable Update DMA request (UDE), MOE, and start TIM1 */
+    TIM1->EGR   = TIM_EGR_UG;
+    TIM1->SR    = ~TIM_SR_UIF;
+    TIM1->DIER  = TIM_DIER_UDE;
+    TIM1->BDTR |= TIM_BDTR_MOE;
+    TIM1->CR1   = TIM_CR1_ARPE | TIM_CR1_CEN;
+}
+```
+
 ---
 
 ## 9. Practical Laboratory Experiments & Debugging Checkpoints
@@ -301,6 +377,8 @@ void HRTIM1_TimerA_200kHz_Init(void)
    *Answer Check:* $1000\text{ ns} > 747\text{ ns}$ (Range 0 max), so use Range 1 (`10x`): $64 + x = \frac{1000}{2 \times 5.8824} = 85 \implies x = 21 \implies \text{DTG} = 0\text{x80} + 21 = \mathbf{0\text{x95}}$ ($t_{\text{DT}} = 1.000\ \mu\text{s}$).
 4. **Q:** Why does `HRTIM1` achieve 184 ps resolution from a 170 MHz input clock?  
    *Answer Check:* An internal Delay-Locked Loop (DLL) generates 32 phase-locked delay taps per 170 MHz clock cycle ($170\text{ MHz} \times 32 = 5.44\text{ GHz} \implies 183.8\text{ ps}$).
+5. **Q:** (`TIM-DMA-001`) What exact `DBA` and `DBL` values in `TIM1->DCR` (`0x3DC`) update `ARR`, `RCR`, and `CCR1` (3 consecutive registers starting at `ARR` offset `0x2C`) on every Update Event, and why must `DMA1_Channel1->CCR.PINC` remain `0`?  
+   *Answer Check:* `DBA = 0x2C / 4 = 11` (`0x0B`), `DBL = 3 - 1 = 2`. `PINC` MUST remain `0` because DMA always writes to the single virtual portal `TIM1->DMAR` (`0x3E0`) while the timer's internal burst state machine increments the destination register offset!
 
 ---
 
@@ -313,3 +391,4 @@ void HRTIM1_TimerA_200kHz_Init(void)
 | `PERIPH-IC-002` / `PERIPH-ENC-001` | Measure PWM frequency/duty to $\pm 1$ tick (5.88 ns @ 170 MHz) via `TIM2` PWM Input Mode; X4 encoder tracks CW/CCW across 16-bit rollover | GDB / Logic Analyzer |
 | `PERIPH-BDTR-001` / `002` | `TIM1` complementary PWM with $500\text{ ns} \pm 10\text{ ns}$ dead-time; `COMP1` $\to$ `BKIN` clears `MOE=0` in `< 50 ns` with CPU halted | Dual-Trace Oscilloscope |
 | `PERIPH-TIM-004` (`HRTIM1`) | `HRTIM1_COMMON->ISR.DLLRDY == 1`; 200 kHz PWM on `CHA1` with verified sub-2 ns (`+10` count) duty step | High-BW Oscilloscope + GDB |
+| `TIM-DMA-001` | Configure `TIM1->DCR` (`DBA=13`, `DBL=2`) + `DMAMUX1` ID `46` (`TIM1_UP`) targeting `TIM1->DMAR` (`0x3E0`) to update `CCR1..CCR3` synchronously every PWM cycle with 0 CPU interrupts | GDB + 3-Channel Scope |

@@ -7,7 +7,7 @@
 - `CRS` (Clock Recovery System for crystal-less HSI48 USB): `0x40002000`  
 **IRQ Numbers (`stm32g474xx.h`):** `RTC_TAMP_LSECSS_IRQn=2`, `RTC_WKUP_IRQn=3`, `RTC_Alarm_IRQn=41`, `USB_HP_IRQn=19`, `USB_LP_IRQn=20`, `USBWakeUp_IRQn=42`, `CRS_IRQn=75`  
 **Reference Manual:** RM0440, Ch 8 (*CRS*), Ch 37 (*RTC*), Ch 38 (*TAMP*), Ch 43 (*USB*)  
-**Concept IDs:** `PERIPH-RTC-001`, `PERIPH-USB-001`, `SEC-TAMP-001`, `REL-CRASH-001`  
+**Concept IDs:** `PERIPH-RTC-001`, `PERIPH-USB-001`, `COMM-USB-002`, `CLK-CRS-001`, `SEC-TAMP-001`, `REL-CRASH-001`  
 **Verification Status:** Every base address, struct offset, and IRQ verified directly against `stm32g474xx.h`; C code examples Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
@@ -59,6 +59,10 @@ USB 2.0 FS (12 Mbps) Device-only controller using `PA11` (`USB_DM`) and `PA12` (
 | `CRS_CR` | `0x000` | RW | `SYNCOKIE`, `CEN` b5 (counter enable), **`AUTOTRIMEN` b6** (auto-trim HSI48), `TRIM[14:8]` |
 | `CRS_CFGR` | `0x004` | RW | `RELOAD[15:0]` (`47999` for 48 MHz / 1 kHz SOF), `FELIM[23:16]` (`34`), `SYNCSRC[29:28]` (`10` = USB SOF) |
 | `CRS_ISR` / `CRS_ICR` | `0x008` / `0x00C` | RO / WO | `SYNCOKF` b0 (HSI48 locked to USB SOF!), `SYNCWARNF`, `ERRF`, `ESYNCF` |
+
+> **CRITICAL STM32G4 USB PMA & `EPnR` Rules (`COMM-USB-002`, RM0440 Ch. 43):**
+> 1. **16-Bit Halfword PMA Access Only (`0x40006000`):** Unlike STM32F103's 32-bit-strided PMA, STM32G4 maps 1 KB PMA contiguously as 512 × 16-bit halfwords, **and hardware FORBIDS 8-bit byte writes (`STRB`)!** Calling `memcpy()` or byte-writing corrupts adjacent bytes — always use `volatile uint16_t *` halfword loops!
+> 2. **`USB_EPnR` Mixed Semantics (`rw` / `rc_w0` / `t`):** Write `1` to `CTR_RX`/`CTR_TX` to leave them untouched, and XOR ONLY target bits in toggle fields (`STAT_TX`, `STAT_RX`, `DTOG_TX`, `DTOG_RX`). In Double-Buffered Bulk mode (`EP_TYPE = 00b`, `EP_KIND = 1`), `DTOG_RX` acts as `SW_BUF` for Bulk IN (`DTOG_TX` for Bulk OUT) enabling zero-NAK ping-pong streaming!
 
 ---
 

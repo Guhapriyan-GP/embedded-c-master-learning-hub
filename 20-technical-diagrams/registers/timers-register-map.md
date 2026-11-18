@@ -4,8 +4,8 @@
 **APB1 Timers:** `TIM2` (`0x40000000`, 32-bit), `TIM3` (`0x40000400`, 16-bit), `TIM4` (`0x40000800`, 16-bit), `TIM5` (`0x40000C00`, 32-bit), `TIM6` (`0x40001000`, Basic), `TIM7` (`0x40001400`, Basic), `LPTIM1` (`0x40007C00`, Low-Power)  
 **APB2 Timers:** `TIM1` (`0x40012C00`, Adv), `TIM8` (`0x40013400`, Adv), `TIM15` (`0x40014000`), `TIM16` (`0x40014400`), `TIM17` (`0x40014800`), `TIM20` (`0x40015000`, Adv) *(for `HRTIM1`, see [`hrtim-register-map.md`](hrtim-register-map.md))*  
 **Reference Manual:** RM0440, Chapters 28–32 (Ch 28 Adv TIM1/8/20, Ch 29 GP TIM2–5, Ch 30 GP TIM15–17, Ch 31 Basic TIM6/7, Ch 32 LPTIM1)  
-**Concept IDs:** `PERIPH-TIM-001`, `PERIPH-TIM-002`, `PERIPH-TIM-003`, `PERIPH-LPTIM-001`  
-**Verification Status:** Every register offset and bitfield verified directly against `stm32g474xx.h`; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Concept IDs:** `PERIPH-TIM-001`, `PERIPH-TIM-002`, `PERIPH-TIM-003`, `PERIPH-LPTIM-001`, `TIM-DMA-001`  
+**Verification Status:** Every register offset and bitfield verified directly against `stm32g474xx.h`; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
@@ -34,8 +34,8 @@
 | `TIMx_ECR` | `0x058` | `0x00000000` | RW | STM32G4 extended encoder control (index/direction/transition error) |
 | `TIMx_TISEL` | `0x05C` | `0x00000000` | RW | Timer input multiplexer |
 | `TIMx_AF1/AF2` | `0x060/0x064` | `0x00000001` | RW | Alternate function Break routing (`BKCMP1E..7E`, `BKINE`, polarity) |
-| `TIMx_DCR` | `0x3DC` | `0x00000000` | RW | DMA burst control register (note STM32G4 offset `0x3DC`, shifted from STM32F4's `0x48`!) |
-| `TIMx_DMAR` | `0x3E0` | `0x00000000` | RW | DMA address for full burst transfer |
+| `TIMx_DCR` | `0x3DC` | `0x00000000` | RW | DMA burst control (`DBA[4:0]` = `offsetof(reg)/4`, `DBL[12:8]` = `count - 1`; STM32G4 offset **`0x3DC`**, shifted from STM32F4's `0x48`!) |
+| `TIMx_DMAR` | `0x3E0` | `0x00000000` | RW | DMA burst transfer virtual portal (`CPAR = &TIMx->DMAR`, `PINC = 0`; routes `DBL + 1` words sequentially from `DBA`) |
 
 ---
 

@@ -4,8 +4,8 @@
 **STM32G474RE Silicon Instantiation:** **102 external IRQs** (`IRQ 0..101`, IRQ 85 reserved) and **4 priority bits** (`__NVIC_PRIO_BITS = 4U` → 16 levels) *(Generic Cortex-M4 supports up to 240 IRQs and 3–8 priority bits)*  
 **Base Addresses (PPB):** `SCS` `0xE000E000` | `SysTick` `0xE000E010` | `NVIC` `0xE000E100` | `SCB` `0xE000ED00` | `MPU` `0xE000ED90` | `CoreDebug` `0xE000EDF0` | `FPU` `0xE000EF30` | `DWT` `0xE0001000`  
 **Reference Manuals:** ARM DDI 0403E.e (*ARMv7-M Architecture RM*), ST PM0214, `core_cm4.h`, `mpu_armv7.h`  
-**Concept IDs:** `ARM-NVIC-001`, `ARM-SYST-001`, `ARM-FLT-001`, `ARM-MPU-001`, `ARM-FPU-001`, `ARM-DBG-001`, `PROF-WCET-001`  
-**Verification Status:** Every register offset verified directly against `core_cm4.h`; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Concept IDs:** `ARM-NVIC-001`, `ARM-SYST-001`, `ARM-FLT-001`, `ARM-MPU-001`, `ARM-FPU-001`, `ARM-DBG-001`, `TOOL-DBG-004`, `PROF-WCET-001`  
+**Verification Status:** Every register offset verified directly against `core_cm4.h`; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
@@ -76,6 +76,8 @@
 | `DWT->CTRL` | `0xE0001000` | RW | Set **`CYCCNTENA` (bit 0)** to start free-running 32-bit CPU cycle counter |
 | **`DWT->CYCCNT`** | `0xE0001004` | RW | 32-bit exact CPU clock cycle counter (5.882 ns/tick @ 170 MHz; wraps every 25.26 s) |
 | `DWT->COMP0..3` | `0xE0001020..` | RW | 4 hardware data watchpoint comparators (used by GDB `watch`) |
+| `TPI->ACPR` / `SPPR` (`TPIU`) | `0xE0040010` / `0xF0` | RW | SWO async baud prescaler (`f_SYSCLK/f_SWO - 1`: `84` @ 170 MHz, `79` @ 160 MHz for 2 MHz NRZ) & protocol (`SPPR=2` NRZ, `1` Manchester) |
+| `ITM->PORT[0]` / `TER` / `TCR` | `0xE0000000` / `0xE00` / `0xE80` | RW | 32 non-blocking SWO stimulus ports (unlock `ITM->LAR = 0xC5ACCE55UL`, route `PB3` AF0 + `DBGMCU->CR.TRACE_IOEN`) |
 
 ---
 

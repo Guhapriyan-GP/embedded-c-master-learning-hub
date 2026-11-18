@@ -1,7 +1,7 @@
 # Stage 15: Real-Time Operating Systems (FreeRTOS on ARM Cortex-M4F) & Concurrency
 
 > **Directory:** `16-rtos/` | **Target Platform:** STM32G474RET6 (ARM Cortex-M4F `ARM_CM4F` Port, `__NVIC_PRIO_BITS = 4`, 128 KB SRAM)  
-> **Code Verification Notice:** All bare-metal / FreeRTOS C snippets in this module are **Statically Reviewed against `stm32g474xx.h`, `core_cm4.h`, and FreeRTOS ARM_CM4F Port Specifications (Not Tested on Physical Hardware)**.
+> **Code Verification Notice:** The companion standalone FreeRTOS `V11.1.0` firmware project in [`23-code-library/freertos/`](../23-code-library/freertos/README.md) is **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, 0 errors / 0 warnings on user code)** and **Ready for Physical NUCLEO-G474RE Onboard Hardware Test** (see [`AUDIT/FREERTOS_VERIFICATION_REPORT.md`](../AUDIT/FREERTOS_VERIFICATION_REPORT.md)). Inline illustrative snippets in this theory guide are **Statically Reviewed against `stm32g474xx.h`, `core_cm4.h`, and FreeRTOS `V11.1.0` `ARM_CM4F` Port Specifications**.
 
 ---
 
@@ -224,7 +224,8 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 
 ## 9. Practical Laboratory Experiments & Debugging Checkpoints
 
-- **Lab 15:** [`lab-15-freertos-multitask-producer-consumer`](../18-practical-laboratory/lab-15-freertos-multitask-producer-consumer/README.md) — Producer-consumer queue with proper $\ge 512$-word telemetry stack, `NVIC_SetPriorityGrouping(0)`, and `vTaskDelayUntil`.
+- **Runnable FreeRTOS V11.1.0 Firmware Project (Compile-Verified):** [`23-code-library/freertos/`](../23-code-library/freertos/README.md) — Official version-pinned **FreeRTOS-Kernel `V11.1.0`** (`GCC/ARM_CM4F` + `heap_4.c`) cross-compiled for NUCLEO-G474RE (`make clean all` -> `build/nucleo_g474re_freertos.elf`). Exercises `NVIC_SetPriorityGrouping(0U)`, 4-task preemptive scheduling + static Idle/Timer allocation, Queue IPC, `TIM2_IRQHandler` `vTaskNotifyGiveFromISR()`, Binary/Counting Semaphores, automated Mutex Priority Inheritance (`base_prio=1 -> promoted_prio=5 -> restored_prio=1`), bounded-timeout Deadlock Guard, Stack High-Water Mark monitoring, and Event-Group `IWDG` supervision with zero external wiring. See [`AUDIT/FREERTOS_VERIFICATION_REPORT.md`](../AUDIT/FREERTOS_VERIFICATION_REPORT.md).
+- **Lab 15:** [`lab-15-freertos-multitask-producer-consumer`](../18-practical-laboratory/lab-15-freertos-multitask-producer-consumer/README.md) — Producer-consumer queue with proper $\ge 512$-word telemetry stack, `NVIC_SetPriorityGrouping(0)`, `vTaskDelayUntil`, and step-by-step build/flash guide referencing `23-code-library/freertos/`.
 - **GDB Verification Checkpoint (Cortex-M4F Context Switch):**
   ```text
   (gdb) p/x $control      # Inside task: verify bit 1 (SPSEL) == 1 (using PSP!)

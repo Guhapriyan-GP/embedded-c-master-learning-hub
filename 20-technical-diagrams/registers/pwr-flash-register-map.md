@@ -4,8 +4,8 @@
 **PWR Base Address:** `0x40007000` (`APB1PERIPH_BASE + 0x7000UL`)  
 **FLASH Interface Base:** `0x40022000` (`AHB1PERIPH_BASE + 0x2000UL`)  
 **Reference Manual:** RM0440, Chapter 3 (*Embedded Flash memory*) & Chapter 6 (*Power control (PWR)*)  
-**Concept IDs:** `STM32-PWR-001`, `STM32-PWR-002`, `STM32-PWR-003`, `STM32-FLASH-001`, `STM32-FLASH-002`  
-**Verification Status:** Every register offset and bit position verified directly against `stm32g474xx.h`; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Concept IDs:** `STM32-PWR-001`, `STM32-PWR-002`, `STM32-PWR-003`, `STM32-FLASH-001`, `STM32-FLASH-002`, `MEM-OB-001`  
+**Verification Status:** Every register offset and bit position verified directly against `stm32g474xx.h`; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
@@ -67,11 +67,16 @@ STM32G474RE contains **512 KB Dual-Bank Flash** (`DBANK=1`: 2×256 KB, **2 KB pa
 | `0001` (1 WS) | $\le 68\ \text{MHz}$ | $\le 60\ \text{MHz}$ | $\le 24\ \text{MHz}$ |
 | `0010` (2 WS) | $\le 102\ \text{MHz}$ | $\le 90\ \text{MHz}$ | $\le 26\ \text{MHz}$ |
 | `0011` (3 WS) | $\le 136\ \text{MHz}$ | $\le 120\ \text{MHz}$ | — |
-| **`0100` (4 WS)** | **$\le 170\ \text{MHz}$ (Mandatory for 170 MHz)** | $\le 150\ \text{MHz}$ | — |
+| **`0100` (4 WS)** | **$\le 170\text{ MHz}$ (Mandatory for BOTH 160 MHz & 170 MHz!)** | $\le 150\text{ MHz}$ | — |
 
-#### `FLASH_ACR` ART Accelerator Bits & `FLASH_ECCR`
+#### `FLASH_ACR` ART Accelerator, `FLASH_ECCR` & Option-Byte `OBL_LAUNCH` Mechanics (`MEM-OB-001`)
 - **`FLASH_ACR`:** `PRFTEN` (bit 8, Prefetch), `ICEN` (bit 9, 1 KB ICache), `DCEN` (bit 10, 256 B DCache), `ICRST` (bit 11, reset ICache while `ICEN=0`), `DCRST` (bit 12, reset DCache while `DCEN=0` — mandatory after Flash write per **ES0430 §2.2.2**).
 - **`FLASH_ECCR`:** `ECCC` (bit 30, 1-bit corrected error, triggers `FLASH_IRQn = 4` if `ECCIE=1`), `ECCD` (bit 31, 2-bit uncorrectable double-error, triggers **NMI**), `ADDR_ECC[18:0]` (offset of faulting 64-bit word), `BK_ECC` (bit 21: `0`=Bank1, `1`=Bank2). Clear `ECCC`/`ECCD` by writing `1` directly.
+- **Option-Byte Commit & Cold-Reset Mechanics (`FLASH_CR` & `FLASH_OPTR`, `MEM-OB-001`):**
+  1. Unlock BOTH `FLASH->KEYR` (`LOCK` b31) AND `FLASH->OPTKEYR` (`OPTLOCK` b30); require `HSI16` ON!
+  2. **`OPTSTRT` (bit 17):** Programs modified `FLASH->OPTR` into Option Flash (`BSY` poll) without reloading active hardware latches.
+  3. **`OBL_LAUNCH` (bit 27):** Immediately triggers an **Option-Byte Loader Cold System Reset** (`RCC->CSR.OBLRSTF` b25) — never returns! Always compare desired vs current `FLASH->OPTR` first (idempotency guard!) to avoid infinite reset loops.
+  4. **`BFB2` (b20) / `DBANK` (b22) Brick Traps:** Validate Bank 2 `MSP` (SRAM), `Reset_Handler` (Thumb), and CRC-32 *before* setting `BFB2=1`; never flip `DBANK` while `BFB2=1`. Recover via `STM32_Programmer_CLI -c port=SWD mode=UR -ob BFB2=0 DBANK=1 nSWBOOT0=1`.
 
 ---
 

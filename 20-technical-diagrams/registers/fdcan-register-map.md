@@ -7,8 +7,8 @@
 **RCC Clock Enable:** `RCC->APB1ENR1 |= RCC_APB1ENR1_FDCANEN` (Bit 25 — single shared enable for FDCAN1–3) | Kernel Clock: `RCC->CCIPR.FDCANSEL[25:24]` (`00`=HSE, `01`=PLLQ, `10`=PCLK1)  
 **IRQ Numbers (`stm32g474xx.h`):** `FDCAN1_IT0=21/IT1=22`, `FDCAN2_IT0=86/IT1=87`, `FDCAN3_IT0=88/IT1=89`  
 **Reference Manual:** RM0440, Chapter 44 (*FDCAN*) | AN5348 (*FDCAN peripheral on STM32*)  
-**Concept IDs:** `PERIPH-FDCAN-001`  
-**Verification Status:** Every base address, struct offset, and IRQ verified directly against `stm32g474xx.h`; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Concept IDs:** `G4-FDCAN-001`, `PERIPH-CAN-001`, `COMM-CAN-002`  
+**Verification Status:** Every base address, struct offset, and IRQ verified directly against `stm32g474xx.h`; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
@@ -23,8 +23,8 @@
 | `NBTP` | `0x01C` | `0x06000A03` | RW (`CCE=1`) | **Nominal (arbitration) bit timing** (`NTSEG2[6:0]`, `NTSEG1[15:8]`, `NBRP[24:16]`, `NSJW[31:25]`) |
 | `TSCC` / `TSCV` | `0x020` / `0x024` | `0x00000000` | RW | Timestamp counter configuration & current 16-bit value |
 | `ECR` | `0x040` | `0x00000000` | RO | Error counter (`TEC[7:0]` transmit error, `REC[14:8]` receive error, `RP` passive) |
-| `PSR` | `0x044` | `0x00000707` | RO | Protocol status (`LEC`, `ACT`, `EP`, `EW`, `BO` bus-off, `DLEC`, `TDCV`) |
-| `TDCR` | `0x048` | `0x00000000` | RW (`CCE=1`) | Transmitter delay compensation (`TDCF[6:0]`, `TDCO[14:8]`) |
+| `PSR` | `0x044` | `0x00000707` | RO | Protocol status (`LEC[2:0]`, `ACT[4:3]`, `EP` b5, `EW` b6, **`BO` b7** bus-off, `DLEC[10:8]`, **`TDCV[22:16]`** measured transceiver delay) |
+| `TDCR` | `0x048` | `0x00000000` | RW (`CCE=1`) | Transmitter delay compensation (`TDCF[6:0]` filter window, **`TDCO[14:8]`** SSP offset = `(DBRP+1)*(DTSEG1+2)`, requires `DBTP.TDC=1` & `DBRP<=1`) |
 | `IR` / `IE` | `0x050` / `0x054` | `0x00000000` | rc_w1 / RW | Interrupt flags & enables (`RF0N`, `RF0F`, `RF0L`, `TC`, `BO`, `EW`, `EP`, `PED`, `PEA`) |
 | `ILS` / `ILE` | `0x058` / `0x05C` | `0x00000000` | RW | Interrupt line select (`0`=IT0, `1`=IT1) & line enables (`EINT0` b0, `EINT1` b1) |
 | `RXGFC` | `0x080` | `0x00000000` | RW (`CCE=1`) | Global filter config (`RRFE`, `RRFS`, `ANFE[3:2]`, `ANFS[5:4]`, `LSS[20:16]` std filter count, `LSE[27:24]` ext count) |
@@ -34,8 +34,8 @@
 | `TXBC` / `TXFQS` | `0x0C0` / `0x0C4` | `0x00000000` | RW / RO | TX buffer config (`TFQM`: `0`=FIFO, `1`=Queue) & TX FIFO/Queue status (`TFFL`, `TFGI`, `TFQPI`, `TFQF`) |
 | `TXBRP` / **`TXBAR`** | `0x0C8` / `0x0CC` | `0x00000000` | RO / RW | TX buffer request pending & **TX buffer add request** (bits `[2:0]` trigger TX!) |
 | `TXBCR` / `TXBTO` | `0x0D0` / `0x0D4` | `0x00000000` | RW / RO | TX cancellation request & transmission occurred flags |
-| `TXEFS` / `TXEFA` | `0x0E4` / `0x0E8` | `0x00000000` | RO / RW | TX event FIFO status & acknowledge |
-| `FDCAN_CONFIG->CKDIV` | `0x40006500` | `0x00000000` | RW | Shared clock divider (`PDIV[3:0]`: `/1`, `/2`, `/4`, ..., `/30`) across FDCAN1–3 |
+| `TXEFS` / `TXEFA` | `0x0E4` / `0x0E8` | `0x00000000` | RO / RW | TX Event FIFO status (`EFFL[2:0]` fill, `EFGI[9:8]` get idx, `EFPI[17:16]` put idx, `EFF` b24, `TEFL` b25) & acknowledge (`EFAI[1:0]`) |
+| `FDCAN_CONFIG->CKDIV` | `+0x000` (`0x40006500`) | `0x00000000` | RW | Shared clock divider (`PDIV[3:0]`: `/1`, `/2`, `/4`, ..., `/30`) across FDCAN1–3 |
 
 ---
 

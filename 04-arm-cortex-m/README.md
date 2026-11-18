@@ -2,7 +2,7 @@
 
 > **Curriculum Track:** Level 1–3 Core Processor Architecture (`ARM-*`, all 26 concepts)  
 > **Architecture Layer Precision:** This module explicitly separates **Generic Cortex-M (ARMv6-M/v7-M)**, **Cortex-M4 Specific (ARMv7E-M)**, and **STM32G474RE Exact Silicon** (`__CM4_REV = 0x0001U` r0p1, `__MPU_PRESENT = 1U`, `__NVIC_PRIO_BITS = 4U`, `__FPU_PRESENT = 1U` verified in `stm32g474xx.h`).  
-> **Code Verification Policy:** All C and assembly snippets are **Statically Reviewed against `core_cm4.h`, `mpu_armv7.h`, `cmsis_gcc.h`, and `stm32g474xx.h` (Not Tested on Physical Hardware)**.
+> **Code Verification Policy:** All C and assembly snippets in Section 8 are **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror -Wconversion -Wdouble-promotion -Wvla`)** against `core_cm4.h`, `mpu_armv7.h`, `cmsis_gcc.h`, and `stm32g474xx.h` (Not Tested on Physical Hardware).
 
 ---
 
@@ -149,11 +149,11 @@ Upon completing Stage 04, you will master every ARM Cortex-M4 / ARMv7E-M archite
 - **FPv4-SP FPU (`ARM-FPU-001`):** Single-precision hardware IEEE-754 (`S0–S31`, `FPSCR`, `VMUL`/`VMLA`/`VFMA`/`VDIV`/`VSQRT`; `double` falls back to software!). Enable in `SystemInit()` via `SCB->CPACR |= (3UL << 20U) | (3UL << 22U); __DSB(); __ISB();` (else `NOCP` UsageFault). FPU cumulative exception IRQ routes to **`FPU_IRQn = 81`** on STM32G474RE.
 - **ARMv7E-M DSP & SIMD (`ARM-DSP-001`):** Single-cycle 32×32 MAC (`MLA`/`MLS`/`SMLAL`), dual 16-bit / quad 8-bit parallel SIMD (`SADD16`, `QADD16`, `SMLAD`, `SEL` with `APSR.GE[3:0]`), and hardware saturating clamps (`SSAT`, `USAT` setting `APSR.Q`). *(Distinct from STM32G474RE's external AHB1 `CORDIC`/`FMAC` peripherals!)*
 - **CoreSight Debug & Trace (`ARM-DBG-001`):**
-  - **SWD (`PA13`/`PA14`)**: 2-wire debug interface.
-  - **FPB (Flash Patch & Breakpoint):** **6 hardware code breakpoints** + 2 literal comparators on Cortex-M4.
-  - **DWT (Data Watchpoint & Trace):** **4 hardware data watchpoints** + free-running 32-bit cycle counter **`DWT->CYCCNT`** (enabled via `CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk; DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;`).
-  - **ITM/SWO:** 32 stimulus ports (`ITM_SendChar`) streamed non-blockingly over single-wire **`PB3` (`TRACESWO`)** to STLINK-V3E!
-  - **`DBGMCU` (`0xE0042000`):** Freezes `TIMx`, `IWDG`, `WWDG`, `RTC` during GDB halts via `DBGMCU->APB1FZR1/2` & `APB2FZ`.
+  - **SWJ-DP (`PA13` SWDIO / `PA14` SWCLK)**: 2-wire Serial Wire Debug interface.
+  - **FPB (Flash Patch & Breakpoint, `0xE0002000`):** **6 hardware code breakpoints** + 2 literal comparators on Cortex-M4.
+  - **DWT (Data Watchpoint & Trace, `0xE0001000`):** **4 hardware data watchpoints** (`DWT->COMP0..3`) + free-running 32-bit cycle counter **`DWT->CYCCNT`** (enabled via `CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk; DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;`).
+  - **ITM (`0xE0000000`) & TPIU/TPI (`0xE0040000`):** 32 stimulus ports (`ITM->PORT[0..31]`, unlocked via `ITM->LAR = 0xC5ACCE55UL`) framed by TPIU (`TPI->SPPR = 2` NRZ, `TPI->ACPR = f_SYSCLK / f_SWO - 1`) and streamed non-blockingly over single-wire **`PB3` (`TRACESWO`, AF0)** to STLINK-V3E! *(See Stage 05 `TOOL-DBG-004` for complete 170 MHz & 160 MHz `TPI->ACPR` prescaler math and OpenOCD capture commands.)*
+  - **`DBGMCU` (`0xE0042000`):** Controls `TRACE_IOEN`/`TRACE_MODE` (`DBGMCU->CR`), debug-in-low-power (`DBG_SLEEP`/`DBG_STOP`/`DBG_STANDBY`), and freezes `TIMx`, `IWDG`, `WWDG`, `RTC` during GDB halts via `DBGMCU->APB1FZR1/2` & `APB2FZ`.
 - **Core Low-Power Mechanisms (`ARM-PWR-001`):**
   - `WFI` sleeps until an unmasked IRQ pends (~**11–12 CPU cycles** Sleep-to-Run wakeup on STM32G474RE per DS12288, NOT 4 cycles!).
   - `WFE` sleeps on the 1-bit Event Register (`SEV` sets it; `SCB->SCR.SEVONPEND = 1` lets even disabled pending IRQs wake `WFE` without entering an ISR!).
@@ -197,6 +197,8 @@ Verified directly against `core_cm4.h` (`SCS_BASE = 0xE000E000UL`):
 | `FPU->FPCCR` | `0xE000EF34` | `LSPACT[0]`, `LSPEN[30]` (Lazy Stack Enable), `ASPEN[31]` (Auto State Preserve) |
 | `SysTick->CTRL` | `0xE000E010` | `ENABLE[0]`, `TICKINT[1]`, `CLKSOURCE[2]` (`1`=HCLK), `COUNTFLAG[16]` |
 | `DWT->CYCCNT` | `0xE0001004` | 32-bit cycle counter (requires `CoreDebug->DEMCR.TRCENA = 1` & `DWT->CTRL.CYCCNTENA = 1`) |
+| `ITM->PORT[0]` / `TER` / `TCR` | `0xE0000000` / `0xE00` / `0xE80` | 32 SWO stimulus ports (unlock `ITM->LAR = 0xC5ACCE55UL`); non-blocking `printf`/trace |
+| `TPI->ACPR` / `SPPR` (`TPIU`) | `0xE0040010` / `0xE00400F0` | Async SWO baud prescaler (`f_SYSCLK / f_SWO - 1`) & protocol (`SPPR=2` NRZ, `1` Manchester) |
 
 ---
 
@@ -304,6 +306,52 @@ void mpu_configure_stack_guard(uint32_t guard_base_32b_aligned)
     MPU->CTRL = MPU_CTRL_PRIVDEFENA_Msk | MPU_CTRL_ENABLE_Msk;
     __DSB();
     __ISB();
+}
+```
+
+### 8.3 FPU Lazy Stacking (`ARM-FPU-001`), ARMv7E-M DSP `SMLAD` (`ARM-DSP-001`) & Lock-Free `LDREX`/`STREX` CAS (`ARM-SYNC-001`)
+
+```c
+#include "stm32g474xx.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+/* 1. Enable FPv4-SP FPU with mandatory barriers & lazy stacking (ARM AN298) */
+void fpu_enable_with_lazy_stacking(void)
+{
+    SCB->CPACR |= (3UL << 20U) | (3UL << 22U); /* CP10 & CP11 Full Access */
+    __DSB();
+    __ISB();
+    FPU->FPCCR |= FPU_FPCCR_ASPEN_Msk | FPU_FPCCR_LSPEN_Msk;
+}
+
+/* 2. ARMv7E-M single-cycle dual Q15 MAC (SMLAD) + hardware saturation (__SSAT) */
+int32_t dsp_q15_dot_product_smlad(const int16_t *a, const int16_t *b, uint32_t pairs)
+{
+    int32_t acc = 0;
+    for (uint32_t i = 0U; i < pairs; ++i) {
+        uint32_t va = ((uint32_t)(uint16_t)a[2U * i]) |
+                      (((uint32_t)(uint16_t)a[(2U * i) + 1U]) << 16U);
+        uint32_t vb = ((uint32_t)(uint16_t)b[2U * i]) |
+                      (((uint32_t)(uint16_t)b[(2U * i) + 1U]) << 16U);
+        __asm__ volatile ("smlad %0, %1, %2, %0" : "+r"(acc) : "r"(va), "r"(vb));
+    }
+    return __SSAT(acc >> 15, 16); /* Clamp cleanly to Q15 [-32768, 32767] */
+}
+
+/* 3. Lock-free 32-bit Compare-And-Swap using Cortex-M4 exclusive monitor */
+bool atomic_cas_u32(volatile uint32_t *addr, uint32_t expected, uint32_t desired)
+{
+    uint32_t current;
+    do {
+        current = __LDREXW(addr);
+        if (current != expected) {
+            __CLREX();
+            return false;
+        }
+    } while (__STREXW(desired, addr) != 0U);
+    __DMB();
+    return true;
 }
 ```
 

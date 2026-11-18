@@ -9,14 +9,14 @@
 **IRQ Numbers (`stm32g474xx.h`):** `HRTIM1_Master_IRQn=67`, `TIMA=68`, `TIMB=69`, `TIMC=70`, `TIMD=71`, `TIME=72`, `FLT=73`, `TIMF=74`  
 **DMAMUX1 Request IDs (RM0440 Table 91):** `HRTIM1_M=95`, `HRTIM1_A=96`, `HRTIM1_B=97`, `HRTIM1_C=98`, `HRTIM1_D=99`, `HRTIM1_E=100`, `HRTIM1_F=101`  
 **Reference Manual:** RM0440, Chapter 27 (*High-resolution timer (HRTIM)*) | AN4539 (*HRTIM cookbook*) | ES0430 §2.11  
-**Concept IDs:** `PERIPH-HRTIM-001`  
-**Verification Status:** Every base address, struct offset, and IRQ verified directly against `stm32g474xx.h`; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Concept IDs:** `PERIPH-HRTIM-001`, `G4-HRTIM-001`  
+**Verification Status:** Every base address, struct offset, and IRQ verified directly against `stm32g474xx.h`; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
 ### 1. Architectural Overview (5.44 GHz Equivalent Resolution)
 
-The STM32G474RE **HRTIM1** embeds an internal **Delay-Locked Loop (DLL)** multiplying the 170 MHz APB2 timer clock by **×32** to achieve an equivalent clock of $f_{\text{HRTIM\_EQ}} = 5.44\ \text{GHz}$ (**184 ps resolution**). It comprises **1 Master Timer** + **6 independent 16-bit Timer Units (`TIMA..TIMF`)** driving **12 complementary high-resolution outputs (`CHA1/2..CHF1/2`)**, 10 External Events (`EEV1..10`, e.g., from `COMP1..7`), 6 Hardware Fault inputs (`FLT1..6`), Burst Mode controller, and 10 ADC triggers.
+The STM32G474RE **HRTIM1** embeds an internal **Delay-Locked Loop (DLL)** multiplying the APB2 timer clock by **×32** to achieve an equivalent clock of $f_{\text{HRTIM\_EQ}} = 5.44\ \text{GHz}$ (**183.8 ps resolution** at 170 MHz Profile A; or $5.12\ \text{GHz}$ / **195.3 ps** at 160 MHz Profile B). It comprises **1 Master Timer** + **6 independent 16-bit Timer Units (`TIMA..TIMF`)** driving **12 complementary high-resolution outputs (`CHA1/2..CHF1/2`)**, 10 External Events (`EEV1..10`, e.g., from `COMP1..7`), 6 Hardware Fault inputs (`FLT1..6`), Burst Mode controller, and 10 ADC triggers.
 
 ---
 

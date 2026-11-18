@@ -5,8 +5,8 @@
 **EXTI Base:** `0x40010400` (`APB2PERIPH_BASE + 0x0400UL`)  
 **Bus:** APB2  
 **Reference Manual:** RM0440, Chapter 10 (*SYSCFG*) & Chapter 15 (*Extended interrupt and event controller (EXTI)*)  
-**Concept IDs:** `PERIPH-EXTI-001`, `STM32-SRAM-001`, `PROF-REL-001`, `PROF-REL-002`  
-**Verification Status:** Every register offset and bit position verified directly against `stm32g474xx.h` and UM2505; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Concept IDs:** `PERIPH-EXTI-001`, `GPIO-FMP-001`, `STM32-SRAM-001`, `PROF-REL-001`, `PROF-REL-002`  
+**Verification Status:** Every register offset and bit position verified directly against `stm32g474xx.h` and UM2505; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
@@ -22,8 +22,8 @@
 | Register | Offset | Reset Value | Access | Description |
 |---|---|---|---|---|
 | `SYSCFG_MEMRMP` | `0x000` | Boot-dependent | RW | Memory remap register (`MEM_MODE[2:0]`, `FB_MODE` bit 8 dual-bank swap status) |
-| `SYSCFG_CFGR1` | `0x004` | `0x7C000001` | RW | Config 1 (`BOOSTEN` analog switch booster, `ANASWVDD`, `I2C_PBx_FMP` / `I2Cx_FMP` 20 mA Fast-Mode Plus, `FPU_IE[31:26]`) |
-| `SYSCFG_EXTICR1` (`EXTICR[0]`) | `0x008` | `0x00000000` | RW | EXTI Lines 0–3 port selector (4 bits/line: `0=PA`, `1=PB`, `2=PC`, `3=PD`, `5=PF`, `6=PG`) |
+| `SYSCFG_CFGR1` | `0x004` | `0x7C000001` | RW | Config 1: `BOOSTEN` (b8), `ANASWVDD` (b9), **`I2C_PB6_FMP` (b16)**, **`I2C_PB7_FMP` (b17)**, **`I2C_PB8_FMP` (b18)**, **`I2C_PB9_FMP` (b19)**, **`I2C1_FMP` (b20)**, **`I2C2_FMP` (b21)**, **`I2C3_FMP` (b22)**, **`I2C4_FMP` (b23)** (20 mA Fm+ drive on `FT_f` pads — `GPIO-FMP-001`), `FPU_IE[31:26]` |
+| `SYSCFG_EXTICR1` (`EXTICR[0]`) | `0x008` | `0x00000000` | RW | EXTI Lines 0–3 port selector (4 bits/line: `0=PA`, `1=PB`, `2=PC`, `3=PD`, `4=PE` [unbonded on LQFP64], `5=PF`, `6=PG`) |
 | `SYSCFG_EXTICR2` (`EXTICR[1]`) | `0x00C` | `0x00000000` | RW | EXTI Lines 4–7 port selector |
 | `SYSCFG_EXTICR3` (`EXTICR[2]`) | `0x010` | `0x00000000` | RW | EXTI Lines 8–11 port selector |
 | `SYSCFG_EXTICR4` (`EXTICR[3]`) | `0x014` | `0x00000000` | RW | EXTI Lines 12–15 port selector |

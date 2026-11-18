@@ -6,7 +6,7 @@
 **DBGMCU Base:** `0xE0042000` (`DBGMCU->APB1FZR1` freezes watchdogs during GDB halt)  
 **Reference Manual:** RM0440, **Chapter 35** (*Independent watchdog (IWDG)*) & **Chapter 36** (*System window watchdog (WWDG)*)  
 **Concept IDs:** `PERIPH-WDG-001`, `PERIPH-WDG-002`, `REL-WDG-001`, `STM32-DBGMCU-001`  
-**Verification Status:** Every register offset and bit position verified directly against `stm32g474xx.h`; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Verification Status:** Every register offset and bit position verified directly against `stm32g474xx.h`; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
@@ -43,8 +43,8 @@ Clocked by `PCLK1 / 4096 / 2^WDGTB`. Resets the MCU if: (a) counter decrements f
 > **STM32G4 Enhancement:** `WWDG_CFR.WDGTB[13:11]` is **3 bits wide** on STM32G4 (`000`=`/1`, `001`=`/2`, `010`=`/4`, `011`=`/8`, `100`=`/16`, `101`=`/32`, `110`=`/64`, **`111`=`/128`** — older STM32F4 only supported `/1`..`/8`!).
 
 $$T_{\text{WWDG}} = \frac{4096 \times 2^{\text{WDGTB}} \times (T[5:0] + 1)}{f_{\text{PCLK1}}}$$
-- Example at $f_{\text{PCLK1}} = 170\ \text{MHz}$, `WDGTB = 7` (`/128`), `T = 0x7F` (`T[5:0] = 63`):
-  $$T_{\text{max}} = \frac{4096 \times 128 \times 64}{170{,}000{,}000} \approx 197.4\ \text{ms}$$
+- Example at $f_{\text{PCLK1}} = 170\ \text{MHz}$ (Profile A), `WDGTB = 7` (`/128`), `T = 0x7F` (`T[5:0] = 63`):
+  $$T_{\text{max}} = \frac{4096 \times 128 \times 64}{170{,}000{,}000} \approx 197.4\ \text{ms} \qquad (\text{at } 160\ \text{MHz Profile B: } T_{\text{max}} \approx 209.7\ \text{ms})$$
 
 ---
 

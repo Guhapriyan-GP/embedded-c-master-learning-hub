@@ -24,6 +24,7 @@ Upon completing Stage 01b, you will be able to:
 | `HWSW-LAB-001` | Level 1 (Essential) | `[General Lab / STM32G474RE]` | Operate an oscilloscope safely and accurately: 1x vs 10x probe attenuation and loading, probe compensation, bandwidth-rise-time rule ($f_{BW} \ge 0.35 / t_r$), ground-spring usage, edge/protocol triggering. |
 | `HWSW-LAB-002` | Level 1 (Essential) | `[General Lab]` | Capture and decode SPI, I2C, and UART buses on a logic analyzer (Saleae Logic 2 or PulseView/sigrok) applying $4\times\text{--}10\times$ oversampling and correct 3.3V CMOS thresholds. |
 | `HWSW-LAB-003` | Level 1 (Essential) | `[General Lab / STM32G474RE]` | Execute safe board bring-up and electrical measurements using a Digital Multimeter (continuity, DC voltage, current burden voltage, fuse protection) and a CC/CV current-limited Bench Power Supply. |
+| `HWSW-ANA-001` | Level 2 (Intermediate) | `[General EE / STM32G474RE]` | Design low-noise analog power rails (`VDDA`/`VREF+` ferrite-bead filtering, multi-decade ceramic capacitor ESR/ESL & DC-bias derating, continuous vs star ground return paths) and audit NUCLEO-G474RE (MB1367, UM2505) `VDDA`/`VREF+` bridges (`SB8`/`SB10`, `SB14`/`R33`/`R34`) before enabling internal `VREFBUF`. |
 
 ---
 
@@ -111,6 +112,24 @@ I2C (`SDA`, `SCL`) is an **open-drain** bus: devices only pull the line LOW (`N-
    When turning OFF current through an inductive load (relay coil, DC motor, solenoid), the collapsing magnetic field forces an opposing voltage spike $V = L \frac{di}{dt}$ that easily reaches **50–300 V**, instantly avalanching and destroying MOSFETs and MCUs. Always place a **reverse-biased flyback (freewheeling) diode** (e.g., `1N5819` Schottky or `1N4007` rectifier) directly across the inductive coil terminals (cathode to $+V_{\text{supply}}$, anode to MOSFET drain) to circulate the coil current safely.
 3. **ESD & TVS Protection:**
    Human Body Model (HBM) electrostatic discharges reach 2–15 kV. External-facing connectors (CAN, USB, UART, external buttons) require low-capacitance **TVS diode arrays** (e.g., `USBLC6-2SC6` for USB FS, `PESD1CAN` for FDCAN) placed directly at the board entry connector, before any series resistors.
+
+#### 3.5.1 Analog Power-Rail Integrity: `VDDA`/`VREF+` Ferrite Beads, Capacitor ESR & Ground Return Paths (`HWSW-ANA-001`)
+
+A 12-bit SAR ADC on STM32G474RE has an LSB step size of only **$805.7\ \mu\text{V}$** at $V_{\text{REF+}} = 3.30\text{ V}$ (or **$610.4\ \mu\text{V}$** at $V_{\text{REF+}} = 2.50\text{ V}$). Unfiltered 170 MHz digital switching ripple ($30\text{--}100\text{ mV}_{\text{pp}}$ on `VDD`) coupled into `VDDA` or `VREF+` directly degrades Effective Number of Bits (**ENOB**) by 2–4 bits! Per **ST AN5093** (*Getting Started with STM32G4 Hardware Dev*), **ST AN2834** (*How to Get the Best ADC Accuracy*), and **ST DS12288 §5.3.1 & §5.3.21**:
+
+1. **Ferrite-Bead Pi/LC Filtering on `VDDA` (LQFP64 Pin 14) & `VREF+` (LQFP64 Pin 13):**
+   - Isolate `VDDA` from noisy digital `VDD` using a series **ferrite bead** ($Z \approx 600\ \Omega\text{ at }100\text{ MHz}$, low DC resistance $R_{\text{DC}} < 0.3\ \Omega$) paired with local ceramic decoupling (**`10 nF` or `100 nF` X7R/C0G + `1 µF` X7R**) placed within `< 3 mm` of `VDDA` (Pin 14) and `VSSA` (Pin 12).
+   - **Mandatory DS12288 Power-Sequencing Constraint:** Never use a high-resistance RC filter on `VDDA` — the DC drop across the bead must keep $|V_{\text{DD}} - V_{\text{DDA}}| \le 300\text{ mV}$ at all times during power-up, operation, and power-down, and $V_{\text{REF+}} \le V_{\text{DDA}}$!
+2. **Decoupling Capacitor ESR, ESL & Ceramic DC-Bias Derating:**
+   - **Self-Resonant Frequency (SRF) & ESL:** Smaller packages (`0402`/`0603`) have lower parasitic inductance (ESL $\approx 0.4\text{--}0.8\text{ nH}$), pushing SRF higher to shunt 170 MHz harmonics. Pair a small value (`10–100 nF`) for HF shunting with a larger bulk capacitor (`1 µF`–`4.7 µF`) for mid-band impedance.
+   - **`VREF+` / `VREFBUF` Stability Window (DS12288 §5.3.21):** When driving `VREF+` from the internal **`VREFBUF`** (2.048 V / 2.500 V / 2.900 V), STM32G4 requires **`100 nF || 1 µF`** (typical $1.1\ \mu\text{F}$ total, $0.5\text{--}1.5\ \mu\text{F}$ effective capacitance) with total **ESR between $0.01\ \Omega$ and $1\ \Omega$**! Using tiny 0402 6.3 V Y5V ceramics can lose $> 60\%$ capacitance under 2.5 V DC bias, starving phase margin and causing `VREFBUF` oscillation! Always use **X7R or C0G/NP0 rated $\ge 10\text{--}16\text{ V}$**.
+3. **Ground Return Paths (Continuous Ground Plane vs Star Ground):**
+   - High-frequency digital return currents (> 1 MHz) follow the path of **least inductance** directly beneath their signal trace on the ground plane, whereas DC/low-frequency analog return currents follow the path of **least resistance**.
+   - **Anti-Pattern (Naive Split Ground Planes):** Cutting a slot between "AGND" and "DGND" under the MCU frequently **worsens** noise and creates a radiating slot antenna if *any* trace crosses the gap!
+   - **Best Practice (Henry Ott / ST AN2834):** Use a **single solid, continuous ground plane** and **spatially partition** components — place analog sensors, op-amps, and `VSSA` decoupling on one side of the MCU and keep high-$di/dt$ switching regulators, MOSFET half-bridges, and `OSPEEDR = 11` buses physically confined to the opposite side so digital return currents never traverse the analog zone. Where two planes are mandated by a mixed-signal isolation barrier, tie them at a **single star point directly beneath `VSSA`/`VSS`**.
+4. **NUCLEO-G474RE (MB1367, UM2505) `VDDA` & `VREF+` Jumpers:**
+   - **`L1`/`L2` Ferrite Beads (`SB8`/`SB10`):** On MB1367, **`SB8`** and **`SB10`** are **OFF (open)** by default so onboard SMD ferrite beads **`L1`** (`VDDA`) and **`L2`** (`VREF+`) actively filter the analog rails. Closing `SB8`/`SB10` bypasses `L1`/`L2` (only for specific external Arduino `AVDD` supply setups per UM2505).
+   - **`VREF+` Reference Configuration (`SB14`, `R33`, `R34`):** Per UM2505, `SB14` (default OFF) and `R34` (33 kΩ, default fitted) configure the onboard external `VREF+` reference network (`SB14` ON shunting `R33` = 10 kΩ with `R34` removed selects 2.5 V). **CRITICAL HARDWARE CONTENTION RULE:** Before enabling the STM32G474RE's internal **`VREFBUF`** (`VREFBUF->CSR.ENVR = 1, HIZ = 0`), ALWAYS inspect the UM2505 MB1367 schematic for your board revision and disconnect the external `VREF+` supply path so the internal buffer does not short against an external voltage rail!
 
 ### 3.6 Signal Integrity, Slew Rate (`OSPEEDR`) & EMI (`DIG-ELEC-006`)
 
@@ -277,8 +296,12 @@ $$R_{p,\max} = \frac{300\times 10^{-9}\text{ s}}{0.8473 \times 100\times 10^{-12
 
 > **Critical Insight:** At $C_b = 100\text{ pF}$ and 400 kHz Fast Mode, the classic "always use 4.7 kΩ" rule-of-thumb **VIOLATES** the $300\text{ ns}$ rise-time specification ($t_r = 0.8473 \times 4700 \times 100\text{ pF} = 398\text{ ns} > 300\text{ ns}$)! Choosing **$2.2\text{ k}\Omega$** satisfies $967\ \Omega \le 2.2\text{ k}\Omega \le 3.54\text{ k}\Omega$ cleanly ($t_r = 186\text{ ns}$). Meanwhile, STM32's internal $40\text{ k}\Omega$ pull-up produces $t_r = 3.39\ \mu\text{s}$ — **11.3x slower than Fast Mode allows!**
 
-### 6.5 Oscilloscope System Bandwidth & Inductive Kickback
-$$f_{BW} \ge \frac{0.35}{t_r}, \qquad V_{\text{spike}} = L \frac{di}{dt}$$
+### 6.5 Oscilloscope System Bandwidth, Inductive Kickback & 12-Bit ADC Rail Ripple Sensitivity
+$$f_{BW} \ge \frac{0.35}{t_r}, \qquad V_{\text{spike}} = L \frac{di}{dt}, \qquad 1\text{ LSB}_{12\text{-bit}} = \frac{V_{\text{REF+}}}{2^{12}} = \frac{V_{\text{REF+}}}{4096}$$
+
+**Worked Example (`HWSW-ANA-001` Noise Floor Impact):**
+- At $V_{\text{REF+}} = 3.30\text{ V}$: $1\text{ LSB} = 3.30 / 4096 = \mathbf{805.7\ \mu\text{V}}$.
+- If unfiltered digital switching induces $V_{\text{ripple}} = 16\text{ mV}_{\text{pp}}$ on `VREF+`, a mid-scale reading swings by $\frac{16\text{ mV}}{0.8057\text{ mV}} \approx \mathbf{20\text{ LSBs}}$ ($\approx 4.3\text{ bits}$ of lost resolution!), demonstrating why ferrite-bead filtering (`L1`/`L2`), low-ESR `100 nF || 1 µF` decoupling, and quiet `VSSA` return paths are mandatory.
 
 ---
 
@@ -287,7 +310,9 @@ $$f_{BW} \ge \frac{0.35}{t_r}, \qquad V_{\text{spike}} = L \frac{di}{dt}$$
 - **ST DS12288** — *STM32G474xB / STM32G474xC / STM32G474xE Datasheet*: Table 12 (LQFP64 Pin Definitions: `FT`/`TT_a`), Table 13 (Alternate Functions), Table 14 (Voltage Characteristics), **Table 15 (Current Characteristics: $\pm 20\text{ mA}$, $160\text{ mA}$)**, §5.3.14 (I/O Static & AC Characteristics), §5.3.19 (ADC $R_{\text{AIN}}/C_{\text{ADC}}$).
 - **ST UM2505** — *STM32G4 Nucleo-64 Boards (MB1367) User Manual*: §6.3 (`JP5` 5V_SEL), §6.4 (`JP6` IDD), §6.5–6.6 (`LD2` PA5, `B1` PC13 Active-HIGH), §6.7 (24 MHz HSE `X3`), §6.8 (VCP `SB17`/`SB23`), Tables 13–17 (Arduino & Morpho pinouts), Schematics.
 - **ST RM0440** — *STM32G4 Series Reference Manual*: Chapter 6 (`PWR_CR3.UCPD_DBDIS`), Chapter 9 (`GPIOx_MODER` Analog reset, `OSPEEDR`).
-- **ST AN5093** — *Getting Started with STM32G4 Series Hardware Development* (Decoupling, $V_{DDA}$ filtering, oscillator layout, boot pin wiring).
+- **ST AN5093** — *Getting Started with STM32G4 Series Hardware Development* (Decoupling, $V_{DDA}$/`VREF+` ferrite filtering, oscillator layout, boot pin wiring).
+- **ST AN2834** — *How to Get the Best ADC Accuracy in STM32 Microcontrollers* (Power-rail integrity, star/continuous ground return paths, source impedance & averaging).
+- **ST AN4073** — *How to Improve ADC Accuracy When Using STM32F2xx and STM32F4xx Microcontrollers* (Analog layout & clock-noise mitigation principles).
 - **ST AN4899** — *STM32 Microcontroller GPIO Hardware Settings and Low-Power Consumption*.
 - **NXP UM10204** — *I2C-Bus Specification and User Manual*, §7.1 (Pull-up resistor sizing).
 - **Horowitz & Hill** — *The Art of Electronics* (3rd Ed.), Ch. 1 (Foundations & RC Circuits).
@@ -349,6 +374,44 @@ bool board_button_is_pressed(void)
 }
 ```
 
+### 8.2 Analog Rail Health Diagnostic: Runtime `VDDA` Measurement (`VREFINT_CAL`) & Peak-to-Peak LSB Noise Floor (`HWSW-ANA-001`)
+
+> **Verification Status:** **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror -Wconversion -Wdouble-promotion -Wvla`)** against `stm32g474xx.h` (Not Tested on Physical Hardware).
+
+```c
+#include "stm32g474xx.h"
+#include <stddef.h>
+#include <stdint.h>
+
+#define VREFINT_CAL_ADDR    ((const volatile uint16_t *)0x1FFF75AAUL) /* DS12288 System ROM */
+#define VREFINT_CAL_VREF_MV 3000UL
+
+/* Compute actual VDDA (mV) from an ADC1_IN18 (VREFINT) raw conversion to verify rail drop */
+uint32_t analog_measure_vdda_mv(uint16_t adc_vrefint_raw)
+{
+    if (adc_vrefint_raw == 0U) {
+        return 0UL;
+    }
+    uint32_t vrefint_cal = (uint32_t)(*VREFINT_CAL_ADDR);
+    return (VREFINT_CAL_VREF_MV * vrefint_cal) / (uint32_t)adc_vrefint_raw;
+}
+
+/* Measure peak-to-peak ADC spread (in LSBs) on a DC-shorted or quiet reference input */
+uint32_t analog_adc_peak_to_peak_lsb(const uint16_t *samples, size_t count)
+{
+    if ((samples == NULL) || (count == 0U)) {
+        return 0UL;
+    }
+    uint16_t min_v = samples[0];
+    uint16_t max_v = samples[0];
+    for (size_t i = 1U; i < count; ++i) {
+        if (samples[i] < min_v) { min_v = samples[i]; }
+        if (samples[i] > max_v) { max_v = samples[i]; }
+    }
+    return (uint32_t)(max_v - min_v);
+}
+```
+
 ---
 
 ## 9. Practical STM32G474RE Experiments
@@ -396,14 +459,16 @@ bool board_button_is_pressed(void)
 4. You connect a multimeter in $\mu\text{A}$ current mode across `JP6` on NUCLEO-G474RE. The MCU runs Stop mode fine, but repeatedly reboots whenever it wakes into 170 MHz Run mode. Explain the exact physical cause and two engineering remedies.
 5. An oscilloscope shows 40 MHz ringing of $\pm 1.2\text{ V}$ on a 5 MHz SPI clock line probed with a 10x probe and a 12 cm alligator ground clip. List three steps (both measurement and firmware/hardware) to distinguish real ringing from probe artifact and suppress real overshoot.
 6. What happens on NUCLEO-G474RE if you configure `PA9` as a floating input connected through a 10 kΩ pull-up to 3.3 V without touching `PWR->CR3`?
+7. (`HWSW-ANA-001`) Why does ST AN2834 recommend a single continuous ground plane with spatial analog/digital partitioning over a split ground plane under the MCU, and what capacitor ESR/DC-bias failure occurs if you decouple `VREFBUF` with an under-rated 6.3 V Y5V ceramic capacitor?
 
 ---
 
 ## 13. Measurable Completion Criteria
 
-To pass Stage 01b, you must satisfy all five criteria:
+To pass Stage 01b, you must satisfy all six criteria:
 - [ ] **Electrical Calculations Verified:** Independently solve LED sizing, RC settling ($5\tau$ & $9\tau$), CMOS noise margin, DS12288 Table 15 current budget, and UM10204 I2C $[R_{p,\min}, R_{p,\max}]$ calculations with 100% numerical accuracy.
-- [ ] **MB1367 Board Audit Complete:** Correctly identify `JP6` (IDD) vs `JP5` (5V_SEL), `B1` (`PC13` Active-HIGH), `LD2` (`PA5`/`SB6`), `PB8-BOOT0` (`R36`), `PA9/PA10` (`UCPD_DBDIS`), `PA2/PA3` (VCP), and `PF0/PF1` (24 MHz X3) on UM2505 schematics.
+- [ ] **MB1367 Board Audit Complete:** Correctly identify `JP6` (IDD) vs `JP5` (5V_SEL), `B1` (`PC13` Active-HIGH), `LD2` (`PA5`/`SB6`), `PB8-BOOT0` (`R36`), `PA9/PA10` (`UCPD_DBDIS`), `PA2/PA3` (VCP), `SB8`/`SB10` (`L1`/`L2` analog ferrite beads), `SB14`/`R34` (`VREF+`), and `PF0/PF1` (24 MHz X3) on UM2505 schematics.
+- [ ] **Analog Rail Design Verified (`HWSW-ANA-001`):** Design an AN5093/AN2834-compliant `VDDA`/`VREF+` ferrite + low-ESR ceramic decoupling network respecting $|V_{\text{DD}} - V_{\text{DDA}}| \le 300\text{ mV}$, and verify ADC peak-to-peak LSB noise floor via `VREFINT_CAL`.
 - [ ] **Pin-Conflict Matrix Built:** Produce a conflict-free LQFP64 pin assignment table validated against DS12288 Table 12/13 (respecting `FT` vs `TT_a` voltage limits).
 - [ ] **Safe Lab Bring-Up Demonstrated:** Execute the 4-step DMM continuity + CC/CV bench PSU current-limited bring-up checklist and compensate a 10x oscilloscope probe before powering external circuits.
 - [ ] **Logic Analyzer & Scope Rules Applied:** Correctly specify $\ge 4\times\text{--}10\times$ logic analyzer sample rate, 3.3 V CMOS threshold, and $f_{BW} \ge 0.35 / t_r$ scope bandwidth for a target SPI/I2C/PWM waveform.

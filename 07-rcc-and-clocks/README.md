@@ -12,7 +12,7 @@ By completing this module, you will master the complete STM32G474RE clock synthe
 | Concept ID | Concept Name | Architectural Scope | Mastery Tier |
 |---|---|---|---|
 | `STM32-RCC-001` | Oscillator Architecture: HSI16, HSE (24 MHz X3 Crystal), LSI (32 kHz), LSE (32.768 kHz), HSI48 | `[STM32G474RE Exact]` | Level 1 (Essential) |
-| `STM32-RCC-002` | Main PLL ($M, N, P, Q, R$) Synthesis, Range 1 Boost (`PWR->CR5.R1MODE=0`), Flash 4 WS, & Safe 170 MHz Switch (`HPRE=/2` Step) | `[STM32G474RE Exact]` | Level 2 (Production) |
+| `STM32-RCC-002` | Main PLL ($M, N, P, Q, R$) Synthesis, Dual Clock Profiles (**170 MHz Max Boost** vs **160 MHz Clean Integer Boost** vs **150 MHz Normal**), `PWR->CR5.R1MODE`, Flash 4 WS, & Safe `HPRE=/2` Switch | `[STM32G474RE Exact]` | Level 2 (Production) |
 | `STM32-RCC-003` | Peripheral Kernel Clock Muxing (`CCIPR`/`CCIPR2`), Clock Security System (CSS), MCO (`PA8`), & Reset Cause Diagnostics (`RCC->CSR`) | `[STM32G474RE Exact]` | Level 2 (Production) |
 | `STM32-PWR-001` | Core Voltage Regulator Scaling (Range 1 Boost, Range 1 Normal, Range 2) & `PWR->SR2.VOSF` Polling | `[STM32G474RE Exact]` | Level 2 (Production) |
 | `STM32-FLASH-001` | Flash Wait States (`FLASH->ACR.LATENCY`) & ART Accelerator (`PRFTEN`, `ICEN`, `DCEN`) Clock Coupling | `[STM32G474RE Exact]` | Level 2 (Production) |
@@ -74,17 +74,39 @@ Simultaneously, Embedded Flash read latency (`FLASH->ACR.LATENCY`) MUST be incre
 | **Range 1 Normal (`R1MODE=1`, $\le 150\text{ MHz}$)** | $\le 30\text{ MHz}$ | $\le 60\text{ MHz}$ | $\le 90\text{ MHz}$ | $\le 120\text{ MHz}$ | $\le 150\text{ MHz}$ |
 | **Range 2 (`VOS=10`, $\le 26\text{ MHz}$)** | $\le 12\text{ MHz}$ | $\le 24\text{ MHz}$ | $\le 26\text{ MHz}$ | — | — |
 
-#### Mandatory RM0440 §6.1.5 Intermediate `HPRE = /2` Stabilization Step
-Jumping directly from 16 MHz (`HPRE = /1`) to 170 MHz (`HPRE = /1`) causes a sudden $di/dt$ current transient on $V_{\text{CORE}}$ that can cause voltage droop and core lockup. Per **RM0440 §6.1.5 (*Dynamic voltage scaling management*)**, transitioning to $>150\text{ MHz}$ MUST follow this exact sequence:
+#### Mandatory RM0440 §6.1.5 Intermediate `HPRE = /2` Stabilization Step (Applies to BOTH 170 MHz AND 160 MHz!)
+Jumping directly from 16 MHz (`HPRE = /1`) to any frequency **$> 150\text{ MHz}$** (both **170 MHz** AND **160 MHz**!) causes a sudden $di/dt$ current transient on $V_{\text{CORE}}$ that can cause voltage droop and core lockup. Per **RM0440 §6.1.5 (*Dynamic voltage scaling management*)**, transitioning to $>150\text{ MHz}$ MUST follow this exact sequence:
 1. Enable `PWREN`, ensure `VOS = 01b` (Range 1), poll `while (PWR->SR2 & PWR_SR2_VOSF) {}`.
-2. Clear `PWR->CR5 &= ~PWR_CR5_R1MODE;` (select Range 1 Boost).
-3. Configure `FLASH->ACR` for **4 WS** + `PRFTEN | ICEN | DCEN` and read back `FLASH->ACR` until `LATENCY == 4`.
-4. Start HSE (24 MHz X3), wait `HSERDY`; configure `PLLCFGR`, start PLL, wait `PLLRDY`.
-5. **Set AHB Prescaler `HPRE = /2`** (`RCC_CFGR_HPRE_DIV2`, giving **85 MHz** intermediate HCLK).
+2. Clear `PWR->CR5 &= ~PWR_CR5_R1MODE;` (select Range 1 Boost — required for **both 170 MHz and 160 MHz**!).
+3. Configure `FLASH->ACR` for **4 WS** (`FLASH_ACR_LATENCY_4WS` — RM0440 Table 9 mandates 4 WS for `> 136 MHz` up to `170 MHz` in Boost Mode!) + `PRFTEN | ICEN | DCEN` and read back `FLASH->ACR` until `LATENCY == 4`.
+4. Start HSE (24 MHz X3) or use HSI16; configure `PLLCFGR`, start PLL, wait `PLLRDY`.
+5. **Set AHB Prescaler `HPRE = /2`** (`RCC_CFGR_HPRE_DIV2`, giving **85 MHz** for Profile A or **80 MHz** for Profile B intermediate HCLK).
 6. **Switch `SYSCLK` to PLL** (`RCC->CFGR |= RCC_CFGR_SW_PLL`) and poll `SWS == RCC_CFGR_SWS_PLL`.
-7. **Wait at least $1\ \mu\text{s}$** (e.g., $\ge 85$ cycles at 85 MHz HCLK, safely 100+ cycles).
-8. **Restore AHB Prescaler `HPRE = /1`** (`HCLK = PCLK1 = PCLK2 = 170 MHz`).
-9. Call `SystemCoreClockUpdate()` (or set `SystemCoreClock = 170000000UL`).
+7. **Wait at least $1\ \mu\text{s}$** ($\ge 85$ cycles at 85 MHz or $\ge 80$ cycles at 80 MHz; safely 100–120 iterations).
+8. **Restore AHB Prescaler `HPRE = /1`** (`HCLK = PCLK1 = PCLK2 = 170 MHz` or `160 MHz`).
+9. Call `SystemCoreClockUpdate()` (or set `SystemCoreClock = 170000000UL` / `160000000UL`).
+
+#### 3.3.1 Dual Production Clock Profiles: 170 MHz Max vs 160 MHz Clean Integer vs 150 MHz Normal `[STM32G474RE Exact]`
+
+While **170 MHz** delivers maximum STM32G474RE throughput and **183.8 ps** `HRTIM1` resolution, many production control/DSP systems deliberately standardize on **160 MHz** for clean integer power-of-2 bus/ADC/timer/SPI divisions — or **150 MHz** to remain in lower-power **Range 1 Normal Mode** (`R1MODE = 1`). Never confuse the hardware requirements of **160 MHz** with **150 MHz**:
+
+| Parameter / Peripheral | **Profile A: 170 MHz Max (Boost)** | **Profile B: 160 MHz Clean Integer (Boost)** | **Profile C: 150 MHz Normal (No Boost)** |
+|---|---|---|---|
+| **Voltage Scaling Mode** | **Range 1 Boost (`PWR->CR5.R1MODE = 0`)** | **Range 1 Boost (`PWR->CR5.R1MODE = 0`)** *(STILL $> 150\text{ MHz}$!)* | **Range 1 Normal (`PWR->CR5.R1MODE = 1`)** *(Lower $I_{\text{DD}}$!)* |
+| **Flash Wait States (RM0440 Table 9)** | **`4 WS`** (`> 136 MHz` Boost) | **`4 WS`** (`> 136 MHz` Boost — NOT 3 WS!) | **`4 WS`** (`> 120 MHz` Normal) |
+| **RM0440 §6.1.5 `HPRE = /2` Step** | **Mandatory** (`85 MHz` for $\ge 1\ \mu\text{s}$) | **Mandatory** (`80 MHz` for $\ge 1\ \mu\text{s}$) | **Not required** ($\le 150\text{ MHz}$ Normal) |
+| **PLL from `HSI16` (16 MHz)** | `M=4` (`PLLM=3`), `N=85`, `R=2` (`VCO=340 MHz`) | `M=4` (`PLLM=3`), `N=80`, `R=2` (`VCO=320 MHz`) | `M=4` (`PLLM=3`), `N=75`, `R=2` (`VCO=300 MHz`) |
+| **PLL from `HSE` (24 MHz X3)** | `M=6` (`PLLM=5`), `N=85`, `R=2` (`VCO=340 MHz`) | `M=3` (`PLLM=2`), `N=40`, `R=2` *or* `M=6, N=80, R=2` (`VCO=320 MHz`) | `M=6` (`PLLM=5`), `N=75`, `R=2` *or* `M=2, N=25, R=2` (`VCO=300 MHz`) |
+| **`HCLK` / `PCLK1` / `PCLK2`** | `170.0 / 170.0 / 170.0 MHz` | `160.0 / 160.0 / 160.0 MHz` | `150.0 / 150.0 / 150.0 MHz` |
+| **1 µs Timer Tick (`PSC`)** | `PSC = 169` (`170 MHz / 170 = 1 MHz`) | **`PSC = 159`** (`160 / 80 / 40 / 20 / 10 / 1 MHz` exact!) | `PSC = 149` (`150 MHz / 150 = 1 MHz`) |
+| **Sync ADC (`CKMODE = 11b`, `HCLK/4`)** | `42.5 MHz` ($\le 60\text{ MHz}$ single / $\le 52\text{ MHz}$ multi) | **`40.000 MHz`** (exact `1.000 MSPS` @ 40 cyc; `4.000 MSPS` @ 10 cyc!) | `37.5 MHz` (or async `PLL_P = 300/6 = 50.0 MHz`) |
+| **`DACx->MCR.HFSEL` Setting** | **`10b`** (`> 160 MHz` required!) | **`01b`** (`> 80 MHz` and $\le 160\text{ MHz}$) | **`01b`** (`> 80 MHz` and $\le 160\text{ MHz}$) |
+| **`USART` 115,200 baud (`BRR`)** | `BRR = 1476` (`0x05C4`, `-0.021%` err) | **`BRR = 1389`** (`0x056D`, **`-0.008%` err**) | `BRR = 1302` (`0x0516`, `+0.006%` err) |
+| **`SPI` `/4` & `/8` SCK Rates** | `42.5 MHz` / `21.25 MHz` | **`40.0 MHz` / `20.0 MHz`** (clean integer MHz!) | `37.5 MHz` / `18.75 MHz` |
+| **`MCO` (`PA8`, `SYSCLK / 16`)** | `10.625 MHz` | **`10.000 MHz`** (clean scope reference!) | `9.375 MHz` |
+| **`HRTIM1` ×32 DLL Resolution** | **`5.44 GHz` (`183.8 ps`)** | `5.12 GHz` (`195.3 ps`) | `4.80 GHz` (`208.3 ps`) |
+| **NRZ SWO 2 MHz (`TPI->ACPR`)** | `84` (`0x54`, 0.000% err) | **`79` (`0x4F`, 0.000% err)** (`39` @ 4 MHz) | `74` (`0x4A`, 0.000% err) |
+| **48 MHz USB / RNG Clock** | `HSI48 + CRS` (`340 / 48` non-integer) | `HSI48 + CRS` (`320 / 48` non-integer) | `HSI48 + CRS` (`300 / 48` non-integer) |
 
 ### 3.4 Bus Prescalers, Timer $\times 2$ Rule & Independent Kernel Clocks (`CCIPR`/`CCIPR2`)
 - **AHB (`HPRE`):** Divides `SYSCLK` by `/1, /2, /4, ..., /512` to produce `HCLK` (CPU, DMA, SRAM, Flash, AHB1/2/3 peripherals).
@@ -164,7 +186,15 @@ $$f_{\text{PLL\_R}}\ (\text{SYSCLK}) = \frac{f_{\text{VCO}}}{R}, \quad f_{\text{
 - Choose $M = 4$ (`PLLM = 3`) $\to f_{\text{PLL\_IN}} = 16 / 4 = 4.0\text{ MHz} \in [2.66,\ 16.0]\text{ MHz}$ $\checkmark$.
 - Choose $N = 85$ $\to f_{\text{VCO}} = 340.0\text{ MHz}$ $\checkmark$; $R = 2$ $\to f_{\text{SYSCLK}} = 170.0\text{ MHz}$ $\checkmark$.
 
-### 6.4 Worked Example C: MCO Verification Frequency on `PA8`
+### 6.4 Worked Example C: Clean Integer 160 MHz Profile (HSE 24 MHz & HSI16 — Still Range 1 Boost + 4 WS!)
+- **From HSE 24 MHz (`X3`):** Choose $M = 3$ (`PLLM = 2`) $\to f_{\text{PLL\_IN}} = 24 / 3 = 8.0\text{ MHz} \in [2.66, 16.0]\text{ MHz}$ $\checkmark$, $N = 40$ $\to f_{\text{VCO}} = 320.0\text{ MHz} \in [96, 344]\text{ MHz}$ $\checkmark$, $R = 2$ $\to f_{\text{SYSCLK}} = \mathbf{160.0\text{ MHz}}$ $\checkmark$ *(equivalently $M=6, N=80, R=2$ with $f_{\text{PLL\_IN}} = 4.0\text{ MHz}$)*.
+- **From HSI16 (16 MHz):** Choose $M = 4$ (`PLLM = 3`) $\to 4.0\text{ MHz}$, $N = 80$ $\to f_{\text{VCO}} = 320.0\text{ MHz}$, $R = 2$ $\to f_{\text{SYSCLK}} = \mathbf{160.0\text{ MHz}}$ $\checkmark$.
+- **Coupled Peripheral Math @ 160 MHz:**
+  - `ADC CKMODE = 11b` (`HCLK/4`): $160 / 4 = \mathbf{40.000\text{ MHz}}$ (exact integer MHz $\le 52\text{ MHz}$ multi-ADC spec!).
+  - `USART` 115,200 baud: $\text{BRR} = \text{round}(160{,}000{,}000 / 115{,}200) = \mathbf{1389}$ (`0x056D`, actual = $115{,}190.8\text{ bps}$, error = **$-0.008\%$**!).
+  - `MCO` (`PA8`, `SYSCLK / 16`): $f_{\text{MCO}} = 160 / 16 = \mathbf{10.000\text{ MHz}}$ exact!
+
+### 6.5 Worked Example D: MCO Verification Frequency on `PA8` at 170 MHz
 With `SYSCLK = 170 MHz`, `MCOSEL = 0001b` (`SYSCLK`), and `MCOPRE = 100b` (`/16`):
 $$f_{\text{MCO}} = \frac{170.0\text{ MHz}}{16} = \mathbf{10.625\text{ MHz}}$$
 Using `/16` keeps the signal comfortably within standard 50–100 MHz oscilloscope probe bandwidth while preserving full frequency accuracy.
@@ -293,6 +323,74 @@ clk_status_t SystemClock_Config_170MHz_HSE(void)
 }
 ```
 
+### 8.1b Profile B: Clean Integer 160 MHz Range 1 Boost Clock Configuration (`HSE 24 MHz`: `M=3, N=40, R=2`)
+
+> **Verification Status:** **Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-O2 -Wall -Wextra -Werror -Wconversion -Wdouble-promotion -Wvla`)** against `stm32g474xx.h` (Not Tested on Physical Hardware). Notice that 160 MHz is STILL `> 150 MHz`, so `PWR->CR5.R1MODE = 0`, `4 WS`, and intermediate `HPRE = /2` (80 MHz) remain mandatory!
+
+```c
+bool SystemClock_Config_160MHz_HSE(void)
+{
+    uint32_t timeout;
+
+    RCC->APB1ENR1 |= RCC_APB1ENR1_PWREN;
+    (void)RCC->APB1ENR1;
+
+    /* Range 1 (VOS=01b) + Boost Mode (R1MODE=0 REQUIRED since 160 MHz > 150 MHz!) */
+    PWR->CR1 = (PWR->CR1 & ~PWR_CR1_VOS_Msk) | PWR_CR1_VOS_0;
+    timeout = 100000UL;
+    while ((PWR->SR2 & PWR_SR2_VOSF) != 0UL) { if (timeout-- == 0UL) { return false; } }
+    PWR->CR5 &= ~PWR_CR5_R1MODE;
+
+    /* 4 Wait States (RM0440 Table 9: > 136 MHz up to 170 MHz in Boost = 4 WS) + ART */
+    FLASH->ACR = (FLASH->ACR & ~FLASH_ACR_LATENCY_Msk)
+               | FLASH_ACR_LATENCY_4WS
+               | FLASH_ACR_PRFTEN | FLASH_ACR_ICEN | FLASH_ACR_DCEN;
+    timeout = 10000UL;
+    while ((FLASH->ACR & FLASH_ACR_LATENCY_Msk) != FLASH_ACR_LATENCY_4WS) {
+        if (timeout-- == 0UL) { return false; }
+    }
+
+    RCC->CR &= ~RCC_CR_HSEBYP;
+    RCC->CR |=  RCC_CR_HSEON;
+    timeout = 200000UL;
+    while ((RCC->CR & RCC_CR_HSERDY) == 0UL) { if (timeout-- == 0UL) { return false; } }
+
+    /* PLL: HSE 24 MHz / M(3) = 8 MHz -> * N(40) = 320 MHz VCO -> / R(2) = 160.0 MHz
+     * (HSI16 equivalent: PLLSRC_HSI, M=4 [PLLM=3], N=80, R=2 -> 320 / 2 = 160.0 MHz) */
+    RCC->CR &= ~RCC_CR_PLLON;
+    timeout = 100000UL;
+    while ((RCC->CR & RCC_CR_PLLRDY) != 0UL) { if (timeout-- == 0UL) { return false; } }
+
+    RCC->PLLCFGR = RCC_PLLCFGR_PLLSRC_HSE
+                 | ((3UL - 1UL) << RCC_PLLCFGR_PLLM_Pos)
+                 | (40UL << RCC_PLLCFGR_PLLN_Pos)
+                 | (0UL  << RCC_PLLCFGR_PLLR_Pos)    /* R = /2 -> 160.0 MHz SYSCLK */
+                 | (3UL  << RCC_PLLCFGR_PLLQ_Pos)    /* Q = /8 -> 40.0 MHz */
+                 | (8UL  << RCC_PLLCFGR_PLLPDIV_Pos) /* P = /8 -> 40.0 MHz ADC */
+                 | RCC_PLLCFGR_PLLREN | RCC_PLLCFGR_PLLPEN;
+
+    RCC->CR |= RCC_CR_PLLON;
+    timeout = 200000UL;
+    while ((RCC->CR & RCC_CR_PLLRDY) == 0UL) { if (timeout-- == 0UL) { return false; } }
+
+    /* RM0440 §6.1.5 MANDATORY intermediate step (>150 MHz): HPRE = /2 (80 MHz) */
+    RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_HPRE_Msk | RCC_CFGR_PPRE1_Msk | RCC_CFGR_PPRE2_Msk))
+              | RCC_CFGR_HPRE_DIV2 | RCC_CFGR_PPRE1_DIV1 | RCC_CFGR_PPRE2_DIV1;
+
+    RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW_Msk) | RCC_CFGR_SW_PLL;
+    timeout = 100000UL;
+    while ((RCC->CFGR & RCC_CFGR_SWS_Msk) != RCC_CFGR_SWS_PLL) {
+        if (timeout-- == 0UL) { return false; }
+    }
+
+    for (volatile uint32_t i = 0UL; i < 100UL; ++i) { __NOP(); } /* >= 1 us @ 80 MHz */
+
+    /* Final switch: HCLK = PCLK1 = PCLK2 = 160.0 MHz */
+    RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_HPRE_Msk) | RCC_CFGR_HPRE_DIV1;
+    return true;
+}
+```
+
 ### 8.2 MCO Clock Verification on `PA8` & Reset Cause Diagnostics
 ```c
 void RCC_Enable_MCO_SYSCLK_Div16(void)
@@ -372,6 +470,8 @@ uint32_t RCC_ReadAndClearResetFlags(void)
    *Answer Check:* $340 / 48 = 7.083$ (not an integer in $\{2,4,6,8\}$). Solution: **`HSI48` + `CRS`** (`CLK48SEL = 00b`).
 5. **Q:** Why must `PWR->SR2 & PWR_SR2_VOSF` be polled instead of `PWR->SR1`?  
    *Answer Check:* Verified in `stm32g474xx.h`: `VOSF` is bit 10 of `PWR->SR2` (`0x40007014`).
+6. **Q:** Does running the STM32G474RE at **160 MHz** allow you to skip Range 1 Boost Mode (`PWR->CR5.R1MODE = 0`), drop Flash latency to 3 WS, or omit the RM0440 §6.1.5 `HPRE = /2` transition?  
+   *Answer Check:* **NO to all three!** Range 1 Normal maxes out at **150 MHz**, and Boost Mode 3 WS maxes out at **136 MHz** (RM0440 Table 9). Thus 160 MHz STILL requires `R1MODE = 0`, **4 WS**, and `HPRE = /2` (80 MHz) for $\ge 1\ \mu\text{s}$ — while giving clean 40.0 MHz ADC, 10.000 MHz MCO/16, `PSC=159`, `DAC HFSEL=01b`, and `USART BRR=1389` (`-0.008%` error)!
 
 ---
 

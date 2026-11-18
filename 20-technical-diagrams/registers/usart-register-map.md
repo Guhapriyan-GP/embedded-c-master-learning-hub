@@ -4,8 +4,8 @@
 **Base Addresses:** `USART1` `0x40013800` (APB2) | `USART2` `0x40004400` (APB1) | `USART3` `0x40004800` (APB1) | `UART4` `0x40004C00` (APB1) | `UART5` `0x40005000` (APB1) | `LPUART1` `0x40008000` (APB1)  
 **NUCLEO-G474RE ST-LINK VCP:** `PA2` (TX) / `PA3` (RX) — usable as **`LPUART1` (AF12)** or **`USART2` (AF7)** (UM2505 §6.8)  
 **Reference Manual:** RM0440, Chapter 37 (Rev 8) / Chapter 40 (Rev 9) (*USART*) & Chapter 38 / 41 (*LPUART*)  
-**Concept IDs:** `PERIPH-UART-001`  
-**Verification Status:** Every register offset and bitfield verified directly against `stm32g474xx.h`; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Concept IDs:** `PERIPH-UART-001`, `COMM-LP-001`  
+**Verification Status:** Every register offset and bitfield verified directly against `stm32g474xx.h`; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
@@ -17,13 +17,13 @@
 |---|---|---|---|---|
 | `USART_CR1` | `0x000` | `0x00000000` | RW | Control 1 (`UE`, `UESM`, `RE`, `TE`, `IDLEIE`, `RXNEIE_RXFNEIE`, `TCIE`, `TXEIE_TXFNFIE`, `OVER8`, `FIFOEN`) |
 | `USART_CR2` | `0x004` | `0x00000000` | RW | Control 2 (`STOP[13:12]`, `SWAP` TX/RX pin swap, `TXINV`/`RXINV`, `ABREN` auto-baud, `RTOEN`) |
-| `USART_CR3` | `0x008` | `0x00000000` | RW | Control 3 (`EIE`, `HDSEL`, `DMAR`, `DMAT`, `RTSE`/`CTSE`, `ONEBIT`, `OVRDIS`, `DEM` RS-485 DE) |
+| `USART_CR3` | `0x008` | `0x00000000` | RW | Control 3 (`EIE`, `HDSEL`, `DMAR`, `DMAT`, `RTSE`/`CTSE`, `ONEBIT`, `OVRDIS`, `DEM` RS-485 DE, **`WUS[21:20]`** Stop wakeup source, **`WUFIE` b22** Stop wakeup IE) |
 | `USART_BRR` | `0x00C` | `0x00000000` | RW | Baud rate register (16-bit for USART1–5; **20-bit** for LPUART1) |
 | `USART_GTPR` | `0x010` | `0x00000000` | RW | Guard time and prescaler register (Smartcard / IrDA) |
 | `USART_RTOR` | `0x014` | `0x00000000` | RW | Receiver timeout register (Modbus / idle frame detection) |
 | `USART_RQR` | `0x018` | `0x00000000` | WO | Request register (`RXFRQ` flush RX, `TXFRQ` flush TX, `ABRRQ`, `SBKRQ`) |
-| `USART_ISR` | `0x01C` | `0x020000C0` | RO | Interrupt & status (`PE`, `FE`, `NE`, `ORE`, `IDLE`, `RXNE_RXFNE`, `TC`, `TXE_TXFNF`, `BUSY`, `TEACK`, `REACK`) |
-| `USART_ICR` | `0x020` | `0x00000000` | **WO** | Interrupt flag clear (`PECF`, `FECF`, `NECF`, `ORECF`, `IDLECF`, `TCCF`, `RTOCF` — write `1` directly) |
+| `USART_ISR` | `0x01C` | `0x020000C0` | RO | Interrupt & status (`PE`, `FE`, `NE`, `ORE`, `IDLE`, `RXNE_RXFNE`, `TC`, `TXE_TXFNF`, `BUSY`, **`WUF` b20** Stop wakeup flag, `TEACK`, `REACK`) |
+| `USART_ICR` | `0x020` | `0x00000000` | **WO** | Interrupt flag clear (`PECF`, `FECF`, `NECF`, `ORECF`, `IDLECF`, `TCCF`, `RTOCF`, **`WUCF` b20** — write `1` directly) |
 | `USART_RDR` | `0x024` | `0x00000000` | RO | Receive data register (Reading automatically clears `RXNE` when FIFO disabled) |
 | `USART_TDR` | `0x028` | `0x00000000` | RW | Transmit data register (Writing automatically clears `TXE` when FIFO disabled) |
 | `USART_PRESC` | `0x02C` | `0x00000000` | RW | Clock prescaler (`PRESCALER[3:0]`: `0000`=`/1`, `0001`=`/2`, `0010`=`/4`, `0011`=`/6`, `0100`=`/8`, `0101`=`/10`, `0110`=`/12`, `0111`=`/16`, `1000`=`/32`, `1001`=`/64`, `1010`=`/128`, `1011`=`/256`) |
@@ -39,8 +39,10 @@ Let $f_{\text{KER\_PRESC}} = f_{\text{KER}} / \text{PRESC}$ (kernel clock select
 
 1. **USART1–3 / UART4–5 (`OVER8 = 0`, 16× oversampling):**
    $$\text{BRR} = \text{round}\!\left(\frac{f_{\text{KER\_PRESC}}}{\text{Baud}}\right)$$
-   - At $f_{\text{CK}} = 170\ \text{MHz}$, `PRESC = /1`, target $115{,}200\ \text{bps}$:
-     $$\text{BRR} = \frac{170{,}000{,}000}{115{,}200} = 1475.69 \rightarrow 1476\ (\texttt{0x05C4}), \quad \text{Error} = -0.02\%$$
+   - At $f_{\text{CK}} = 170\ \text{MHz}$ (Profile A), `PRESC = /1`, target $115{,}200\ \text{bps}$:
+     $$\text{BRR} = \frac{170{,}000{,}000}{115{,}200} = 1475.69 \rightarrow 1476\ (\texttt{0x05C4}), \quad \text{Error} = -0.021\%$$
+   - At $f_{\text{CK}} = 160\ \text{MHz}$ (Profile B), `PRESC = /1`, target $115{,}200\ \text{bps}$:
+     $$\text{BRR} = \frac{160{,}000{,}000}{115{,}200} = 1388.89 \rightarrow 1389\ (\texttt{0x056D}), \quad \text{Error} = -0.008\%$$
 2. **LPUART1 (20-bit fractional BRR, valid when $3 \times \text{Baud} \le f_{\text{KER\_PRESC}} \le 4096 \times \text{Baud}$):**
    $$\text{BRR}_{\text{LPUART}} = \text{round}\!\left(\frac{256 \times f_{\text{KER\_PRESC}}}{\text{Baud}}\right)$$
    - Example: $f_{\text{LSE}} = 32{,}768\ \text{Hz}$ at $9{,}600\ \text{bps}$ (Stop 1 wakeup): $\text{BRR} = \frac{256 \times 32768}{9600} = 874$ (`0x036A`). At 170 MHz and 115,200 bps, use `PRESC = /4` ($42.5\ \text{MHz} \le 4096 \times 115200$) so $\text{BRR} = 94{,}444$.

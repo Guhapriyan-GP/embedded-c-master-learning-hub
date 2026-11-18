@@ -5,7 +5,7 @@
 **DAC Bases (AHB2):** `DAC1` `0x50000800` (2 ext ch: `PA4`/`PA5`) | `DAC2` `0x50000C00` (1 ext ch: `PA6`) | `DAC3` `0x50001000` (2 internal-only ch) | `DAC4` `0x50001400` (2 internal-only ch)  
 **Reference Manual:** RM0440, Chapter 21 (*ADC*) & Chapter 22 (*DAC*) | DS12288 §5.3.19–5.3.20  
 **Concept IDs:** `PERIPH-ADC-001`, `PERIPH-DAC-001`  
-**Verification Status:** Every register offset, reset value, and clock spec verified against `stm32g474xx.h` & DS12288; code snippets Statically Reviewed (Not Tested on Physical Hardware).
+**Verification Status:** Every register offset, reset value, and clock spec verified against `stm32g474xx.h` & DS12288; C code snippets Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
 
@@ -31,18 +31,18 @@
 
 #### Critical ADC Clock Limit (DS12288 — DO NOT OVERCLOCK!)
 Per **DS12288 §5.3.19**, maximum STM32G474RE $f_{\text{ADC}}$ is **60 MHz** (single ADC, $V_{\text{DDA}} \ge 2.7\ \text{V}$) or **52 MHz** (multi-ADC concurrent):
-- At `HCLK = 170 MHz`:
-  - `CKMODE = 01` (`HCLK/1 = 170 MHz`) → **ILLEGAL (2.83× overclock!)**
-  - `CKMODE = 10` (`HCLK/2 = 85 MHz`) → **ILLEGAL (overclock!)**
-  - **`CKMODE = 11` (`HCLK/4 = 42.5 MHz`) → VALID ($\le 60\ \text{MHz}$ and $\le 52\ \text{MHz}$)!**
+- At `HCLK = 170 MHz` (Profile A) or `160 MHz` (Profile B):
+  - `CKMODE = 01` (`HCLK/1 = 170 / 160 MHz`) → **ILLEGAL (overclock!)**
+  - `CKMODE = 10` (`HCLK/2 = 85 / 80 MHz`) → **ILLEGAL (overclock!)**
+  - **`CKMODE = 11` (`HCLK/4 = 42.5 MHz` @ 170 MHz; exact `40.000 MHz` @ 160 MHz!) → VALID ($\le 60\ \text{MHz}$ and $\le 52\ \text{MHz}$)!**
   - Alternatively, use asynchronous mode (`CKMODE = 00`, `RCC->CCIPR.ADC12SEL = 01` PLL_P ≤ 60 MHz).
-- Total conversion time: $t_{\text{CONV}} = t_{\text{SMP}} + 12.5\ \text{cycles}$ (12-bit). Internal temp sensor (`ADC1_IN16`) requires $t_S \ge 5\ \mu\text{s}$ ($\ge 247.5$ cycles at 42.5 MHz).
+- Total conversion time: $t_{\text{CONV}} = t_{\text{SMP}} + 12.5\ \text{cycles}$ (12-bit). Internal temp sensor (`ADC1_IN16`) requires $t_S \ge 5\ \mu\text{s}$ ($\ge 247.5$ cycles at 42.5 MHz or 40.0 MHz).
 
 ---
 
 ### 2. 12-Bit DAC Register Overview (`DAC_TypeDef` — AHB2 Bus!)
 
-> **Bus & High-Speed Warning:** On STM32G474RE, `DAC1–DAC4` reside on **AHB2** (`RCC->AHB2ENR.DAC1EN..DAC4EN`, NOT APB1!). At 170 MHz HCLK, you **MUST set `DACx->MCR.HFSEL = 10b` (> 160 MHz)** for high-speed interface timing!
+> **Bus & High-Speed Warning:** On STM32G474RE, `DAC1–DAC4` reside on **AHB2** (`RCC->AHB2ENR.DAC1EN..DAC4EN`, NOT APB1!). At **170 MHz HCLK**, you **MUST set `DACx->MCR.HFSEL = 10b` (`> 160 MHz`)**; at **160 MHz HCLK** (Profile B), **`HFSEL = 01b` (`> 80 MHz` and $\le 160\text{ MHz}$)** is sufficient!
 
 | Register | Offset | Reset Value | Access | Description |
 |---|---|---|---|---|

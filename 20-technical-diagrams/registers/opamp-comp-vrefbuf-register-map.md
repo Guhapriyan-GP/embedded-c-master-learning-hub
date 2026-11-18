@@ -7,7 +7,7 @@
 - `OPAMP1..OPAMP6`: `0x40010300` (`OPAMP1`), `0x40010304` (`OPAMP2`), `0x40010308` (`OPAMP3`), `0x4001030C` (`OPAMP4`), `0x40010310` (`OPAMP5`), `0x40010314` (`OPAMP6`)  
 **IRQ Numbers (`stm32g474xx.h`):** `COMP1_2_3_IRQn = 64`, `COMP4_5_6_IRQn = 65`, `COMP7_IRQn = 66` (via EXTI lines 21, 22, 29–33)  
 **Reference Manual:** RM0440, Ch 23 (*VREFBUF*), Ch 24 (*COMP*), Ch 25 (*OPAMP*) | AN5306 (*OPAMP usage in STM32G4*)  
-**Concept IDs:** `PERIPH-OPAMP-001`, `PERIPH-COMP-001`, `PERIPH-VREFBUF-001`  
+**Concept IDs:** `PERIPH-OPAMP-001`, `PERIPH-COMP-001`, `PERIPH-VREFBUF-001`, `ANA-VREF-001`  
 **Verification Status:** Every base address, struct offset, bitfield, and IRQ verified directly against `stm32g474xx.h`; C code examples Compile-Verified (`arm-none-eabi-gcc 14.3.1`, `-Wall -Wextra -Werror`) (Not Tested on Physical Hardware).
 
 ---
@@ -29,13 +29,13 @@ Ultra-fast **~16.7 ns** rail-to-rail comparators with programmable hysteresis (`
 
 | Register | Offset | Reset Value | Access | Key Bitfields (CMSIS `stm32g474xx.h`) |
 |---|---|---|---|---|
-| `COMPx_CSR` | `+0x000` | `0x00000000` | RW | `EN` (b0), `INMSEL[7:4]` (inverting input: `0000`=1/4 VREFINT, `0001`=1/2 VREFINT, `0010`=3/4 VREFINT, `0011`=VREFINT, `0100`/`0101`=DACx internal, `0110`/`0111`=external pin), `INPSEL` (b8 non-inv pin), `POL` (b15 invert), `HYST[18:16]` (`COMP_CSR_HYST`, `000`=0 mV .. `111`=70 mV), **`BLANKING[21:19]`** (`COMP_CSR_BLANKING`, TIM/HRTIM blanking), `BRGEN` (b22 VREFINT resistor bridge), `SCALEN` (b23 VREFINT scaler), `VALUE` (b30 RO output), **`LOCK` (b31** write-once safety lock until reset) |
+| `COMPx_CSR` | `+0x000` | `0x00000000` | RW | `EN` (b0), `INMSEL[7:4]` (inverting input: `0000`=1/4 VREFINT, `0001`=1/2 VREFINT, `0010`=3/4 VREFINT, `0011`=VREFINT, `0100`/`0101`=DACx internal, `0110`/`0111`=external pin), `INPSEL` (b8 non-inv pin), **`POLARITY`** (`COMP_CSR_POLARITY` b15 invert), `HYST[18:16]` (`COMP_CSR_HYST`, `000`=0 mV .. `111`=70 mV), **`BLANKING[21:19]`** (`COMP_CSR_BLANKING`, TIM/HRTIM blanking), `BRGEN` (b22 VREFINT resistor bridge), `SCALEN` (b23 VREFINT scaler), `VALUE` (b30 RO output), **`LOCK` (b31** write-once safety lock until reset) |
 
 ---
 
 ### 3. VREFBUF (Internal Voltage Reference Buffer) — `0x40010030` (`VREFBUF_TypeDef`)
 
-> **CRITICAL NUCLEO-G474RE Hardware Warning (UM2505):** On NUCLEO-G474RE (MB1367), the `VREF+` pin (LQFP64 Pin 13) is shorted to `VDDA` (3.3 V) via solder bridge by default! **NEVER enable `VREFBUF` (`ENVR=1, HIZ=0`) while `VREF+` is shorted to 3.3 V** — open the `VREF+` solder bridge first so the internal 2.048 V / 2.500 V / 2.900 V buffer does not fight the 3.3 V rail!
+> **CRITICAL NUCLEO-G474RE Hardware Warning (UM2505):** On NUCLEO-G474RE (MB1367), `VDDA`/`VREF+` are filtered via ferrite beads `L1`/`L2` (`SB8`/`SB10` OFF by default) and the onboard external `VREF+` reference network (`SB14`/`R33`/`R34`) drives Pin 13 by default! **NEVER enable `VREFBUF` (`ENVR=1, HIZ=0`) while an external rail is driving `VREF+`** — disconnect the external `VREF+` drive per UM2505 first so the internal 2.048 V / 2.500 V / 2.900 V buffer does not contend with the external supply, and retain `100 nF || 1 µF` low-ESR X7R decoupling on `VREF+`!
 
 | Register | Offset | Reset Value | Access | Key Bitfields |
 |---|---|---|---|---|
